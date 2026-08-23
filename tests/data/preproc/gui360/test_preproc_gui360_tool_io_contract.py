@@ -173,6 +173,14 @@ def test_gui360_sendkeys_preserves_order_repeats_and_hold_state() -> None:
     assert _actions(gui360_use.parse_keys_string("^a", "ep")) == [
         {"action": "key", "keys": ["ctrl", "a"]}
     ]
+    assert _actions(gui360_use.parse_keys_string("^+", "ep")) == [
+        {"action": "key", "keys": ["ctrl", "+"]}
+    ]
+    assert _actions(gui360_use.parse_keys_string("^+%", "ep")) == [
+        {"action": "key", "keys": ["ctrl", "shift", "%"]}
+    ]
+    with pytest.raises(gui360_use.SkipTrajectory, match="dangling SendKeys modifier"):
+        gui360_use.parse_keys_string("{VK_CONTROL}{VK_SHIFT}", "ep")
     assert _actions(gui360_use.parse_keys_string("^({F1})", "ep")) == [
         {"action": "key", "keys": ["ctrl", "f1"]}
     ]
@@ -217,6 +225,34 @@ def test_gui360_sendkeys_preserves_order_repeats_and_hold_state() -> None:
     ]
     assert _actions(gui360_use.parse_keys_string("{VK_MENU}", "ep")) == [
         {"action": "key", "keys": ["alt"]}
+    ]
+
+
+def test_gui360_sendkeys_distinguishes_text_punctuation_from_shortcuts() -> None:
+    assert _actions(gui360_use.parse_keys_string("2 + 3 = 5", "ep")) == [
+        {"action": "type", "text": "2 "},
+        {"action": "key", "keys": ["+"]},
+        {"action": "type", "text": " 3 = 5"},
+    ]
+    assert _actions(gui360_use.parse_keys_string("K^alpha is 50%", "ep")) == [
+        {"action": "type", "text": "K"},
+        {"action": "key", "keys": ["^"]},
+        {"action": "type", "text": "alpha is 50"},
+        {"action": "key", "keys": ["%"]},
+    ]
+    assert _actions(gui360_use.parse_keys_string("^α", "ep")) == [
+        {"action": "key", "keys": ["^"]},
+        {"action": "type", "text": "α"},
+    ]
+    assert _actions(gui360_use.parse_keys_string("{VK_CONTROL} {SPACE}", "ep")) == [
+        {"action": "key", "keys": ["ctrl", "space"]},
+    ]
+    assert _actions(gui360_use.parse_keys_string("{VK_SHIFT} ", "ep")) == [
+        {"action": "key", "keys": ["shift", "space"]},
+    ]
+    assert _actions(gui360_use.parse_keys_string("{VK_ALT}n{VK_P}", "ep")) == [
+        {"action": "key", "keys": ["alt", "n"]},
+        {"action": "key", "keys": ["p"]},
     ]
 
 

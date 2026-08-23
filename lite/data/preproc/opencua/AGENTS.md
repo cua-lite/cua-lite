@@ -256,6 +256,11 @@ lowercase named key is publishable. This prevents schema-valid strings such as
 `"ac"` or `"8000"` from surviving until a backend rejects them. Stored keys are
 lowercase named keys or literal printable glyphs — see the
 [Lite key vocabulary](/lite/data/preproc/AGENTS.md#keyboard-keys--lowercase-named-keys-plus-printable-glyphs).
+AgentNet's one observed `num*` spelling is normalized source-locally to the
+literal `*`: its successful trajectory and following screenshot both show that
+the numeric-keypad multiplication operator was entered. The alias is not added
+to the shared key vocabulary because it is not a PyAutoGUI key name outside
+this source dialect.
 
 Every action in this table renders back to OpenCUA's own wire: the whole emitted
 vocabulary round-trips through the upstream OpenCUA desktop action-space text

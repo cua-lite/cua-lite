@@ -69,6 +69,8 @@ def _canonical_key(value: Any, code: str) -> str:
     """Validate one source key before it reaches the string-only JSON schema."""
     if not isinstance(value, str):
         raise AgentNetCodeParseError(f"Key must be a string, got {value!r}.\ncode=\n{code}")
+    # One successful AgentNet trajectory spells the numpad multiply key this way.
+    value = {"num*": "*"}.get(value, value)
     try:
         normalized = normalize_keys([value])
     except (TypeError, ValueError) as exc:

@@ -98,6 +98,20 @@ def parse_keys_string(keys: str, exec_id: str) -> list[dict[str, Any]]:
         name = standalone_modifier.group(1).lower()
         return [LiteDesktopActionSet.key(keys=[{"control": "ctrl", "menu": "alt"}.get(name, name)])]
 
+    # A compact chord may use its final modifier glyph as the target key.
+    if re.fullmatch(r"[\^+%]{2,}", keys):
+        keys = f"{keys[:-1]}{{{keys[-1]}}}"
+    raw_shortcut = bool(
+        re.fullmatch(r"[\^+%]+[ -~]", keys)
+        or re.match(r"^[\^+%]+(?:\{|\()", keys)
+    )
+    # UFO strings mix compact SendKeys shortcuts with ordinary punctuation.
+    if not raw_shortcut:
+        parts = re.split(r"(\{[^}]*\})", keys)
+        for i in range(0, len(parts), 2):
+            parts[i] = parts[i].replace("+", "{+}").replace("^", "{^}").replace("%", "{%}")
+        keys = "".join(parts)
+
     for pattern, prefix in (
         (r"\{(?:VK_)?(?:CONTROL|CTRL)\}", "^"),
         (r"\{(?:VK_)?SHIFT\}", "+"),
@@ -111,9 +125,12 @@ def parse_keys_string(keys: str, exec_id: str) -> list[dict[str, Any]]:
             lower = part.lower()
             if lower.startswith("vk_"):
                 vk_name = lower[3:]
-                if vk_name not in VK_KEY_MAP:
+                if vk_name in VK_KEY_MAP:
+                    mapped = VK_KEY_MAP[vk_name]
+                elif re.fullmatch(r"[a-z0-9]", vk_name):
+                    mapped = vk_name
+                else:
                     raise SkipTrajectory(f"Unknown VK token {name!r} in {exec_id}")
-                mapped = VK_KEY_MAP[vk_name]
             else:
                 mapped = VK_KEY_MAP.get(lower, part)
             try:
@@ -180,7 +197,15 @@ def parse_keys_string(keys: str, exec_id: str) -> list[dict[str, Any]]:
                     modifiers.append(modifier_keys[segment[i]])
                     i += 1
                 active = with_modifiers(held, modifiers)
+                whitespace_start = i
+                while i < len(segment) and segment[i] == " ":
+                    i += 1
                 if i >= len(segment):
+                    if i > whitespace_start:
+                        calls.append(
+                            LiteDesktopActionSet.key(keys=with_modifiers(active, ["space"]))
+                        )
+                        continue
                     raise SkipTrajectory(f"dangling SendKeys modifier in {exec_id}")
                 if segment[i] == "(":
                     depth = 1

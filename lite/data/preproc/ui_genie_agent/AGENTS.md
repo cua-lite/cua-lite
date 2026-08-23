@@ -79,9 +79,10 @@ Reproduce every count above with
 
 ```bash
 uv run python lite/data/preproc/ui_genie_agent/use.py --subset ui_genie
-# ui_genie: 2208 trajectories read (16698 step records) → 1756 rows, 452 skipped
+# ui_genie: 2208 trajectories read (16698 step records) → 1747 rows, 461 skipped
 # ui_genie skip reasons (trajectories): {'som_annotation_variant': 417,
-#   'coordinate_outside_resolution': 33, 'non_contiguous_step_numbers': 2}
+#   'coordinate_outside_resolution': 33, 'truncated_terminal_text': 9,
+#   'non_contiguous_step_numbers': 2}
 ```
 
 **Related files:**
@@ -160,6 +161,7 @@ positional argument, so a drop nobody can count is unconstructible.
 | `duplicate_step_numbers` | two records claim the same logical `Task progress` index | 0 | 0 |
 | `non_contiguous_step_numbers` | a logical decision record is missing inside the trajectory | 2 | 19 |
 | `empty_text` | `type` / `open` with blank text | 0 | 3 |
+| `truncated_terminal_text` | successful `action_info` ends with whitespace, including inside wrapping quotes; 18 source values are cut off mid-phrase, but 9 belong to the earlier SOM bucket | 9 | 0 |
 | `malformed_resolution` | a point-modality prompt with no parseable `resolution is WxH` | 0 | 0 |
 | `no_instruction` | `The user query:` absent | 0 | 0 |
 | `malformed_messages`, `malformed_tool_call` | source record shape | 0 | 0 |
@@ -168,7 +170,7 @@ positional argument, so a drop nobody can count is unconstructible.
 | `image_absent_on_host` | the step screenshot is not on this host — **host lacking data**, not the adapter refusing it | 0 | 0 |
 | `image_corrupt_on_host` | unreadable image at staging time — likewise host-side | 0 | 0 |
 | `oob_coordinate` | OOB after normalization (`has_oob_coordinate`; rare — coords are clamped to [0, 1000]) | 0 | 0 |
-| | **total skipped / read** | **452 / 2,208** | **23 / 2,981** |
+| | **total skipped / read** | **461 / 2,208** | **23 / 2,981** |
 
 Trajectories that lack a final `terminate` but end on an executable action now
 publish that action as the EOF label instead of entering the skip ledger. Some
@@ -260,11 +262,14 @@ tool_call is persisted in `use` rows, and non-success status/reason payloads mov
 assistant final, whose **text is the task's answer when the terminate authored one**.
 
 `ui_genie` hangs all source-authored terminal text off `terminate.action_info`.
-The adapter preserves every non-empty successful value as the content-only final.
+The adapter preserves every complete, non-empty successful value as the content-only final.
 It does not guess from English wording whether the text is an answer or a completion
 note: the old regex both deleted real answers and misclassified product names such as
-“Find My Device”. Empty values still fall back to `Done.`; failure text remains outcome
-metadata rather than a successful final answer.
+“Find My Device”. A value ending in whitespace (including immediately inside wrapping
+quotes) is rejected as `truncated_terminal_text`; all 18 such source values end mid-phrase,
+with 9 already rejected earlier as set-of-mark trajectories.
+Empty values still fall back to `Done.`; failure text remains outcome metadata rather
+than a successful final answer.
 
 `amex` never authors `action_info` (2,816/2,816 terminates carry `{status}` only), so
 that variant always ends on `Done.`.

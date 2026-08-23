@@ -237,6 +237,12 @@ def test_opencua_preserves_press_repeats_and_media_key_aliases() -> None:
     ]
 
 
+def test_opencua_accepts_agentnet_numpad_multiply_alias() -> None:
+    assert _actions(opencua_use.agentnet_code_to_tool_calls("pyautogui.press('num*')")) == [
+        {"action": "key", "keys": ["*"]},
+    ]
+
+
 def test_opencua_validates_keys_and_accepts_the_keyword_press_signature() -> None:
     actions = _actions(opencua_use.agentnet_code_to_tool_calls(
         "pyautogui.press(keys=[')'], presses=2)"

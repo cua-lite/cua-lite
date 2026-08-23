@@ -224,7 +224,17 @@ def terminal_answer_text(action_info: str | None) -> str | None:
     """Preserve source-authored successful terminal text without language guessing."""
     if not isinstance(action_info, str):
         return None
-    return action_info.strip() or None
+    stripped = action_info.strip()
+    inner = (
+        stripped[1:-1]
+        if len(stripped) >= 2 and stripped[0] == stripped[-1] == '"'
+        else action_info
+    )
+    if inner and inner[-1].isspace():
+        raise SkipTrajectoryError(
+            "truncated_terminal_text", f"terminal action_info ends mid-phrase: {action_info!r}"
+        )
+    return stripped or None
 
 
 def _norm_xy(x: float, y: float, width: int, height: int) -> list[int]:

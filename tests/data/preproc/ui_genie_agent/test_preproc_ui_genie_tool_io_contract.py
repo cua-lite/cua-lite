@@ -172,6 +172,16 @@ def test_ui_genie_preserves_source_completion_text(monkeypatch):
     validate_canonical_rows([row], "ui_genie_completion_text")
 
 
+@pytest.mark.parametrize("action_info", ["The book ", '"The book "'])
+def test_ui_genie_rejects_truncated_terminal_text(monkeypatch, action_info):
+    with pytest.raises(ui_genie_use.SkipTrajectoryError, match="truncated_terminal_text"):
+        _ui_genie_terminal_row(
+            monkeypatch,
+            query="How many pages does the first book have?",
+            action_info=action_info,
+        )
+
+
 def test_ui_genie_preserves_source_text_for_action_goal(monkeypatch):
     row = _ui_genie_terminal_row(
         monkeypatch,

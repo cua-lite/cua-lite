@@ -74,12 +74,12 @@ no upstream split label inside the `train` set we consume).
 |---|---|---|---|
 | `grounding.point` | 79,487 | 79,426 | 61 true out-of-bounds points dropped |
 | `understanding` | 97,351 | 97,335 | 16 screens had no retained visible control |
-| `use` | 13,750 train trajectories | 10,471 | 2,374 Office-API, 855 incomplete/empty/other, and 50 out-of-bounds dropped |
+| `use` | 13,750 train trajectories | 10,482 | 2,376 Office-API, 842 incomplete/empty/other, and 50 out-of-bounds dropped |
 
 `use` drop/skip reasons from the full source run (regenerate exact numbers from
 the run summary printed by `use.py`):
 
-- **Office-API trajectory drop** — 2,374 / 13,750 (17.3%); contains an Office-API action (`select_table_range`, `set_font`, `insert_excel_table`, `insert_table`, `select_paragraph`, `select_table`, `save_as`, `set_background_color`, `table2markdown`, `reorder_columns`, …) with no faithful coordinate/UI equivalent.
+- **Office-API trajectory drop** — 2,376 / 13,750 (17.3%); contains an Office-API action (`select_table_range`, `set_font`, `insert_excel_table`, `insert_table`, `select_paragraph`, `select_table`, `save_as`, `set_background_color`, `table2markdown`, `reorder_columns`, …) with no faithful coordinate/UI equivalent.
 - **per-step skips** within kept trajectories — no-op "sub-task complete" steps (empty action) and `summary` steps (textual state report); neither changes screen state.
 - **incomplete** — `evaluation.complete != "yes"` or final step not `OVERALL_FINISH`, or < 1 real action step.
 
@@ -206,7 +206,15 @@ and are normalized to `[0, 1000]` against the decoded image size.
 `["ctrl", "c"]`; a standalone modifier token such as `{VK_MENU}` remains a
 standalone `key(keys=["alt"])` action rather than a dangling chord. Unknown `VK_`
 tokens raise `SkipTrajectory` (so new codes are
-caught rather than silently dropped). GUI-360's source `type` is target-aware,
+caught rather than silently dropped); single-character virtual-key spellings
+such as the source's successful `{VK_P}` action map to that literal character.
+Bare `+`, `^`, and `%` inside ordinary text are literal punctuation, while a
+leading compact SendKeys expression such as `^a` remains a modifier chord.
+For an all-symbol compact chord, the final symbol is the target: `^+` is
+Ctrl+Plus and `^+%` is Ctrl+Shift+Percent.
+Whitespace after a leading modifier is the Space key, so the source's
+`{VK_CONTROL} {SPACE}` and `{VK_SHIFT} ` spellings become Ctrl+Space and
+Shift+Space rather than a fabricated `plus` key. GUI-360's source `type` is target-aware,
 while canonical `type` writes only to the currently focused field, so a source
 coordinate is emitted as a focus click. `clear_current_text` is preserved as
 `Ctrl+A` after that click and before typing. Drag `key_hold` is preserved with
