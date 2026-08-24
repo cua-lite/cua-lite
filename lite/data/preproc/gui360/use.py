@@ -98,19 +98,13 @@ def parse_keys_string(keys: str, exec_id: str) -> list[dict[str, Any]]:
         name = standalone_modifier.group(1).lower()
         return [LiteDesktopActionSet.key(keys=[{"control": "ctrl", "menu": "alt"}.get(name, name)])]
 
-    # A compact chord may use its final modifier glyph as the target key.
-    if re.fullmatch(r"[\^+%]{2,}", keys):
-        keys = f"{keys[:-1]}{{{keys[-1]}}}"
-    raw_shortcut = bool(
-        re.fullmatch(r"[\^+%]+[ -~]", keys)
-        or re.match(r"^[\^+%]+(?:\{|\()", keys)
-    )
-    # UFO strings mix compact SendKeys shortcuts with ordinary punctuation.
-    if not raw_shortcut:
-        parts = re.split(r"(\{[^}]*\})", keys)
-        for i in range(0, len(parts), 2):
-            parts[i] = parts[i].replace("+", "{+}").replace("^", "{^}").replace("%", "{%}")
-        keys = "".join(parts)
+    # UFO escapes bare SendKeys modifier glyphs before expanding explicit
+    # ``{VK_*}`` markers. Reproduce that order: ``^a`` types the literal text,
+    # while ``{VK_CONTROL}a`` is Ctrl+A.
+    parts = re.split(r"(\{[^}]*\})", keys)
+    for i in range(0, len(parts), 2):
+        parts[i] = parts[i].replace("+", "{+}").replace("^", "{^}").replace("%", "{%}")
+    keys = "".join(parts)
 
     for pattern, prefix in (
         (r"\{(?:VK_)?(?:CONTROL|CTRL)\}", "^"),

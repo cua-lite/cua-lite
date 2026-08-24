@@ -171,26 +171,30 @@ def test_gui360_sendkeys_preserves_order_repeats_and_hold_state() -> None:
         "key", "key", "key", "type", "key", "key_down", "type", "key_up"
     ]
     assert _actions(gui360_use.parse_keys_string("^a", "ep")) == [
-        {"action": "key", "keys": ["ctrl", "a"]}
+        {"action": "key", "keys": ["^"]},
+        {"action": "type", "text": "a"},
     ]
     assert _actions(gui360_use.parse_keys_string("^+", "ep")) == [
-        {"action": "key", "keys": ["ctrl", "+"]}
+        {"action": "key", "keys": ["^"]},
+        {"action": "key", "keys": ["+"]},
     ]
     assert _actions(gui360_use.parse_keys_string("^+%", "ep")) == [
-        {"action": "key", "keys": ["ctrl", "shift", "%"]}
+        {"action": "key", "keys": ["^"]},
+        {"action": "key", "keys": ["+"]},
+        {"action": "key", "keys": ["%"]},
     ]
     with pytest.raises(gui360_use.SkipTrajectory, match="dangling SendKeys modifier"):
         gui360_use.parse_keys_string("{VK_CONTROL}{VK_SHIFT}", "ep")
-    assert _actions(gui360_use.parse_keys_string("^({F1})", "ep")) == [
+    assert _actions(gui360_use.parse_keys_string("{VK_CONTROL}({F1})", "ep")) == [
         {"action": "key", "keys": ["ctrl", "f1"]}
     ]
-    assert _actions(gui360_use.parse_keys_string("^{+}", "ep")) == [
+    assert _actions(gui360_use.parse_keys_string("{VK_CONTROL}{+}", "ep")) == [
         {"action": "key", "keys": ["ctrl", "+"]}
     ]
     assert _actions(gui360_use.parse_keys_string("{+}", "ep")) == [
         {"action": "key", "keys": ["+"]}
     ]
-    assert _actions(gui360_use.parse_keys_string("+{+}", "ep")) == [
+    assert _actions(gui360_use.parse_keys_string("{VK_SHIFT}{+}", "ep")) == [
         {"action": "key", "keys": ["shift", "+"]}
     ]
     assert _actions(gui360_use.parse_keys_string("{VK_ADD}", "ep")) == [
@@ -253,6 +257,9 @@ def test_gui360_sendkeys_distinguishes_text_punctuation_from_shortcuts() -> None
     assert _actions(gui360_use.parse_keys_string("{VK_ALT}n{VK_P}", "ep")) == [
         {"action": "key", "keys": ["alt", "n"]},
         {"action": "key", "keys": ["p"]},
+    ]
+    assert _actions(gui360_use.parse_keys_string("{VK_CONTROL}a", "ep")) == [
+        {"action": "key", "keys": ["ctrl", "a"]},
     ]
 
 

@@ -208,10 +208,10 @@ standalone `key(keys=["alt"])` action rather than a dangling chord. Unknown `VK_
 tokens raise `SkipTrajectory` (so new codes are
 caught rather than silently dropped); single-character virtual-key spellings
 such as the source's successful `{VK_P}` action map to that literal character.
-Bare `+`, `^`, and `%` inside ordinary text are literal punctuation, while a
-leading compact SendKeys expression such as `^a` remains a modifier chord.
-For an all-symbol compact chord, the final symbol is the target: `^+` is
-Ctrl+Plus and `^+%` is Ctrl+Shift+Percent.
+Bare `+`, `^`, and `%` are literal punctuation, including at the start of a
+string: UFO escapes those glyphs before passing the string to SendKeys, so `^a`
+types the two literal characters. Shortcuts use explicit source markers such as
+`{VK_CONTROL}a` (Ctrl+A).
 Whitespace after a leading modifier is the Space key, so the source's
 `{VK_CONTROL} {SPACE}` and `{VK_SHIFT} ` spellings become Ctrl+Space and
 Shift+Space rather than a fabricated `plus` key. GUI-360's source `type` is target-aware,
