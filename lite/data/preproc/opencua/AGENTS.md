@@ -87,19 +87,22 @@ it.
 
 ### Quality field distributions (among kept rows)
 
-Counted from the 2026-08-16 full output (4,999 Ubuntu and 17,380 Windows/Mac
-rows), so these move with the source snapshot and skip rules — re-derive from
-the output rather than trust them:
+Counted from a full run against the public-release key contract (4,999 Ubuntu
+and 17,337 Windows/Mac rows). The release restricts stored key glyphs to visible
+ASCII, so 43 previously published Windows/Mac trajectories containing source
+spellings such as `å`, `√`, `ç`, or `ł` are now rejected. These counts move with
+the source snapshot and skip rules — re-derive them from the output rather than
+trust them:
 
 | Field | Ubuntu | Windows/Mac |
 |-------|--------|-------------|
-| `task_completed=True` | 2,315 | 13,572 |
-| `task_completed=False` | 357 | 3,808 |
+| `task_completed=True` | 2,315 | 13,539 |
+| `task_completed=False` | 357 | 3,798 |
 | `task_completed=null` | 2,327 | 0 |
 | `alignment_score` mean | 9.22 (2,672 present) | 8.93 |
 | `alignment_score ≤ 3` | 59 | 326 |
 | `efficiency_score` mean | 7.47 (2,672 present) | 7.60 |
-| `efficiency_score ≤ 3` | 36 | 563 |
+| `efficiency_score ≤ 3` | 36 | 560 |
 | `domain` | 12 categories | absent (all `null`) |
 
 These fields are preserved in `metadata.others` for downstream filtering — no quality-based filtering is applied during preprocessing.
