@@ -1,0 +1,36 @@
+# UI-Venus-2-9B rollout eval on MobileWorld
+# 161 tasks (201 upstream - 40 agent-mcp) across 20 apps in DinD boxes. This is
+# one of UI-Venus-2's headline benches (GUI-only success rate, 50 steps).
+#
+# NOTE: the 46 agent-user-interaction tasks need the ``ask_user`` extra tool. The
+# mobile grammar's ``CallUser`` is a takeover request, not a mid-episode question
+# with an answer channel, so those tasks are expected to score 0; GUI-only tasks
+# are unaffected.
+#
+# Wire format: one ``<think>…</think>\n<action>…</action>`` block per turn, with
+# the task baked into the Mobile system prompt. Coordinates are normalized to
+# 1000 on every surface, so no rescaling happens. History keeps every completed
+# turn's assistant text and the newest ``n_history_images`` PAST screenshots plus
+# the current one; an evicted observation stays as an empty user bubble, matching
+# upstream ``build_messages``.
+#
+# Sampling and the image window match ``scripts/mobile.sh``; see androidworld.yaml for the details.
+#
+# Related configs (sync env_kwargs / sampling when changing):
+#   - scripts/configs/ui_venus_2/default/androidworld.yaml
+
+agent_id: "ui_venus_2"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 16384
+    repetition_penalty: 1.05
+  protocol_kwargs:
+    # Upstream N_IMG: how many PAST screenshots to keep. The current one
+    # is always sent on top, so the prompt holds 3 images.
+    n_history_images: 2
+
+env_id: "mobileworld"
+env_kwargs:
+  loop_detect: 5
+  extra_tools: ["open_app", "response", "terminate"]

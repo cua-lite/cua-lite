@@ -1,0 +1,21 @@
+# UI-Venus-2-9B rollout eval on ScreenSpot-Pro
+# Single-step point grounding. One of UI-Venus-2's headline benches.
+#
+# Wire format: NO system message and no tag block — the whole instruction surface
+# is one user message holding the screenshot then the prompt, and the answer is a
+# bare ``[x,y]`` list normalized to 1000. Single-step, so there is no history and
+# no image window.
+#
+# Sampling matches ``scripts/grounding.sh`` (greedy; ``max_new_tokens`` capped
+# well below the rollout default because the answer is one short list).
+#
+# Related configs:
+#   - scripts/configs/ui_venus_2/default/osworld_g.yaml  (sibling grounding bench)
+
+agent_id: "ui_venus_2"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 256
+
+env_id: "screenspot_pro"

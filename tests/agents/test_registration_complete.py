@@ -274,6 +274,7 @@ PROTOCOL_GOLDEN = {
     "qwen3_vl.history",
     "step_gui.history",
     "ui_tars.history",
+    "ui_venus_2.history",
     "webharbor.webvoyager.qwen3_5.history",
     "webharbor.webvoyager.qwen3_vl.history",
 }
@@ -322,6 +323,9 @@ ACTION_SPACE_LIST = [
     "ui_tars@mobile@point",
     "ui_tars_15_v1@mobile",
     "ui_tars_15_v1@mobile@point",
+    "ui_venus_2@browser",
+    "ui_venus_2@desktop",
+    "ui_venus_2@mobile",
 ]
 ACTION_SPACE_PATTERNS = [
     "claude@(desktop|browser)",
@@ -346,6 +350,7 @@ ACTION_SPACE_PATTERNS = [
     "ui_tars@(desktop|browser)@point",
     "ui_tars_15_v1@(desktop|browser)",
     "ui_tars_15_v1@(desktop|browser)@point",
+    "ui_venus_2@(desktop|browser|mobile)@point",
 ]
 
 ADAPTER_LIST = [
@@ -372,6 +377,9 @@ ADAPTER_LIST = [
     "ui_tars_15_v1@mobile@grounding.action",
     "ui_tars_15_v1@mobile@grounding.point",
     "ui_tars_15_v1@mobile@use",
+    "ui_venus_2@browser@use",
+    "ui_venus_2@desktop@use",
+    "ui_venus_2@mobile@use",
 ]
 ADAPTER_PATTERNS = [
     "evocua@(desktop|browser)@grounding\\.action",
@@ -423,6 +431,7 @@ ADAPTER_PATTERNS = [
     "ui_tars_15_v1@(desktop|browser)@use",
     "ui_tars_15_v1@(desktop|browser|mobile)@grounding\\.bbox",
     "ui_tars_15_v1@(desktop|browser|mobile)@understanding",
+    "ui_venus_2@(desktop|browser|mobile)@grounding\\.point",
 ]
 
 AGENT_LIST = [
@@ -449,6 +458,9 @@ AGENT_LIST = [
     "ui_tars_15_v1@mobile@grounding.action",
     "ui_tars_15_v1@mobile@grounding.point",
     "ui_tars_15_v1@mobile@use",
+    "ui_venus_2@browser@use",
+    "ui_venus_2@desktop@use",
+    "ui_venus_2@mobile@use",
 ]
 AGENT_PATTERNS = [
     "claude@(desktop|browser)@grounding\\.point",
@@ -487,6 +499,7 @@ AGENT_PATTERNS = [
     "ui_tars_15_v1@(desktop|browser)@grounding\\.action",
     "ui_tars_15_v1@(desktop|browser)@grounding\\.point",
     "ui_tars_15_v1@(desktop|browser)@use",
+    "ui_venus_2@(desktop|browser|mobile)@grounding\\.point",
     "visualwebarena\\.goal_image(@browser@use)?",
 ]
 
@@ -623,6 +636,7 @@ _PACKAGE_ROOT_INIT_FILES = [
     "lite/agents/models/step_gui/__init__.py",
     "lite/agents/models/ui_tars/__init__.py",
     "lite/agents/models/ui_tars_15_v1/__init__.py",
+    "lite/agents/models/ui_venus_2/__init__.py",
 ]
 
 

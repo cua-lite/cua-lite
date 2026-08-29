@@ -1,0 +1,36 @@
+# UI-Venus-2-9B rollout eval on lite.osworld
+# The lite runtime's OSWorld task set; same Computer surface as osworld.yaml.
+# Wire format: one ``<think>…</think>\n<action>…</action>`` block per turn, with
+# the task baked into the Computer system prompt. Coordinates are normalized to
+# 1000 on every surface, so no rescaling happens. History keeps every completed
+# turn's assistant text and the newest ``n_history_images`` PAST screenshots plus
+# the current one; an evicted observation stays as an empty user bubble, matching
+# upstream ``build_messages``.
+#
+# Sampling and the image window match ``scripts/computer.sh`` (TEMPERATURE=0.0, TOP_P=0.7, MAX_TOKENS=4096, N_IMG=2).
+#
+# Related configs (sync env_kwargs / sampling when changing):
+#   - scripts/configs/ui_venus_2/default/osworld.yaml  (OSWorld rollout)
+
+agent_id: "ui_venus_2"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    top_p: 0.7
+    max_new_tokens: 4096
+  protocol_kwargs:
+    # Upstream N_IMG: how many PAST screenshots to keep. The current one
+    # is always sent on top, so the prompt holds 3 images.
+    n_history_images: 2
+  # The lite sandbox's user AND password are both ``user``
+  # (``lite/gym/envs/lite/osworld/src/utils/dispatch.py`` ``{CLIENT_PASSWORD}``),
+  # NOT the ``password`` the upstream OSWorld image uses. The Computer prompt
+  # states it verbatim, so an unset value would hand the model a credential its
+  # VM rejects.
+  sudo_password: "user"
+
+env_id: "lite.osworld"
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  extra_tools: ["response", "terminate"]

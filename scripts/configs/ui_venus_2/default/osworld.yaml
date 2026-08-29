@@ -1,0 +1,39 @@
+# UI-Venus-2-9B rollout eval on OSWorld
+# 369 multi-step desktop tasks in a real Ubuntu VM.
+#
+# ``sudo_password`` is a per-env secret the Computer prompt states verbatim;
+# override ``agent_kwargs.sudo_password`` if the VM image uses another one.
+#
+# Wire format: one ``<think>…</think>\n<action>…</action>`` block per turn, with
+# the task baked into the Computer system prompt. Coordinates are normalized to
+# 1000 on every surface, so no rescaling happens. History keeps every completed
+# turn's assistant text and the newest ``n_history_images`` PAST screenshots plus
+# the current one; an evicted observation stays as an empty user bubble, matching
+# upstream ``build_messages``.
+#
+# Sampling and the image window match ``scripts/computer.sh`` (TEMPERATURE=0.0, TOP_P=0.7, MAX_TOKENS=4096, N_IMG=2).
+#
+# Related configs (sync env_kwargs / sampling when changing):
+#   - scripts/configs/ui_venus_2/default/lite.osworld.yaml  (lite runtime sibling)
+
+agent_id: "ui_venus_2"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    top_p: 0.7
+    max_new_tokens: 4096
+  protocol_kwargs:
+    # Upstream N_IMG: how many PAST screenshots to keep. The current one
+    # is always sent on top, so the prompt holds 3 images.
+    n_history_images: 2
+  # The OSWorld v1 image's sudo password (``lite/gym/envs/osworld/main.py``
+  # ``_CLIENT_PASSWORD``). The Computer prompt states it verbatim so the model can
+  # answer a privilege prompt; it differs from lite.osworld's, so it is set here
+  # rather than inherited.
+  sudo_password: "password"
+
+env_id: "osworld"
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  extra_tools: ["response", "terminate"]

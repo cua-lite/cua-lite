@@ -94,6 +94,21 @@ LOCAL_AGENTS: dict[str, dict] = {
     "Tongyi-MAI/MAI-UI-2B": {"agent_id": "mai_ui"},
     "Tongyi-MAI/MAI-UI-8B": {"agent_id": "mai_ui"},
     "stepfun-ai/GELab-Zero-4B-preview": {"agent_id": "step_gui"},
+    # UI-Venus-2 — inclusionAI's general-purpose GUI agent, built on Qwen3.5.
+    # One checkpoint serves four harnesses, and the desktop / browser / mobile
+    # ``use`` grammars genuinely differ (``Click(box=)`` + ``Sequence`` vs
+    # ``Click(point=)`` + ``Scroll(point, direction)`` vs the Android verbs), so
+    # the family registers a separate key per platform instead of sharing one
+    # ``(desktop|browser)`` row.
+    #
+    # Deliberately NOT paired with ``_NO_THINK``, unlike the Qwen rows: on this
+    # checkpoint's template ``enable_thinking=False`` emits a CLOSED
+    # ``<think>\n\n</think>`` before generation, which leaves the model no room
+    # for the ``<think>`` block its own prompt's "### Output Format" section
+    # demands. Measured on lite.osworld: 95% of turns came back as a bare
+    # ``<action>`` with no reasoning at all. See
+    # ``UIVenus2BaseAdapter.enable_thinking``.
+    "inclusionAI/UI-Venus-2-9B": {"agent_id": "ui_venus_2"},
 }
 
 # =============================================================================

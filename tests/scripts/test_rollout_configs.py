@@ -660,6 +660,10 @@ _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/step_gui/default/androidworld.yaml",
     "scripts/configs/step_gui/default/mobilegym.yaml",
     "scripts/configs/step_gui/default/mobileworld.yaml",
+    "scripts/configs/ui_venus_2/default/androidlab.yaml",
+    "scripts/configs/ui_venus_2/default/androidworld.yaml",
+    "scripts/configs/ui_venus_2/default/mobilegym.yaml",
+    "scripts/configs/ui_venus_2/default/mobileworld.yaml",
 }
 
 _MOBILE_ANSWER_FINISH_CONFIGS = {
@@ -702,6 +706,10 @@ _MOBILE_ANSWER_FINISH_CONFIGS = {
     "scripts/configs/ui_tars_15_v1/default/androidworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/mobilegym.yaml",
     "scripts/configs/ui_tars_15_v1/default/mobileworld.yaml",
+    "scripts/configs/ui_venus_2/default/androidlab.yaml",
+    "scripts/configs/ui_venus_2/default/androidworld.yaml",
+    "scripts/configs/ui_venus_2/default/mobilegym.yaml",
+    "scripts/configs/ui_venus_2/default/mobileworld.yaml",
 }
 
 _EXPECTED_ASK_USER_CONFIGS = {
@@ -770,6 +778,7 @@ _EXPECTED_NAV_CONFIGS = {
     "scripts/configs/qwen3_vl/default/webgym.yaml",
     "scripts/configs/qwen3_vl/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/qwen3_vl/default/webharbor.webvoyager/som.yaml",
+    "scripts/configs/ui_venus_2/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/qwen3_8/default/browsergym.miniwob/default.yaml",
     "scripts/configs/qwen3_8/default/browsergym.visualwebarena/goal_image.yaml",
     "scripts/configs/qwen3_8/default/browsergym.visualwebarena/mixed.yaml",
@@ -818,6 +827,9 @@ _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/qwen3_5/default/webharbor.webvoyager/som.yaml",
     "scripts/configs/qwen3_8/default/webharbor.webvoyager/som.yaml",
     "scripts/configs/qwen3_vl/compact/webgym.yaml",
+    "scripts/configs/ui_venus_2/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/ui_venus_2/default/lite.osworld.yaml",
+    "scripts/configs/ui_venus_2/default/osworld.yaml",
     "scripts/configs/qwen3_vl/compact/lite.osworld.yaml",
     "scripts/configs/qwen3_vl/default/lite.osworld.bash.yaml",
     "scripts/configs/qwen3_vl/default/lite.osworld.yaml",
@@ -867,6 +879,8 @@ _EXPECTED_TERMINATE_CONFIGS = {
     "scripts/configs/qwen3_vl/default/lite.osworld.bash.yaml",
     "scripts/configs/evocua/default/lite.osworld.yaml",
     "scripts/configs/evocua/default/osworld.yaml",
+    "scripts/configs/ui_venus_2/default/lite.osworld.yaml",
+    "scripts/configs/ui_venus_2/default/osworld.yaml",
     "scripts/configs/qwen3_5/compact/lite.osworld.yaml",
     "scripts/configs/qwen3_8/compact/lite.osworld.yaml",
     "scripts/configs/qwen3_5/default/cua.bench/basic.yaml",

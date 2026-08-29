@@ -119,6 +119,9 @@ SPACE_KEYS: tuple[str, ...] = (
     "ui_tars@mobile",
     "ui_tars_15_v1@desktop",
     "ui_tars_15_v1@mobile",
+    "ui_venus_2@desktop",
+    "ui_venus_2@browser",
+    "ui_venus_2@mobile",
 )
 
 
@@ -246,6 +249,28 @@ CANNOT_EXPRESS: dict[str, dict[str, str]] = {
         "tap_double": "only 'click' in the enum; the wire carries no repeat count",
         "screenshot": "no screenshot verb",
     },
+    # UI-Venus-2's Computer grammar is the widest in this table: it spells
+    # right / middle / triple click, KeyDown/KeyUp and MouseDown/MouseUp, so the
+    # only desktop verbs it cannot carry are the two query-ish ones and the
+    # timed hold.
+    "ui_venus_2@desktop": {
+        "hold_key": "KeyDown/KeyUp hold across turns; the wire carries no duration",
+        "screenshot": "UI-Venus-2 screenshots implicitly; no native verb",
+        "cursor_position": "no query verb",
+    },
+    "ui_venus_2@browser": {
+        "click_right": "the browser grammar has only Click and DoubleClick",
+        "key_down": "the browser grammar has only Hotkey",
+        "key_up": "the browser grammar has only Hotkey",
+        "hold_key": "the browser grammar has only Hotkey",
+        "mouse_down": "no half-press mouse verb",
+        "mouse_up": "no half-press mouse verb",
+        "screenshot": "UI-Venus-2 screenshots implicitly; no native verb",
+        "cursor_position": "no query verb",
+    },
+    "ui_venus_2@mobile": {
+        "pinch": "no pinch verb",
+    },
 }
 
 
@@ -303,6 +328,27 @@ DECLARED_GAPS: dict[str, dict[str, str]] = {
         "scroll_left": "the wire's scroll carries no amount; parse re-invents 5",
         "scroll_right": "the wire's scroll carries no amount; parse re-invents 5",
         "wait": "the wire's wait carries no duration; parse re-invents 5",
+    },
+    "ui_venus_2@desktop": {
+        # Swipe always scrolls at the cursor, so the anchor has no wire slot.
+        # The MAGNITUDE survives -- it goes out and comes back through
+        # PIXELS_PER_CLICK -- so only ``coordinate`` is lost.
+        "scroll_down": "Swipe scrolls at the cursor; the anchor has no wire slot",
+        "scroll_up": "Swipe scrolls at the cursor; the anchor has no wire slot",
+        "scroll_left": "Swipe scrolls at the cursor; the anchor has no wire slot",
+        "scroll_right": "Swipe scrolls at the cursor; the anchor has no wire slot",
+        "wait": "the wire's Wait carries no duration; parse re-invents 1s",
+    },
+    "ui_venus_2@browser": {
+        "scroll_down": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
+        "scroll_up": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
+        "scroll_left": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
+        "scroll_right": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
+        "wait": "the wire's Wait carries no duration; parse re-invents 1s",
+    },
+    "ui_venus_2@mobile": {
+        "long_press": "LongPress takes only a point; the wire carries no duration",
+        "wait": "the wire's Wait carries no duration; parse re-invents 1s",
     },
     "ui_tars_15_v1@mobile": {
         # UI-TARS 1.5's mobile wire has ONE drag-shaped verb, `swipe`, so canonical

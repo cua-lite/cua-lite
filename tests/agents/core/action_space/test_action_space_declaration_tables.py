@@ -62,12 +62,14 @@ REGISTRY_KEYS = sorted(ActionSpaceRegistry.list_expanded())
 # Enumeration canary: an empty parametrize passes vacuously.
 assert len(REGISTRY_KEYS) > 50, f"registry enumeration found only {REGISTRY_KEYS}"
 
-#: ``mai_ui@*@point`` is the one key whose native spelling exists in NEITHER arm
-#: of lint 1: the wire carries no tool schemas at all (the
-#: ``<answer>{"coordinate":[x,y]}</answer>`` block lives entirely in the system
-#: prompt), so the synthetic ``answer`` name is declared and nowhere else.
+#: The grounding spaces whose native spelling exists in NEITHER arm of lint 1,
+#: because their wire carries no tool schemas at all — the answer format lives
+#: entirely in the prompt, so the synthetic name is declared and nowhere else.
+#: MAI-UI's is ``<answer>{"coordinate":[x,y]}</answer>``; UI-Venus-2 answers with
+#: a bare ``[x,y]`` list.
 _LINT1_EXEMPT_NATIVE_ENTRIES = {
     "MAIUIGroundingPointActionSpace": frozenset({"answer"}),
+    "UIVenus2GroundingPointActionSpace": frozenset({"point"}),
 }
 
 

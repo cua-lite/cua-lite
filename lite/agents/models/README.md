@@ -181,6 +181,25 @@ their registry key is present.
   Surface: mobile `use`.
   Files: `agent.py`, `adapter.py`, `action_space.py`, `protocol.py`.
 
+- `ui_venus_2`
+  ID: `inclusionAI/UI-Venus-2-9B`.
+  Surfaces: desktop `use`, browser `use`, mobile `use`, and
+  desktop/browser/mobile `grounding.point`.
+  One checkpoint, four upstream harnesses with genuinely different grammars, so
+  each `use` platform is its own registry key rather than a shared
+  `(desktop|browser)` row: desktop spells points as `box=` and has
+  `Sequence(actions=[...])` (this family's spelling of the canonical `computer`
+  action batch), browser spells them `point=` with `Scroll(point, direction)`,
+  and mobile adds device buttons plus a dedicated `Answer` reply verb. The wire
+  is one `<think>...</think>` + `<action>...</action>` block per turn, with the
+  task baked into the system prompt; grounding answers with a bare `[x,y]` list
+  and `[-1,-1]` for a trained refusal. `ui_venus_2.history` keeps all assistant
+  text and evicts only screenshots; its `n_history_images` matches upstream's
+  `N_IMG`, which counts PAST screenshots (the current one is always sent on top).
+  Built on Qwen3.5, so the agent inherits `Qwen3VLBaseAgent` to forward
+  `enable_thinking` to `apply_chat_template`.
+  Files: `agent.py`, `adapter.py`, `action_space.py`, `protocol.py`.
+
 ### API Agent Families
 
 - `gpt`

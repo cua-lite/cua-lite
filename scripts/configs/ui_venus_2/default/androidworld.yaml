@@ -1,0 +1,32 @@
+# UI-Venus-2-9B rollout eval on AndroidWorld
+# Multi-step mobile tasks; env uses the native int(10 * task.complexity) budget.
+# Wire format: one ``<think>…</think>\n<action>…</action>`` block per turn, with
+# the task baked into the Mobile system prompt. Coordinates are normalized to
+# 1000 on every surface, so no rescaling happens. History keeps every completed
+# turn's assistant text and the newest ``n_history_images`` PAST screenshots plus
+# the current one; an evicted observation stays as an empty user bubble, matching
+# upstream ``build_messages``.
+#
+# Sampling and the image window match ``scripts/mobile.sh`` (TEMPERATURE=0.0, MAX_TOKENS=16384, N_IMG=2) plus the
+# repetition penalty pinned in ``models/mobile/mobile_example.py`` (1.05).
+#
+# Related configs (sync env_kwargs / sampling when changing):
+#   - scripts/configs/ui_venus_2/default/androidlab.yaml
+#   - scripts/configs/ui_venus_2/default/mobilegym.yaml
+#   - scripts/configs/ui_venus_2/default/mobileworld.yaml
+
+agent_id: "ui_venus_2"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 16384
+    repetition_penalty: 1.05
+  protocol_kwargs:
+    # Upstream N_IMG: how many PAST screenshots to keep. The current one
+    # is always sent on top, so the prompt holds 3 images.
+    n_history_images: 2
+
+env_id: "androidworld"
+env_kwargs:
+  loop_detect: 5
+  extra_tools: ["open_app", "response", "terminate"]

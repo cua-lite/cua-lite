@@ -1,0 +1,39 @@
+# UI-Venus-2-9B rollout eval on WebVoyager.
+# 643 multi-step web navigation tasks across 15 WebHarbor self-hosted mirrors.
+# WebVoyager is one of UI-Venus-2's headline benches (upstream reports the
+# refreshed 595-task split).
+#
+# This row uses the BROWSER grammar, which is its own registry key: ``Scroll``
+# takes a point and a direction, ``Launch`` takes a url, and there is no
+# ``Sequence`` (one action per turn). Coordinates are normalized to 1000.
+#
+# Sampling and the image window match ``scripts/browser.sh`` (temperature 0,
+# LLM_MAX_TOKENS=4096) and ``venus_browser.py``'s two-turn history deque.
+#
+# ``current_date`` is pinned OFF by default (the adapter fills today's date, as
+# upstream does). Set ``agent_kwargs.current_date`` to an ISO date to freeze the
+# prompt when you need byte-identical reruns.
+#
+# Related configs (sync env_kwargs when changing):
+#   - scripts/configs/qwen3_vl/default/webharbor.webvoyager/default.yaml
+
+agent_id: "ui_venus_2"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 4096
+  protocol_kwargs:
+    # Upstream N_IMG: how many PAST screenshots to keep. The current one
+    # is always sent on top, so the prompt holds 3 images.
+    n_history_images: 2
+
+env_id: "webharbor.webvoyager"
+env_kwargs:
+  # ``goto`` is intentionally NOT exposed: WebVoyager is a fully offline
+  # WebHarbor mirror served only at 127.0.0.1:4000x, with no domain-to-mirror
+  # resolver rules, so a URL ``goto`` escapes to the live internet and breaks the
+  # reproducible eval. UI-Venus-2 spells ``goto`` as ``Launch(url=...)``, so
+  # withholding the tool is what keeps that row unreachable. All 643 tasks are
+  # single-site and start on the correct mirror, so in-page UI + ``back``
+  # (``PressBack()``) suffice.
+  extra_tools: ["back", "response"]
