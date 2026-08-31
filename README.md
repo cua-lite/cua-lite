@@ -95,6 +95,7 @@ result is a LiteRLSample:
 > **UI-TARS** `ByteDance-Seed/UI-TARS-7B-DPO` · `ByteDance-Seed/UI-TARS-1.5-7B`
 > **Fara** `microsoft/Fara-7B` &nbsp;·&nbsp; **EvoCUA** `meituan/EvoCUA-8B-20260105`
 > **MAI-UI** `Tongyi-MAI/MAI-UI-{2B,8B}` &nbsp;·&nbsp; **GELab** `stepfun-ai/GELab-Zero-4B-preview`
+> **UI-Venus-2** `inclusionAI/UI-Venus-2-9B`
 
 **Env ids** (`gym.make(...)` / `--env-id`) — compose a task as `"<env_id>@<task_id>"`. Each env's setup lives in its own README, linked from the benchmark and environment lists below.
 

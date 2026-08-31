@@ -2,10 +2,10 @@
 # The lite runtime's OSWorld task set; same Computer surface as osworld.yaml.
 # Wire format: one ``<think>…</think>\n<action>…</action>`` block per turn, with
 # the task baked into the Computer system prompt. Coordinates are normalized to
-# 1000 on every surface, so no rescaling happens. History keeps every completed
-# turn's assistant text and the newest ``n_history_images`` PAST screenshots plus
-# the current one; an evicted observation stays as an empty user bubble, matching
-# upstream ``build_messages``.
+# 1000 (the computer harness divides by 999, a sub-pixel difference), so no
+# rescaling happens. History keeps every completed turn's assistant text and the
+# newest ``n_history_images`` PAST screenshots plus the current one; an evicted
+# observation stays as an empty user bubble, matching upstream ``build_messages``.
 #
 # Sampling and the image window match ``scripts/computer.sh`` (TEMPERATURE=0.0, TOP_P=0.7, MAX_TOKENS=4096, N_IMG=2).
 #

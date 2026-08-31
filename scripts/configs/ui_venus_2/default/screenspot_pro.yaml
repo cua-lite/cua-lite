@@ -6,8 +6,13 @@
 # bare ``[x,y]`` list normalized to 1000. Single-step, so there is no history and
 # no image window.
 #
-# Sampling matches ``scripts/grounding.sh`` (greedy; ``max_new_tokens`` capped
-# well below the rollout default because the answer is one short list).
+# Sampling is greedy. ``max_new_tokens`` is left unset, i.e. the 2048 rollout
+# default (``DEFAULT_SAMPLING_KWARGS`` in /lite/infer/serving.py), matching every
+# sibling grounding row. The answer is one short list, but ``enable_thinking``
+# leaves ``<think>`` open in the generation prompt, so the budget has to cover
+# the reasoning in front of it: at the 256 this row used to pin, half the turns
+# never emitted ``</think>`` and the parser read the answer out of unfinished
+# reasoning.
 #
 # Related configs:
 #   - scripts/configs/ui_venus_2/default/osworld_g.yaml  (sibling grounding bench)
@@ -16,6 +21,5 @@ agent_id: "ui_venus_2"
 agent_kwargs:
   sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
     temperature: 0.0
-    max_new_tokens: 256
 
 env_id: "screenspot_pro"

@@ -33,7 +33,9 @@ env_kwargs:
   # WebHarbor mirror served only at 127.0.0.1:4000x, with no domain-to-mirror
   # resolver rules, so a URL ``goto`` escapes to the live internet and breaks the
   # reproducible eval. UI-Venus-2 spells ``goto`` as ``Launch(url=...)``, so
-  # withholding the tool is what keeps that row unreachable. All 643 tasks are
+  # withholding the tool is what keeps that row from EXECUTING. The prompt is a
+  # verbatim SFT constant, so the model still sees ``Launch(url=)`` and can spend
+  # a turn on it; the env answers with model-visible feedback. All 643 tasks are
   # single-site and start on the correct mirror, so in-page UI + ``back``
   # (``PressBack()``) suffice.
   extra_tools: ["back", "response"]

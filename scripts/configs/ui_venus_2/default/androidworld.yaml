@@ -2,7 +2,7 @@
 # Multi-step mobile tasks; env uses the native int(10 * task.complexity) budget.
 # Wire format: one ``<think>…</think>\n<action>…</action>`` block per turn, with
 # the task baked into the Mobile system prompt. Coordinates are normalized to
-# 1000 on every surface, so no rescaling happens. History keeps every completed
+# 1000 on this surface, so no rescaling happens. History keeps every completed
 # turn's assistant text and the newest ``n_history_images`` PAST screenshots plus
 # the current one; an evicted observation stays as an empty user bubble, matching
 # upstream ``build_messages``.

@@ -71,6 +71,13 @@ def _texts(message: dict[str, Any]) -> list[str]:
     ]
 
 
+def _reasonings(message: dict) -> list[str]:
+    return [
+        part["text"] for part in message["content"]
+        if part["type"] == "inline_reasoning"
+    ]
+
+
 def _kinds(message: dict[str, Any]) -> list[str]:
     return [part.get("type") for part in (message.get("content") or [])]
 
@@ -343,6 +350,80 @@ class TestWireCodec:
         assert "tool_calls" not in lite
         assert MODEL_OUTPUT_ERROR_KEY not in lite
         assert _texts(lite) == ["The task is already done."]
+
+    def test_prose_after_a_closed_think_stays_a_content_only_final(self) -> None:
+        """The same contract on the thinking-ON default, where the model has to
+        close the block before it can answer."""
+        adapter = _adapter("ui_venus_2@desktop@use", "desktop")
+        lite = adapter.convert_message_from_agent(
+            adapter.parse_raw_assistant_response(
+                "checked every panel</think>\nThe task is already done."
+            )
+        )
+        assert "tool_calls" not in lite
+        assert MODEL_OUTPUT_ERROR_KEY not in lite
+        assert _texts(lite) == ["The task is already done."]
+
+    def test_a_content_only_final_ships_the_answer_without_the_reasoning(self) -> None:
+        """This text becomes the model's ANSWER through
+        ``summarize_no_tool_call_final``, and answer-graded envs string-match it,
+        so the CoT and the literal ``</think>`` must not ride along. The
+        reasoning is kept as its own part rather than dropped."""
+        adapter = _adapter("ui_venus_2@mobile@use", "mobile")
+        lite = adapter.convert_message_from_agent(
+            adapter.parse_raw_assistant_response(
+                "I can see the number on screen.\n</think>\nThe number is 555-0134."
+            )
+        )
+        assert "tool_calls" not in lite
+        assert _texts(lite) == ["The number is 555-0134."]
+        assert [
+            part["text"] for part in lite["content"]
+            if part["type"] == "inline_reasoning"
+        ] == ["I can see the number on screen."]
+
+    def test_a_content_only_final_keeps_its_answer_through_render(self) -> None:
+        """The turn's answer is its whole point. Once the parser splits
+        reasoning from answer, the renderer has to emit BOTH -- emitting only
+        the think block trains an SFT/DAgger target to reason and never answer."""
+        adapter = _adapter("ui_venus_2@mobile@use", "mobile")
+        lite = adapter.convert_message_from_agent(
+            adapter.parse_raw_assistant_response(
+                "I can see it.\n</think>\nThe number is 555-0134."
+            )
+        )
+        rendered = adapter.convert_message_to_agent(dict(lite))
+        assert rendered["content"][0]["text"] == (
+            "<think>I can see it.</think>\nThe number is 555-0134."
+        )
+
+    def test_a_final_closed_then_cut_keeps_its_text(self) -> None:
+        """Closed, then EOS: the split leaves nothing after the tag, so the
+        answer is what came BEFORE it. Emitting the split would submit an empty
+        string; keeping the raw text would ship the literal tag to a grader."""
+        adapter = _adapter("ui_venus_2@mobile@use", "mobile")
+        lite = adapter.convert_message_from_agent(
+            adapter.parse_raw_assistant_response("The task is done.</think>")
+        )
+        assert _texts(lite) == ["The task is done."]
+        # The reasoning is reset, not duplicated: the text before the tag is the
+        # ANSWER here, so shipping it as inline_reasoning too would say it twice.
+        assert not _reasonings(lite)
+
+    def test_a_final_answer_comes_from_the_LAST_think_close(self) -> None:
+        """A ``</think>`` the model quotes mid-reasoning is not the boundary.
+
+        Splitting on the FIRST one would ship the rest of the CoT -- and a
+        literal ``</think>`` -- to a grader that string-matches the answer.
+        """
+        adapter = _adapter("ui_venus_2@mobile@use", "mobile")
+        lite = adapter.convert_message_from_agent(
+            adapter.parse_raw_assistant_response(
+                "I should not write </think> yet. I can read the number.\n"
+                "</think>\nThe number is 555-0134."
+            )
+        )
+        assert _texts(lite) == ["The number is 555-0134."]
 
     def test_a_malformed_action_block_is_a_terminal_parse_failure(self) -> None:
         """``<action>`` is the trained grammar marker: reaching for it and

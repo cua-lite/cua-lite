@@ -460,10 +460,7 @@ class UIVenus2DesktopActionSpace(BaseActionSpace, key="ui_venus_2@desktop"):
     #: to ``terminate``, so the entry spells BOTH — it must survive whenever
     #: EITHER is active, or the surface loses its only success verb. ``CallUser``
     #: is the failure/takeover channel, which lowers to a failed ``terminate``.
-    UI_VENUS_2_PROVIDER_FLAT_TOOL_NAME_TO_EXTRA_TOOL_NAMES = {
-        "Finished": frozenset({"response", "terminate"}),
-        "CallUser": frozenset({"terminate"}),
-    }
+    UI_VENUS_2_PROVIDER_FLAT_TOOL_NAME_TO_EXTRA_TOOL_NAMES = {}
 
     # -------------------------------------------------------------------------
     # Tool call conversion
@@ -748,14 +745,26 @@ def _swipe_to_canonical_scroll(args: dict[str, Any]) -> dict[str, Any]:
     pixels-per-wheel-click convention, floored at one click so a small
     pixel amount never becomes a no-op scroll.
 
+    ``amount`` is REQUIRED: it is the only carrier of the DIRECTION on this
+    wire, so defaulting it silently picks "up"/"right". A truncated
+    ``Swipe(axis='vertical', amount=-12`` would scroll UP one click when the
+    model asked to scroll DOWN twelve. Same rule, same reason, as
+    ``geometry.required_scroll_pixels`` on the Qwen surfaces.
+
     Raises:
-        ModelToolCallParseError: ``amount`` is not an integer, or ``axis`` is
-            not one of the two the grammar spells. Both are model-chosen, so
-            they are the parse boundary's error, not a bare ``ValueError``.
+        ModelToolCallParseError: ``amount`` is missing or not an integer, or
+            ``axis`` is not one of the two the grammar spells. All are
+            model-chosen, so they are the parse boundary's error, not a bare
+            ``ValueError``.
     """
     axis = args.get("axis", "vertical")
+    if args.get("amount") is None:
+        raise ModelToolCallParseError(
+            "UI-Venus-2 Swipe requires an amount; it carries the scroll "
+            "direction, so there is no safe default."
+        )
     try:
-        amount = int(args.get("amount", 0))
+        amount = int(args["amount"])
     except (TypeError, ValueError) as exc:
         raise ModelToolCallParseError(
             f"UI-Venus-2 Swipe requires an integer amount; got {args.get('amount')!r}"
@@ -947,8 +956,6 @@ class UIVenus2BrowserActionSpace(BaseActionSpace, key="ui_venus_2@browser"):
         "wait": ["Wait"],
     }
     UI_VENUS_2_PROVIDER_FLAT_TOOL_NAME_TO_EXTRA_TOOL_NAMES = {
-        "Finished": frozenset({"response", "terminate"}),
-        "CallUser": frozenset({"terminate"}),
         "Launch": frozenset({"goto"}),
         "PressBack": frozenset({"back"}),
     }
@@ -977,9 +984,19 @@ class UIVenus2BrowserActionSpace(BaseActionSpace, key="ui_venus_2@browser"):
                     f"UI-Venus-2 browser cannot render click(button={button!r}, "
                     f"clicks={clicks}): its grammar has only Click and DoubleClick"
                 )
+            if args.get("coordinate") is None:
+                # Canonical ``click`` allows a bare click-at-cursor, but this
+                # grammar's Click REQUIRES ``point=``. Rendering it anyway emits
+                # ``Click()``, which this class's own parser then rejects with
+                # "point is required" -- wire text we cannot read back. Fail
+                # here, the way the ``drag`` branch below already does.
+                raise ValueError(
+                    "UI-Venus-2 browser cannot render click() without a "
+                    "coordinate: its Click requires point=(x, y)"
+                )
             verb = "DoubleClick" if clicks == 2 else "Click"
             verb_fn = getattr(UIVenus2BrowserActionSpace, verb)
-            return [verb_fn(point=args.get("coordinate"))["function"]]
+            return [verb_fn(point=args["coordinate"])["function"]]
 
         if name == "mouse_move":
             return [UIVenus2BrowserActionSpace.Hover(point=args.get("coordinate"))["function"]]
@@ -1272,9 +1289,6 @@ class UIVenus2MobileActionSpace(BaseActionSpace, key="ui_venus_2@mobile"):
     #: Mobile is the one surface with a DEDICATED answer verb, so ``Finished``
     #: keeps a single meaning here: task complete.
     UI_VENUS_2_PROVIDER_FLAT_TOOL_NAME_TO_EXTRA_TOOL_NAMES = {
-        "Answer": frozenset({"response"}),
-        "Finished": frozenset({"terminate"}),
-        "CallUser": frozenset({"terminate"}),
         "LaunchApp": frozenset({"open_app"}),
     }
 

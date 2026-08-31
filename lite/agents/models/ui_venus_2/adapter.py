@@ -454,8 +454,9 @@ class UIVenus2BaseAdapter(BaseAgentAdapter):
     #: get (``call_model`` only sends ``chat_template_kwargs`` when thinking is
     #: on, so ``False`` never reaches the template). Closing the block instead
     #: leaves the model nowhere to reason: measured on lite.osworld, 95% of
-    #: turns came back as a bare ``<action>``, and the score was 0.337 against
-    #: the 0.805 upstream reports.
+    #: turns came back as a bare ``<action>``, and the score collapsed. (For
+    #: scale, the checkpoint card reports 70.8 for this 9B on OSWorld-Verified,
+    #: a different 361-task bench; the 80.5 in that table is the 27B.)
     #:
     #: The browser harness is the one upstream caller that really does send
     #: ``enable_thinking: false`` (``LLM_THINKING`` defaults to ``"false"``).
@@ -627,21 +628,22 @@ class UIVenus2BaseAdapter(BaseAgentAdapter):
             )
             action_text = self.action_space.format_tool_calls_as_text(agent_tool_calls)
             blocks.append(f"<action>{action_text}</action>")
+        else:
+            # A content-only final can now carry BOTH reasoning and answer text
+            # (the parser splits them on ``</think>``). Its answer is the whole
+            # point of the turn -- an SFT/DAgger target that renders the think
+            # block and stops teaches the model to reason and never answer.
+            blocks.extend(
+                part["text"] for part in (message.get("content") or [])
+                if isinstance(part, dict)
+                and part.get("type") == "text"
+                and part.get("text")
+            )
 
         result.pop("tool_calls", None)
         result.pop("reasoning_content", None)
         if blocks:
             result["content"] = [{"type": "text", "text": "\n".join(blocks)}]
-        elif not had_tool_calls:
-            # Content-only final turn: keep ONLY the plain ``text`` parts (the
-            # canonical "Done."), so the turn is not an empty SFT target while
-            # kinds this wire format cannot carry still drop.
-            result["content"] = [
-                part for part in (message.get("content") or [])
-                if isinstance(part, dict)
-                and part.get("type") == "text"
-                and part.get("text")
-            ]
         else:
             result["content"] = []
         return result
@@ -696,7 +698,22 @@ class UIVenus2BaseAdapter(BaseAgentAdapter):
                 mark_model_output_error(result, _action_parse_error(action_str or ""))
 
         if not result.get("tool_calls") and MODEL_OUTPUT_ERROR_KEY not in result:
-            result["content"] = [{"type": "text", "text": raw_text}]
+            close = list(_THINK_CLOSE_RE.finditer(raw_text))
+            answer = raw_text[close[-1].end():] if close else raw_text
+            if not answer.strip() and close:
+                # Closed, then EOS: the answer is everything BEFORE the tag.
+                # Splitting here would submit an empty string, and keeping the
+                # raw text would ship the literal ``</think>`` to a grader that
+                # string-matches it.
+                answer, think = raw_text[: close[-1].start()], ""
+            # Content-only final: this text becomes the model's ANSWER through
+            # ``summarize_no_tool_call_final``, so it must not carry the CoT or
+            # the literal ``</think>``. Answer-graded envs (AndroidWorld,
+            # MobileWorld) string-match it. Same split qwen3_5 does.
+            result["content"] = make_assistant_content(
+                inline_reasoning=think,
+                text=answer.strip(),
+            )
             return result
 
         result["content"] = make_assistant_content(inline_reasoning=think)
@@ -951,7 +968,24 @@ def _parse_grounding_answer(raw_text: str) -> dict[str, Any] | None:
     Mirrors ``extract_coordinates_qwen35``: a four-number list and a pair of
     two-number lists are both boxes whose CENTER is the answer, and ``[-1,-1]``
     is the refusal, which becomes ``report_infeasible``.
+
+    The scan starts after the LAST ``</think>``, never at the top of the
+    response. :attr:`UIVenus2BaseAdapter.enable_thinking` leaves ``<think>``
+    open in the generation prompt, so a grounding response is
+    ``reasoning </think> answer``; the reasoning routinely names coordinates it
+    goes on to reject, and may name ``[-1,-1]`` while arguing the target IS
+    present. Searching the whole response takes whichever bracket comes first
+    and silently answers with a rejected candidate.
     """
+    # No ``</think>``: the block never closed (truncation, or a checkpoint run
+    # with thinking off), so the whole text is the answer span. A blank tail
+    # (closed, then EOS) is deliberately NOT special-cased -- falling back to
+    # the reasoning would re-answer with the rejected candidate this scan exists
+    # to skip, and unlike a ``use`` final there is no text the env could grade.
+    # ``_THINK_CLOSE_RE`` also matches ``</think >`` and ``</THINK>``.
+    close = list(_THINK_CLOSE_RE.finditer(raw_text))
+    if close:
+        raw_text = raw_text[close[-1].end():]
     box = _BBOX_RE.search(raw_text) or _TWO_POINT_RE.search(raw_text)
     if box:
         x1, y1, x2, y2 = (int(value) for value in box.groups())
