@@ -870,10 +870,6 @@ def _wait_for_emulator_exit(container: AndroidWorldContainer) -> bool:
 
 def _block_overlapping_retry(container: AndroidWorldContainer) -> None:
     if not _wait_for_emulator_exit(container):
-        # destroy() is intentionally best-effort and de-registers. Restore the
-        # atexit backstop for this still-running failed attempt; the env-server
-        # drift reaper independently sees it as an orphan.
-        container._register()
         raise CapacityExhausted.warming(
             what=f"failed {container.env_id} attempt {container.name} is still running; "
                  "refusing to overlap its emulator with an internal retry",
@@ -1005,7 +1001,7 @@ class AndroidWorldContainerFactory:
         # boot_with_retry.
         return boot_with_retry(
             _build, start=_start, max_attempts=max_attempts, label=self.env_id,
-            retry_barrier=_block_overlapping_retry,
+            before_retry=_block_overlapping_retry,
         )
 
 

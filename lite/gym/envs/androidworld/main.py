@@ -1706,11 +1706,9 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
                     attempt, _INIT_MAX_ATTEMPTS, emulator_lock.name,
                 )
                 emulator_lock.destroy()
-                try:
-                    _block_overlapping_retry(emulator_lock)
-                finally:
-                    if self._current_container is emulator_lock:
-                        self._current_container = None
+                if self._current_container is emulator_lock:
+                    self._current_container = None
+                _block_overlapping_retry(emulator_lock)
             except Exception:
                 # Same cleanup as the retry-path above: null the ref
                 # AFTER release so the drift reaper can't snapshot a

@@ -202,7 +202,7 @@ def test_boot_with_retry_runs_barrier_before_replacement(patched):
     result = boot_with_retry(
         build,
         start=start,
-        retry_barrier=lambda _box: events.append("barrier"),
+        before_retry=lambda _box: events.append("barrier"),
     )
 
     assert result.name == "attempt-2"
