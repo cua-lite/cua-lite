@@ -131,6 +131,7 @@ def test_all_env_local_image_specs_are_discoverable():
         "online_mind2web",
         "osworld",
         "osworld_2",
+        "phoneworld",
         "waa",
         "webgym",
         "webharbor.webvoyager",
