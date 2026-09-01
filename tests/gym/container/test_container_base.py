@@ -48,7 +48,6 @@ def patched(monkeypatch):
         lambda name, *, timeout, label: rm_calls.append((name, timeout, label)) or 1,
     )
     monkeypatch.setattr(cb, "release_ports", lambda *ports: released.append(ports))
-    monkeypatch.setattr(cb, "docker_container_gone", lambda _name: True)
     _Box.pre_destroy_calls = []
     yield rm_calls, released
     with _TRACKED_LOCK:
@@ -91,26 +90,6 @@ def test_pre_destroy_exception_never_blocks_teardown(patched, monkeypatch):
     b = _Box(name="b4", api_port=1238)
     b.destroy()   # must not raise
     assert rm_calls and rm_calls[-1][0] == "b4", "rm still ran after hook failure"
-
-
-def test_destroy_retains_tracking_and_port_when_removal_is_unconfirmed(
-    patched, monkeypatch,
-):
-    rm_calls, released = patched
-    monkeypatch.setattr(
-        cb, "docker_rm_f",
-        lambda name, *, timeout, label: rm_calls.append((name, timeout, label)) or 0,
-    )
-    monkeypatch.setattr(cb, "docker_container_gone", lambda _name: False)
-    b = _Box(name="still-running", api_port=1239, _ports_owned=(1239,))
-    b.start()
-
-    assert b.destroy() is False
-    assert rm_calls[-1][0] == "still-running"
-    assert released == []
-    assert b._ports_owned == (1239,)
-    with _TRACKED_LOCK:
-        assert b in _TRACKED
 
 
 def test_missing_start_fails_at_instantiation():
@@ -192,7 +171,7 @@ def test_boot_with_retry_transient_then_success(patched):
 
         def destroy(self2):  # record via base? _Box inherits template; count via hook
             destroyed.append(self2.name)
-            return super().destroy()
+            super().destroy()
 
     # NOTE: overriding destroy here is a TEST spy on the retry shell, not an
     # env pattern (envs must never override the template).
@@ -206,27 +185,28 @@ def test_boot_with_retry_transient_then_success(patched):
     assert destroyed == ["flaky-0"], "failed attempt destroyed"
 
 
-def test_boot_with_retry_does_not_overlap_unremoved_failed_attempt(patched):
+def test_boot_with_retry_runs_barrier_before_replacement(patched):
     from lite.gym.container import boot_with_retry
-    from lite.gym.errors import CapacityExhausted
 
-    built = []
-
-    class _Stuck(_Box):
-        def start(self):
-            raise RuntimeError("boot timed out")
-
-        def destroy(self):
-            return False
+    events = []
 
     def build():
-        box = _Stuck(name=f"stuck-{len(built)}", api_port=1500 + len(built))
-        built.append(box)
-        return box
+        events.append("build")
+        return _Box(name=f"attempt-{events.count('build')}", api_port=1450)
 
-    with pytest.raises(CapacityExhausted, match="refusing to overlap"):
-        boot_with_retry(build, start=lambda c: c.start(), max_attempts=3)
-    assert len(built) == 1, "must not start a replacement before teardown is proven"
+    def start(_box):
+        events.append("start")
+        if events.count("start") == 1:
+            raise RuntimeError("transient")
+
+    result = boot_with_retry(
+        build,
+        start=start,
+        retry_barrier=lambda _box: events.append("barrier"),
+    )
+
+    assert result.name == "attempt-2"
+    assert events == ["build", "start", "barrier", "build", "start"]
 
 
 def test_boot_with_retry_exhausted_reraises_last(patched):

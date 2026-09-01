@@ -38,6 +38,18 @@ Every episode owns a fresh container. `max_resets_per_container: 0` destroys and
 
 Verification supports answer keyword checks, SQLite checks, multi-table conjunctions, and the one upstream mixed task. Evaluator infrastructure errors propagate instead of being converted to a failed reward.
 
+Before publishing benchmark results, run the no-op validation sweep:
+
+```bash
+uv run python lite/gym/envs/phoneworld/scripts/utils/validation_sweep.py
+```
+
+It boots one pristine container, performs no device action, and evaluates every
+registered eval and train task. PhoneWorld has no per-task setup hook and its
+verifiers are read-only, so reusing the same untouched baseline tests all 420
+initial rewards without 420 redundant emulator boots. The command fails if any
+task has non-zero baseline reward or a verifier infrastructure error.
+
 ## Known upstream issues observed during integration
 
 - The gated archive contains 34 PhoneWorld apps but not the README-promised ADBKeyBoard dependency; this integration supplies it from pinned GPL source.

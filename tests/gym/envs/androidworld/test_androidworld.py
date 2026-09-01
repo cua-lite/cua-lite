@@ -96,40 +96,49 @@ def test_services_health_uses_cached_dependency_preflight(monkeypatch):
     assert calls == ["androidworld"]
 
 
-@pytest.mark.asyncio
-async def test_destroy_backend_refuses_replacement_when_removal_is_unconfirmed():
+def test_internal_retry_waits_until_failed_emulator_stops(monkeypatch):
+    from types import SimpleNamespace
+
+    from lite.gym.envs.androidworld import container as C
+
+    responses = iter([
+        SimpleNamespace(returncode=0, stdout="true\n", stderr=""),
+        SimpleNamespace(returncode=0, stdout="false\n", stderr=""),
+    ])
+    calls = []
+    monkeypatch.setattr(
+        C.subprocess,
+        "run",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or next(responses),
+    )
+    monkeypatch.setattr(C.time, "sleep", lambda _seconds: None)
+
+    assert C._wait_for_emulator_exit(
+        SimpleNamespace(name="failed-emulator", env_id="androidworld", rm_timeout_s=5)
+    ) is True
+
+    assert len(calls) == 2
+
+
+def test_internal_retry_stops_before_replacement_if_emulator_keeps_running(monkeypatch):
+    from types import SimpleNamespace
+
+    from lite.gym.envs.androidworld import container as C
     from lite.gym.errors import CapacityExhausted
 
-    class _Container:
-        name = "still-running-emulator"
+    tracked = []
+    container = SimpleNamespace(
+        name="failed-emulator",
+        env_id="androidworld",
+        _register=lambda: tracked.append(True),
+    )
+    monkeypatch.setattr(C, "_wait_for_emulator_exit", lambda _container: False)
 
-        def destroy(self):
-            return False
+    with pytest.raises(CapacityExhausted, match="refusing to overlap"):
+        C._block_overlapping_retry(container)
 
-    env = _make_fake()
-    env._current_container = _Container()
-    with pytest.raises(CapacityExhausted, match="refusing to start a replacement"):
-        await env.destroy_backend()
-    assert env._current_container.name == "still-running-emulator"
-    with pytest.raises(CapacityExhausted, match="refusing to start a replacement"):
-        await env.boot()
+    assert tracked == [True]
 
-
-@pytest.mark.asyncio
-async def test_boot_retries_teardown_before_starting_replacement():
-    class _Container:
-        name = "eventually-removed-emulator"
-
-        def destroy(self):
-            return True
-
-    env = _make_fake()
-    env._current_container = _Container()
-
-    await env.boot()
-
-    assert env._env is not None
-    assert env._current_container is None  # fake boot owns no real container
 
 # ---------------------------------------------------------------------------
 # Sync tests

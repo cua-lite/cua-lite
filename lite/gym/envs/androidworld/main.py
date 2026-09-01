@@ -54,8 +54,8 @@ from lite.gym.container import spawn_background_destroy
 from lite.gym.envs.androidworld.container import (
     AndroidWorldContainer,
     AndroidWorldContainerFactory,
+    _block_overlapping_retry,
 )
-from lite.gym.errors import CapacityExhausted
 from lite.gym.registry import register, registry
 from lite.gym.remote.reaper import ContainerServices
 from lite.gym.services import (
@@ -883,28 +883,9 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
         if self._env is not None:
             return  # idempotent
         loop = asyncio.get_event_loop()
-        if self._current_container is not None:
-            old_lock = self._current_container
-            destroyed = await loop.run_in_executor(_EXECUTOR, old_lock.destroy)
-            if not destroyed:
-                raise CapacityExhausted.warming(
-                    "previous emulator teardown is unconfirmed; "
-                    "refusing to start a replacement"
-                )
-            if self._current_container is old_lock:
-                self._current_container = None
         create_cf = _EXECUTOR.submit(self._create_env)
         self._pending_cf_future = create_cf
-        try:
-            env, emulator_lock = await asyncio.wrap_future(create_cf, loop=loop)
-        except asyncio.CancelledError:
-            # close() owns cleanup for a still-running executor future.
-            raise
-        except Exception:
-            # The future is complete and _create_env already attempted cleanup.
-            # Leave any unconfirmed container handle for the next boot to retry.
-            self._pending_cf_future = None
-            raise
+        env, emulator_lock = await asyncio.wrap_future(create_cf, loop=loop)
         self._pending_cf_future = None  # only reached on success
         self._env = env
         # Already stamped at acquire by _create_env; re-assign for the fake
@@ -1049,19 +1030,14 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
                 logger.warning("recycle: old env close failed: %s", e)
         if old_lock is not None:
             try:
-                destroyed = await loop.run_in_executor(_EXECUTOR, old_lock.destroy)
+                await loop.run_in_executor(_EXECUTOR, old_lock.destroy)
             except Exception as e:
                 logger.warning("recycle: old container destroy failed: %s", e)
-                destroyed = False
-            if not destroyed:
-                raise CapacityExhausted.warming(
-                    what=f"container {old_lock.name} removal is unconfirmed; "
-                         "refusing to start a replacement emulator",
-                )
-            # Null AFTER destroy completes, and only if nothing restamped
-            # the seam attr in between (a concurrent acquire).
-            if self._current_container is old_lock:
-                self._current_container = None
+            finally:
+                # Null AFTER destroy completes, and only if nothing restamped
+                # the seam attr in between (a concurrent acquire).
+                if self._current_container is old_lock:
+                    self._current_container = None
 
     async def tear_down_task(self) -> None:
         # MUST run BEFORE reset_to_pristine: ``task.tear_down(env)`` issues
@@ -1557,8 +1533,8 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
         # When a reset was cancelled, the background/inline cleanup handles
         # lock release after closing the leaked env.
         if not leaked_pending and self._current_container is not None:
-            if self._current_container.destroy():
-                self._current_container = None
+            self._current_container.destroy()
+            self._current_container = None
 
     def _close_leaked_env(self, cf_future: Any) -> None:
         """Close a leaked env from a completed c.f.Future."""
@@ -1571,7 +1547,8 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
             logger.info("Cleaned up leaked androidworld env")
         except Exception as e:
             logger.warning("leaked androidworld env close() failed: %s", e)
-        destroyed = leaked_lock is None or leaked_lock.destroy()
+        if leaked_lock is not None:
+            leaked_lock.destroy()
         # Only null ``self._current_container`` if it's still pointing at THIS
         # leaked lock — i.e. nothing else assigned a new lock in between.
         # Unconditional null'ing here would wipe a freshly-acquired NEW
@@ -1580,7 +1557,7 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
         # against. (Triggered in v20: cleanup of an old leaked future
         # nulled the in-use lock → drift-reaper killed the live
         # container → /step 500.)
-        if destroyed and self._current_container is leaked_lock:
+        if self._current_container is leaked_lock:
             self._current_container = None
 
     def _spawn_background_cleanup(self, cf_future: Any, timeout: float = 30.0) -> None:
@@ -1610,8 +1587,8 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
             except Exception as e:
                 logger.warning("Background cleanup: close() failed: %s", e)
             if leaked_lock is not None:
-                if leaked_lock.destroy():
-                    cleaned_lock[0] = leaked_lock
+                leaked_lock.destroy()
+                cleaned_lock[0] = leaked_lock
 
         def _fail(e: BaseException) -> None:
             if isinstance(e, TimeoutError):
@@ -1718,7 +1695,8 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
                 # right response is also "destroy + retry", but the
                 # diagnostic message we'd want to surface differs.
                 if "/init returned 500" not in str(e) or attempt == _INIT_MAX_ATTEMPTS:
-                    if emulator_lock.destroy() and self._current_container is emulator_lock:
+                    emulator_lock.destroy()
+                    if self._current_container is emulator_lock:
                         self._current_container = None
                     raise
                 last_init_err = e
@@ -1727,15 +1705,12 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
                     "re-acquiring fresh container",
                     attempt, _INIT_MAX_ATTEMPTS, emulator_lock.name,
                 )
-                # A replacement may start only after Docker confirms this
-                # emulator is absent; otherwise both qemu processes can overlap.
-                if not emulator_lock.destroy():
-                    raise CapacityExhausted.warming(
-                        what=f"failed init container {emulator_lock.name} removal "
-                             "is unconfirmed; refusing to retry",
-                    ) from e
-                if self._current_container is emulator_lock:
-                    self._current_container = None
+                emulator_lock.destroy()
+                try:
+                    _block_overlapping_retry(emulator_lock)
+                finally:
+                    if self._current_container is emulator_lock:
+                        self._current_container = None
             except Exception:
                 # Same cleanup as the retry-path above: null the ref
                 # AFTER release so the drift reaper can't snapshot a
@@ -1744,8 +1719,8 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
                 # sees the destroyed container's name on its next
                 # sweep, flags it as a ghost, and pops the session out
                 # from under a concurrent retry attempt.
-                destroyed = emulator_lock.destroy()
-                if destroyed and self._current_container is emulator_lock:
+                emulator_lock.destroy()
+                if self._current_container is emulator_lock:
                     self._current_container = None
                 raise
         else:

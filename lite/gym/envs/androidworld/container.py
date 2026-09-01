@@ -843,6 +843,43 @@ class AndroidWorldContainer(LiteContainerBase):
 
 # ── Factory ──────────────────────────────────────────────────────────────────
 
+def _wait_for_emulator_exit(container: AndroidWorldContainer) -> bool:
+    """Block an internal retry until the failed attempt's qemu has exited."""
+    deadline = time.monotonic() + container.rm_timeout_s
+    while time.monotonic() < deadline:
+        try:
+            result = subprocess.run(
+                ["docker", "inspect", "--format", "{{.State.Running}}", container.name],
+                capture_output=True,
+                text=True,
+                timeout=min(5.0, max(0.1, deadline - time.monotonic())),
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            result = None
+        if result is not None:
+            if result.returncode == 0 and result.stdout.strip().lower() == "false":
+                return True
+            if result.returncode != 0 and (
+                "No such object" in result.stderr
+                or "No such container" in result.stderr
+            ):
+                return True
+        time.sleep(1.0)
+    return False
+
+
+def _block_overlapping_retry(container: AndroidWorldContainer) -> None:
+    if not _wait_for_emulator_exit(container):
+        # destroy() is intentionally best-effort and de-registers. Restore the
+        # atexit backstop for this still-running failed attempt; the env-server
+        # drift reaper independently sees it as an orphan.
+        container._register()
+        raise CapacityExhausted.warming(
+            what=f"failed {container.env_id} attempt {container.name} is still running; "
+                 "refusing to overlap its emulator with an internal retry",
+        )
+
+
 class AndroidWorldContainerFactory:
     """Spawn one fresh ``AndroidWorldContainer`` per :meth:`acquire`; caller
     calls ``container.destroy()`` (or relies on atexit) to release.
@@ -968,6 +1005,7 @@ class AndroidWorldContainerFactory:
         # boot_with_retry.
         return boot_with_retry(
             _build, start=_start, max_attempts=max_attempts, label=self.env_id,
+            retry_barrier=_block_overlapping_retry,
         )
 
 
