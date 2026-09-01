@@ -882,14 +882,29 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
         """
         if self._env is not None:
             return  # idempotent
-        if self._current_container is not None:
-            raise CapacityExhausted.warming(
-                "previous emulator teardown is unconfirmed; refusing to start a replacement"
-            )
         loop = asyncio.get_event_loop()
+        if self._current_container is not None:
+            old_lock = self._current_container
+            destroyed = await loop.run_in_executor(_EXECUTOR, old_lock.destroy)
+            if not destroyed:
+                raise CapacityExhausted.warming(
+                    "previous emulator teardown is unconfirmed; "
+                    "refusing to start a replacement"
+                )
+            if self._current_container is old_lock:
+                self._current_container = None
         create_cf = _EXECUTOR.submit(self._create_env)
         self._pending_cf_future = create_cf
-        env, emulator_lock = await asyncio.wrap_future(create_cf, loop=loop)
+        try:
+            env, emulator_lock = await asyncio.wrap_future(create_cf, loop=loop)
+        except asyncio.CancelledError:
+            # close() owns cleanup for a still-running executor future.
+            raise
+        except Exception:
+            # The future is complete and _create_env already attempted cleanup.
+            # Leave any unconfirmed container handle for the next boot to retry.
+            self._pending_cf_future = None
+            raise
         self._pending_cf_future = None  # only reached on success
         self._env = env
         # Already stamped at acquire by _create_env; re-assign for the fake

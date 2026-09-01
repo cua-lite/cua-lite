@@ -12,7 +12,8 @@ container *handle* under the capability layer. The base does two jobs:
 2. **Provides the invariants every env used to hand-roll** (and drift on):
    the process-wide tracked registry + atexit backstop, normalized port
    ownership (``_ports_owned``), and a template-method :meth:`destroy` that
-   is idempotent, never raises, and always runs its cleanup tail.
+   is idempotent, never raises, and releases ownership only after confirmed
+   removal.
 
 Subclasses override :meth:`_pre_destroy` ONLY — never :meth:`destroy` itself
 (overriding the template would silently lose its guarantees; the ``release``

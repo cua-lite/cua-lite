@@ -114,6 +114,23 @@ async def test_destroy_backend_refuses_replacement_when_removal_is_unconfirmed()
     with pytest.raises(CapacityExhausted, match="refusing to start a replacement"):
         await env.boot()
 
+
+@pytest.mark.asyncio
+async def test_boot_retries_teardown_before_starting_replacement():
+    class _Container:
+        name = "eventually-removed-emulator"
+
+        def destroy(self):
+            return True
+
+    env = _make_fake()
+    env._current_container = _Container()
+
+    await env.boot()
+
+    assert env._env is not None
+    assert env._current_container is None  # fake boot owns no real container
+
 # ---------------------------------------------------------------------------
 # Sync tests
 # ---------------------------------------------------------------------------
