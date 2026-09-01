@@ -95,6 +95,25 @@ def test_services_health_uses_cached_dependency_preflight(monkeypatch):
 
     assert calls == ["androidworld"]
 
+
+@pytest.mark.asyncio
+async def test_destroy_backend_refuses_replacement_when_removal_is_unconfirmed():
+    from lite.gym.errors import CapacityExhausted
+
+    class _Container:
+        name = "still-running-emulator"
+
+        def destroy(self):
+            return False
+
+    env = _make_fake()
+    env._current_container = _Container()
+    with pytest.raises(CapacityExhausted, match="refusing to start a replacement"):
+        await env.destroy_backend()
+    assert env._current_container.name == "still-running-emulator"
+    with pytest.raises(CapacityExhausted, match="refusing to start a replacement"):
+        await env.boot()
+
 # ---------------------------------------------------------------------------
 # Sync tests
 # ---------------------------------------------------------------------------

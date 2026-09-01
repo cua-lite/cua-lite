@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from lite.gym.errors import CapacityExhausted
-from lite.gym.utils.backend.docker import docker_rm_f
+from lite.gym.utils.backend.docker import docker_container_gone, docker_rm_f
 from lite.gym.utils.backend.ports import release_ports
 from lite.gym.utils.backend.reaper import reap
 
@@ -135,12 +135,14 @@ class LiteContainerBase(ABC):
             pass
         self._ports_owned = ()
 
-    def destroy(self) -> None:
-        """``docker rm -f -v`` + release ports + de-register. Idempotent,
-        never raises — the rm is routed through :func:`docker_rm_f` (which
-        swallows TimeoutExpired and already-gone), so the cleanup tail ALWAYS
-        runs; a raw ``subprocess.run(timeout=…)`` here would raise on a
-        wedged daemon and leak the port reservation + registry entry.
+    def destroy(self) -> bool:
+        """``docker rm -f -v`` + release ports + de-register. Idempotent and
+        never raises. Returns whether Docker confirmed the container is gone.
+
+        The port and tracked handle are retained when removal is unconfirmed:
+        releasing either would let a retry overlap a still-running backend.
+        A raw ``subprocess.run(timeout=…)`` here would raise on a wedged daemon
+        and skip even this explicit, fail-closed outcome.
 
         Subclasses must NOT override this — override :meth:`_pre_destroy`.
         """
@@ -148,9 +150,21 @@ class LiteContainerBase(ABC):
             self._pre_destroy()
         except Exception:
             pass  # diagnostic hook must never block teardown
-        docker_rm_f(self.name, timeout=self.rm_timeout_s, label=self.rm_label)
+        removed = docker_rm_f(
+            self.name, timeout=self.rm_timeout_s, label=self.rm_label,
+        )
+        # docker_rm_f returns 0 for both "already absent" and "unconfirmed".
+        # Inspect disambiguates those before ownership can be released.
+        gone = bool(removed) or docker_container_gone(self.name)
+        if not gone:
+            logger.warning(
+                "%s: retaining container tracking and ports because Docker "
+                "did not confirm removal of %s", self.rm_label, self.name,
+            )
+            return False
         self._release_ports()
         self._deregister()
+        return True
 
 
 def boot_with_retry(
@@ -177,6 +191,10 @@ def boot_with_retry(
       ``CapacityExhausted`` → 503 + Retry-After → client retry).
     * anything else (docker daemon down, image missing) → non-transient:
       destroy + raise immediately, no retry.
+
+    A transient attempt is retried only after ``destroy()`` confirms the old
+    container is absent. An unconfirmed teardown is capacity exhaustion, not
+    permission to overlap two backends.
     """
     last: Exception | None = None
     for attempt in range(1, max_attempts + 1):
@@ -189,7 +207,11 @@ def boot_with_retry(
                 last = e
                 logger.warning("%s acquire attempt %d/%d failed: %s",
                                label, attempt, max_attempts, e)
-                c.destroy()
+                if not c.destroy():
+                    raise CapacityExhausted.warming(
+                        what=f"failed {label} attempt {c.name} is still present; "
+                             "refusing to overlap its emulator with a retry",
+                    ) from e
             except Exception:
                 c.destroy()
                 raise

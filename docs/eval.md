@@ -24,6 +24,7 @@ For per-environment setup, see [docs/envs.md#installation](/docs/envs.md#install
   - [BrowserGym (MiniWoB, WebArena, VisualWebArena)](#browsergym-miniwob-webarena-visualwebarena)
 - **Mobile**
   - [AndroidWorld](#androidworld)
+  - [PhoneWorld](#phoneworld)
   - [AndroidLab](#androidlab)
   - [MobileWorld](#mobileworld)
   - [MobileGym](#mobilegym)
@@ -275,6 +276,26 @@ uv run python scripts/rollout.py \
   #   --env-kwargs '{"observation_text": "none"}'        # vision-only (default)
   #   --env-kwargs '{"observation_text": "a11y:pixel"}'  # flat element list (API/pixel)
 ```
+
+## PhoneWorld
+
+PhoneWorld provides 120 evaluation tasks and 300 training tasks across 34
+offline mock apps. Its gated APKs are licensed for non-commercial academic
+research and must be built into a local-only image.
+
+**Setup and license:** see [`lite/gym/envs/phoneworld/README.md`](/lite/gym/envs/phoneworld/README.md).
+
+```bash
+uv run python scripts/rollout.py \
+  --model-id {gpt-5.5,Qwen/Qwen3-VL-8B-Instruct} \
+  --env-id phoneworld \
+  --splits eval \
+  --config-path scripts/configs/{gpt,qwen3_vl}/default/phoneworld.yaml
+```
+
+Each episode recreates its emulator container from the baked snapshot. The
+env-wide default is 60 steps; upstream task-level step budgets are deliberately
+not imported.
 
 ## AndroidLab
 

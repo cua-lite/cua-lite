@@ -1,0 +1,9 @@
+agent_id: "qwen3_vl"
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 0.0
+
+env_id: "phoneworld"
+env_kwargs:
+  loop_detect: 5
+  extra_tools: ["open_app", "response", "terminate"]

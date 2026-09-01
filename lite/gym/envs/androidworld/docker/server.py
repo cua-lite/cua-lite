@@ -29,6 +29,9 @@ numpy fidelity without writing a parallel JSON schema.
   POST /env/set_interaction_cache(pkl)-> env.interaction_cache = text  (Q&A tasks)
   POST /env/execute_adb_call  (pkl)   -> env.controller.env.execute_adb_call(...)
   POST /env/attempt_enable_networking -> env.controller.env.attempt_enable_networking()
+  POST /env/type_b64 (pkl)             -> UTF-8 text via ADBKeyBoard
+  POST /env/launch_package (pkl)       -> launch a package's main activity
+  POST /env/sqlite_count (pkl)         -> PhoneWorld verifier COUNT query
   POST /task/load  (pickled dict)     -> load TaskEval by class name + params
   POST /task/initialize               -> task.initialize_task(env)
   POST /task/is_successful            -> task.is_successful(env)  -> {reward: float}
@@ -41,8 +44,11 @@ Run (inside container):
 from __future__ import annotations
 
 import argparse
+import base64
 import logging
 import pickle
+import re
+import subprocess
 from typing import Any
 
 import uvicorn
@@ -122,6 +128,19 @@ _task: Any = None
 # regression note for the empty-app UI symptom this fixes.
 _pending_params: dict[str, Any] | None = None
 _pending_task_class_name: str | None = None
+_ADB = "/root/Android/Sdk/platform-tools/adb"
+_DEVICE = "emulator-5554"
+
+
+def _adb(
+    *args: str,
+    check: bool = True,
+    stdin: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [_ADB, "-s", _DEVICE, *args], capture_output=True, text=True,
+        input=stdin, timeout=20, check=check,
+    )
 
 
 def _pickled_response(obj: Any) -> Response:
@@ -176,8 +195,8 @@ def _to_namespace(obj: Any) -> Any:
     ``dataclasses.fields(row)`` as real dataclass instances. See
     ``_params_to_json_safe`` + ``_pending_params`` slot for that path.
     """
-    import types
     import dataclasses as _dc
+    import types
     if obj is None or isinstance(obj, (str, int, float, bool, bytes)):
         return obj
     # numpy arrays serialise natively via pickle; preserve as-is.
@@ -328,6 +347,80 @@ async def env_exec_swipe(request: Request) -> dict[str, Any]:
     return {"ok": True}
 
 
+@app.post("/env/type_b64")
+async def env_type_b64(request: Request) -> dict[str, Any]:
+    """Type UTF-8 text through the active ADBKeyBoard IME, without Enter."""
+    if _env is None:
+        raise HTTPException(409, "env not initialized")
+    body = await _pickled_body(request)
+    text = body.get("text")
+    if not isinstance(text, str):
+        raise HTTPException(400, "text must be a string")
+    ime = _adb("shell", "settings", "get", "secure", "default_input_method").stdout.strip()
+    if ime != "com.android.adbkeyboard/.AdbIME":
+        raise HTTPException(409, f"ADBKeyBoard is not active: {ime!r}")
+    _adb(
+        "shell", "am", "broadcast", "-a", "ADB_INPUT_B64",
+        "--es", "msg", base64.b64encode(text.encode()).decode(),
+    )
+    return {"ok": True}
+
+
+@app.post("/env/launch_package")
+async def env_launch_package(request: Request) -> dict[str, Any]:
+    """Launch an installed package's main activity."""
+    if _env is None:
+        raise HTTPException(409, "env not initialized")
+    package = (await _pickled_body(request)).get("package", "")
+    if not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_.]+", package):
+        raise HTTPException(400, "invalid package")
+    _adb(
+        "shell", "monkey", "-p", package,
+        "-c", "android.intent.category.LAUNCHER", "1",
+    )
+    return {"ok": True}
+
+
+@app.post("/env/sqlite_count")
+async def env_sqlite_count(request: Request) -> dict[str, Any]:
+    """Run one trusted, normalized verifier COUNT query on the emulator."""
+    if _env is None:
+        raise HTTPException(409, "env not initialized")
+    body = await _pickled_body(request)
+    path = body.get("database_path", "")
+    sql = body.get("sql", "")
+    match = re.fullmatch(
+        r"/data/data/(?P<package>com\.phoneuse\.[a-zA-Z][a-zA-Z0-9_]*)/"
+        r"databases/[a-zA-Z0-9_.-]+",
+        path,
+    )
+    if not match:
+        raise HTTPException(400, "invalid app database path")
+    if not isinstance(sql, str) or not sql.startswith("SELECT COUNT(*) FROM "):
+        raise HTTPException(400, "invalid verifier query")
+    if any(token in sql for token in (";", "--", "/*", "*/")):
+        raise HTTPException(400, "invalid verifier query")
+    _adb("shell", "am", "force-stop", match.group("package"))
+    if _adb("shell", "test", "-f", path, check=False).returncode:
+        return {"count": 0}
+    # Feed SQL over stdin: ``adb shell`` joins argv into a remote shell
+    # command, where an unquoted ``COUNT(*)`` is parsed as shell syntax.
+    response = _adb("shell", "sqlite3", path, stdin=sql, check=False)
+    if response.returncode:
+        package = match.group("package")
+        db_name = path.rsplit("/", 1)[-1]
+        response = _adb(
+            "shell", "run-as", package, "sqlite3", f"databases/{db_name}",
+            stdin=sql, check=False,
+        )
+    if response.returncode:
+        raise HTTPException(500, f"sqlite verifier failed: {response.stderr.strip()}")
+    try:
+        return {"count": int(response.stdout.strip())}
+    except ValueError as exc:
+        raise HTTPException(500, "sqlite verifier returned a non-integer") from exc
+
+
 @app.post("/env/exec_menu")
 def env_exec_menu() -> dict[str, Any]:
     """Press Android MENU key (KEYCODE_MENU=82) via raw adb. JSONAction
@@ -404,8 +497,9 @@ async def task_generate_params(request: Request) -> Response:
     task_class_name = body["task_class_name"]
     seed = body.get("seed")
 
-    from android_world import registry as aw_registry
     import random
+
+    from android_world import registry as aw_registry
 
     tasks = aw_registry.TaskRegistry().get_registry("android_world")
     if task_class_name not in tasks:

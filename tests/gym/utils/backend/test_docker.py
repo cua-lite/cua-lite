@@ -14,6 +14,7 @@ from lite.gym.errors import EnvDepsMissingError
 from lite.gym.utils.backend import docker as docker_mod
 from lite.gym.utils.backend.docker import (
     _rm_argv,
+    docker_container_gone,
     docker_rm_f,
     docker_rm_f_async,
     docker_run,
@@ -123,6 +124,20 @@ def test_docker_rm_f_swallows_timeout_returns_zero(monkeypatch):
 
     monkeypatch.setattr(docker_mod.subprocess, "run", raise_timeout)
     assert docker_rm_f("wedged", timeout=0.1) == 0   # never raises
+
+
+def test_docker_container_gone_requires_an_explicit_absence(monkeypatch):
+    responses = iter([
+        subprocess.CompletedProcess([], 0, stdout="[]", stderr=""),
+        subprocess.CompletedProcess(
+            [], 1, stdout="", stderr="Error: No such object: gone",
+        ),
+        subprocess.CompletedProcess([], 1, stdout="", stderr="daemon busy"),
+    ])
+    monkeypatch.setattr(docker_mod.subprocess, "run", lambda *_a, **_k: next(responses))
+    assert docker_container_gone("running") is False
+    assert docker_container_gone("gone") is True
+    assert docker_container_gone("unknown") is False
 
 
 def test_docker_rm_f_async_uses_rm_argv_and_never_raises(monkeypatch):

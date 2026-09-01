@@ -233,6 +233,7 @@ those knobs and may reject them.
 | | **browsergym.webarena** | [WebArena](https://github.com/ServiceNow/BrowserGym) real-world web tasks. Docker services + `WA_*` env vars. | 812 ([readme](/lite/gym/envs/browsergym/README.md)) | 1280×720 — **fixed** (task viewport) |
 | | **browsergym.visualwebarena** | [VisualWebArena](https://github.com/ServiceNow/BrowserGym) multimodal web tasks. Docker services + `VWA_*` env vars. | 910 ([readme](/lite/gym/envs/browsergym/README.md)) | 1280×720 — **fixed** (task viewport) |
 | **Mobile** | **androidworld** | [AndroidWorld](https://github.com/google-research/android_world) multi-step, 20 apps. Android SDK + KVM. | 232 (116 eval + 116 train) ([readme](/lite/gym/envs/androidworld/README.md)) | ~1080×2400 — **fixed** (emulator-native) |
+| | **phoneworld** | [PhoneWorld](https://github.com/PhoneBuddyAI/PhoneWorld), 34 offline mock apps with answer/SQLite verification. Gated APK access + KVM. | 420 (120 eval + 300 train) ([readme](/lite/gym/envs/phoneworld/README.md)) | ~1080×2400 — **fixed** (emulator-native) |
 | | **androidlab** | [AndroidLab](https://github.com/THUDM/Android-Lab) multi-step, 9 offline apps. Docker-per-worker emulator (KVM). | 138 ([readme](/lite/gym/envs/androidlab/README.md)) | ~739×1600 — **fixed** (Pixel-7-Pro, downscaled) |
 | | **mobileworld** | [MobileWorld](https://github.com/Tongyi-MAI/MobileWorld) multi-step, 20 apps, on a rooted Android emulator + self-hosted app backends in a self-contained Docker-in-Docker box. Needs `/dev/kvm`; runs `--privileged`. | 161 (201 upstream − 40 excluded `agent-mcp`) ([readme](/lite/gym/envs/mobileworld/README.md)) | ~1080×2400 — **fixed** (Pixel-8 AVD snapshot) |
 | | **mobilegym** | [MobileGym](https://arxiv.org/abs/2605.26114) browser-simulated mobile, 24 apps. Node.js + Playwright in Docker; media dataset bundled into the image (~4.5 GB, real media offline). | 416 (256 eval + 160 train) ([readme](/lite/gym/envs/mobilegym/README.md)) | 1080×2400 — controllable |
@@ -271,6 +272,7 @@ Use the env README linked in the table below for the exact command.
 | Env | Needs |
 |---|---|
 | [androidworld](/lite/gym/envs/androidworld/README.md) | KVM (`/dev/kvm`) + `cua-lite/androidworld:latest` image (JDK + SDK + AVD + apps; built by `install.sh`) |
+| [phoneworld](/lite/gym/envs/phoneworld/README.md) | KVM (`/dev/kvm`) + authorized Hugging Face gated APK access; image is built locally and must not be redistributed |
 | [androidlab](/lite/gym/envs/androidlab/README.md) | KVM (`/dev/kvm`) + `cua-lite/androidlab:latest` image (needs docker-file.zip) |
 | [mobileworld](/lite/gym/envs/mobileworld/README.md) | KVM (`/dev/kvm`) + privileged Docker-in-Docker runtime + `cua-lite/mobileworld:latest` image |
 | [mobilegym](/lite/gym/envs/mobilegym/README.md) | `cua-lite/mobilegym:latest` image (built by `install.sh`) |
@@ -559,6 +561,7 @@ Empty = file does not exist (no stubs).
 | Env | install | uninstall | start | cleanup | Notes |
 |---|:-:|:-:|:-:|:-:|---|
 | `androidworld` | ✓ | ✓ | — | ✓ | container-per-worker; install builds the image |
+| `phoneworld` | ✓ | ✓ | — | ✓ | fresh container per episode; gated image is local-only |
 | `androidlab` | ✓ | ✓ | — | ✓ | emulator container per worker; install builds the image |
 | `webgym` | ✓ | ✓ | — | — | container image plus host judge deps; install builds the OmniBoxes image |
 | `webharbor.webvoyager` | ✓ | ✓ | — | — | container-only; includes WebHarbor mirrors |
@@ -694,7 +697,7 @@ row, copy the named env, read its `main.py`:
 
 | Backend | When | Env-server integration | Start from |
 |---|---|---|---|
-| [Per-trajectory container](#per-trajectory-container-dedicated) (DEDICATED) | a fresh resource per trajectory; stateful sims that can't be shared | `EnvServerResource` on the env when it owns a resource id; `EnvServices` / usually `ContainerServices`; `register_family(..., BackendFamily.DEDICATED)` | `lite.osworld` · `waa` · `androidworld` · `cua.bench.local.<dataset>` · `osworld` · `osworld_2` |
+| [Per-trajectory container](#per-trajectory-container-dedicated) (DEDICATED) | a fresh resource per trajectory; stateful sims that can't be shared | `EnvServerResource` on the env when it owns a resource id; `EnvServices` / usually `ContainerServices`; `register_family(..., BackendFamily.DEDICATED)` | `lite.osworld` · `waa` · `androidworld` · `phoneworld` · `cua.bench.local.<dataset>` · `osworld` · `osworld_2` |
 | [Shared-backend container](#shared-backend-container-singleton) (SINGLETON) | one long-lived backend shared by every instance; heavy sims | `EnvServices` / often `SingletonContainerServices`; `register_family(..., BackendFamily.SINGLETON)` | `webgym` · `mobilegym` · `webharbor.webvoyager` · `online_mind2web` |
 | [Desktop task](#desktop-task-sandbox) (Sandbox) | a managed desktop container; you write only setup + scoring | `register_tasks` plus DEDICATED services/family registration | `lite.demo` · `lite.cuaworld` |
 | [Externally managed backend](#externally-managed-backend-no-local-container) | backend runs outside CUA-Lite; no local image | no local lifecycle services; `register_family(..., BackendFamily.REMOTE)` | external VM/service-backed envs |

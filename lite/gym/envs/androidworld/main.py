@@ -40,25 +40,29 @@ from typing import Any, ClassVar
 import numpy as np
 
 from lite.core.metadata import LiteCUAMetadata
-from lite.core.tools.extra_tools import (
-    LiteFinishToolSet,
-    make_open_app_tool,
-)
 from lite.core.tools.action_space import pixel_to_norm
 from lite.core.tools.action_space.duration import (
     ACTION_SCHEMA_DURATION_CAPS_SECONDS,
 )
 from lite.core.tools.calls import RuntimeEnvAction
+from lite.core.tools.extra_tools import (
+    LiteFinishToolSet,
+    make_open_app_tool,
+)
 from lite.core.tools.schemas import BaseTools
 from lite.gym.container import spawn_background_destroy
 from lite.gym.envs.androidworld.container import (
     AndroidWorldContainer,
     AndroidWorldContainerFactory,
 )
+from lite.gym.errors import CapacityExhausted
 from lite.gym.registry import register, registry
-from lite.gym.services import register_services
 from lite.gym.remote.reaper import ContainerServices
-from lite.gym.services import EnvServerPoolable, EnvServerResource
+from lite.gym.services import (
+    EnvServerPoolable,
+    EnvServerResource,
+    register_services,
+)
 from lite.gym.types import (
     EXECUTED_ACTIONS_INFO_KEY,
     LiteEnvObservation,
@@ -74,9 +78,9 @@ from lite.gym.utils.backend.model_inputs import (
 )
 from lite.gym.utils.backend.rpc import RemoteRPC
 from lite.gym.utils.feedback.errors import (
-    append_feedback,
     MODEL_ACTION_ERROR_TYPES,
     ToolErrorFeedback,
+    append_feedback,
     error_only_feedback,
     record_model_action_error,
     record_tool_execution_error,
@@ -371,6 +375,7 @@ def _acquire_emulator(
     token_hash: str | None = None,
     server_port: int | None = None,
     image: str | None = None,
+    env_id: str = "androidworld",
 ) -> AndroidWorldContainer:
     """Spawn one sibling docker container (cua-lite/androidworld:latest) for
     this env. Apps are pre-installed in the AVD at image build time, so
@@ -386,6 +391,7 @@ def _acquire_emulator(
         session_id=session_id,
         token_hash=token_hash,
         server_port=server_port,
+        env_id=env_id,
         # image override (env-kwarg); omit when None so the factory default applies
         **({"image": image} if image else {}),
     )
@@ -724,10 +730,10 @@ class _RemoteTaskFactory:
 # Environment
 # ---------------------------------------------------------------------------
 
-def _check_image(tag: str = _IMAGE) -> None:
+def _check_image(tag: str = _IMAGE, *, env_id: str = "androidworld") -> None:
     from lite.gym.utils.backend.docker import require_image_present
 
-    require_image_present(image_for("androidworld", tag=tag))
+    require_image_present(image_for(env_id, tag=tag))
 
 
 def _ensure_services(env_id: str) -> None:
@@ -761,6 +767,7 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
     """
 
     EXTRA_TOOLS: ClassVar[type[BaseTools]] = AndroidworldTools
+    ENV_ID: ClassVar[str] = "androidworld"
 
     def __init__(
         self, *,
@@ -875,6 +882,10 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
         """
         if self._env is not None:
             return  # idempotent
+        if self._current_container is not None:
+            raise CapacityExhausted.warming(
+                "previous emulator teardown is unconfirmed; refusing to start a replacement"
+            )
         loop = asyncio.get_event_loop()
         create_cf = _EXECUTOR.submit(self._create_env)
         self._pending_cf_future = create_cf
@@ -1023,14 +1034,19 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
                 logger.warning("recycle: old env close failed: %s", e)
         if old_lock is not None:
             try:
-                await loop.run_in_executor(_EXECUTOR, old_lock.destroy)
+                destroyed = await loop.run_in_executor(_EXECUTOR, old_lock.destroy)
             except Exception as e:
                 logger.warning("recycle: old container destroy failed: %s", e)
-            finally:
-                # Null AFTER destroy completes, and only if nothing restamped
-                # the seam attr in between (a concurrent acquire).
-                if self._current_container is old_lock:
-                    self._current_container = None
+                destroyed = False
+            if not destroyed:
+                raise CapacityExhausted.warming(
+                    what=f"container {old_lock.name} removal is unconfirmed; "
+                         "refusing to start a replacement emulator",
+                )
+            # Null AFTER destroy completes, and only if nothing restamped
+            # the seam attr in between (a concurrent acquire).
+            if self._current_container is old_lock:
+                self._current_container = None
 
     async def tear_down_task(self) -> None:
         # MUST run BEFORE reset_to_pristine: ``task.tear_down(env)`` issues
@@ -1297,19 +1313,7 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
             self._max_steps is not None and self._step_count >= self._max_steps
         )
 
-        # Evaluate on termination or truncation.
-        # Match androidworld: reward counts only if the agent signaled done
-        # (terminated=True). On truncation (timeout), reward is always 0.0.
-        reward = None
-        if (terminated or truncated) and self._task is not None:
-            try:
-                task_reward = await loop.run_in_executor(
-                    _EXECUTOR, self._task.is_successful, self._env
-                )
-                reward = float(task_reward) if terminated else 0.0
-            except Exception as e:
-                logger.error("Evaluation failed: %s", e)
-                reward = 0.0
+        reward = await self._evaluate_episode(terminated, truncated, loop)
 
         self._terminated = terminated
         return build_tool_results_from_decisions(
@@ -1328,6 +1332,21 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
             text=obs_text,
             feedback=action_errors,
         )
+
+    async def _evaluate_episode(
+        self, terminated: bool, truncated: bool, loop: asyncio.AbstractEventLoop,
+    ) -> float | None:
+        """Evaluate a finished episode; AndroidWorld scores only explicit finish."""
+        if not (terminated or truncated) or self._task is None:
+            return None
+        try:
+            task_reward = await loop.run_in_executor(
+                _EXECUTOR, self._task.is_successful, self._env
+            )
+            return float(task_reward) if terminated else 0.0
+        except Exception as e:
+            logger.error("Evaluation failed: %s", e)
+            return 0.0
 
     async def _get_state_with_png(self) -> tuple[Any, bytes | None]:
         """One ``get_state`` RPC plus its frame.
@@ -1523,8 +1542,8 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
         # When a reset was cancelled, the background/inline cleanup handles
         # lock release after closing the leaked env.
         if not leaked_pending and self._current_container is not None:
-            self._current_container.destroy()
-            self._current_container = None
+            if self._current_container.destroy():
+                self._current_container = None
 
     def _close_leaked_env(self, cf_future: Any) -> None:
         """Close a leaked env from a completed c.f.Future."""
@@ -1537,8 +1556,7 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
             logger.info("Cleaned up leaked androidworld env")
         except Exception as e:
             logger.warning("leaked androidworld env close() failed: %s", e)
-        if leaked_lock is not None:
-            leaked_lock.destroy()
+        destroyed = leaked_lock is None or leaked_lock.destroy()
         # Only null ``self._current_container`` if it's still pointing at THIS
         # leaked lock — i.e. nothing else assigned a new lock in between.
         # Unconditional null'ing here would wipe a freshly-acquired NEW
@@ -1547,7 +1565,7 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
         # against. (Triggered in v20: cleanup of an old leaked future
         # nulled the in-use lock → drift-reaper killed the live
         # container → /step 500.)
-        if self._current_container is leaked_lock:
+        if destroyed and self._current_container is leaked_lock:
             self._current_container = None
 
     def _spawn_background_cleanup(self, cf_future: Any, timeout: float = 30.0) -> None:
@@ -1577,8 +1595,8 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
             except Exception as e:
                 logger.warning("Background cleanup: close() failed: %s", e)
             if leaked_lock is not None:
-                leaked_lock.destroy()
-                cleaned_lock[0] = leaked_lock
+                if leaked_lock.destroy():
+                    cleaned_lock[0] = leaked_lock
 
         def _fail(e: BaseException) -> None:
             if isinstance(e, TimeoutError):
@@ -1629,7 +1647,10 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
 
         from lite.gym.utils.config.identity import EnvIdentity
         identity = getattr(self, "identity", None) or EnvIdentity()
-        _check_image(getattr(self, "_image", None) or _IMAGE)
+        _check_image(
+            getattr(self, "_image", None) or _IMAGE,
+            env_id=self.ENV_ID,
+        )
 
         last_init_err: Exception | None = None
         for attempt in range(1, _INIT_MAX_ATTEMPTS + 1):
@@ -1640,6 +1661,7 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
                 token_hash=identity.token_hash,
                 server_port=identity.server_port,
                 image=getattr(self, "_image", None),
+                env_id=self.ENV_ID,
             )
             # Container-handle attr stamped AT ACQUIRE: the drift reaper must see
             # this container from its first breath, before /init completes.
@@ -1681,7 +1703,8 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
                 # right response is also "destroy + retry", but the
                 # diagnostic message we'd want to surface differs.
                 if "/init returned 500" not in str(e) or attempt == _INIT_MAX_ATTEMPTS:
-                    emulator_lock.destroy()
+                    if emulator_lock.destroy() and self._current_container is emulator_lock:
+                        self._current_container = None
                     raise
                 last_init_err = e
                 logger.warning(
@@ -1689,9 +1712,13 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
                     "re-acquiring fresh container",
                     attempt, _INIT_MAX_ATTEMPTS, emulator_lock.name,
                 )
-                # release() destroys (cap=0 path) — the next acquire
-                # will spin up a brand-new container.
-                emulator_lock.destroy()
+                # A replacement may start only after Docker confirms this
+                # emulator is absent; otherwise both qemu processes can overlap.
+                if not emulator_lock.destroy():
+                    raise CapacityExhausted.warming(
+                        what=f"failed init container {emulator_lock.name} removal "
+                             "is unconfirmed; refusing to retry",
+                    ) from e
                 if self._current_container is emulator_lock:
                     self._current_container = None
             except Exception:
@@ -1702,8 +1729,8 @@ class AndroidWorldEnv(EnvServerPoolable, EnvServerResource):
                 # sees the destroyed container's name on its next
                 # sweep, flags it as a ghost, and pops the session out
                 # from under a concurrent retry attempt.
-                emulator_lock.destroy()
-                if self._current_container is emulator_lock:
+                destroyed = emulator_lock.destroy()
+                if destroyed and self._current_container is emulator_lock:
                     self._current_container = None
                 raise
         else:

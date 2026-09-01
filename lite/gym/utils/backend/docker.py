@@ -319,6 +319,26 @@ def docker_rm_f(name: str, *, timeout: float, label: str = "docker") -> int:
     return 0
 
 
+def docker_container_gone(name: str, *, timeout: float = 5.0) -> bool:
+    """Return true only when Docker confirms ``name`` does not exist.
+
+    A failed or timed-out inspect is unknown, therefore false.  This is the
+    fail-closed receipt used before a failed boot may be retried: starting a
+    replacement while the old container's emulator is still unwinding can
+    overlap two qemu processes on the same baked AVD.
+    """
+    try:
+        r = subprocess.run(
+            ["docker", "inspect", name], capture_output=True, text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if r.returncode == 0:
+        return False
+    return "No such object" in r.stderr or "No such container" in r.stderr
+
+
 async def docker_rm_f_async(name: str, *, timeout: float, label: str = "docker") -> None:
     """Async sibling of :func:`docker_rm_f` for event-loop callers (sandbox
     teardown paths). Same re-issue of a refused removal, and ``timeout`` is

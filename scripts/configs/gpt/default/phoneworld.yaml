@@ -1,0 +1,13 @@
+# GPT mobile on PhoneWorld's 120-task evaluation split.
+# The env-wide 60-step budget lives in phoneworld/configs/default.yaml.
+
+agent_id: "gpt"
+agent_kwargs:
+  api_kwargs:
+    reasoning_effort: "medium"
+    max_output_tokens: 4096
+
+env_id: "phoneworld"
+env_kwargs:
+  loop_detect: 0
+  extra_tools: ["open_app", "response", "terminate"]
