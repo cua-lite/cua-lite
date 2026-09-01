@@ -185,6 +185,30 @@ def test_boot_with_retry_transient_then_success(patched):
     assert destroyed == ["flaky-0"], "failed attempt destroyed"
 
 
+def test_boot_with_retry_runs_barrier_before_replacement(patched):
+    from lite.gym.container import boot_with_retry
+
+    events = []
+
+    def build():
+        events.append("build")
+        return _Box(name=f"attempt-{events.count('build')}", api_port=1450)
+
+    def start(_box):
+        events.append("start")
+        if events.count("start") == 1:
+            raise RuntimeError("transient")
+
+    result = boot_with_retry(
+        build,
+        start=start,
+        before_retry=lambda _box: events.append("barrier"),
+    )
+
+    assert result.name == "attempt-2"
+    assert events == ["build", "start", "barrier", "build", "start"]
+
+
 def test_boot_with_retry_exhausted_reraises_last(patched):
     from lite.gym.container import boot_with_retry
 

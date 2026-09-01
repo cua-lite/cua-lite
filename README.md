@@ -102,7 +102,7 @@ result is a LiteRLSample:
 > 🖱️ **ScreenSpot-Pro** `screenspot_pro` · **OSWorld-G** `osworld_g`
 > 🖥️ **OSWorld** `osworld` · **OSWorld-2** `osworld_2` · **WindowsAgentArena** `waa` · **CUABench** `cua.bench.local.{basic,kicad,workflows}` · **Lite.OSWorld** `lite.osworld` · **Lite.CUAGym** `lite.cuagym` · **Lite.CUAWorld** `lite.cuaworld.<app>` · **Lite.ScaleCUA** `lite.scalecua` · **Lite.Demo** `lite.demo`
 > 🌐 **WebArena** `browsergym.webarena` · **VisualWebArena** `browsergym.visualwebarena` · **MiniWoB** `browsergym.miniwob` · **WebVoyager** `webharbor.webvoyager` · **Online-Mind2Web** `online_mind2web` · **WebGym** `webgym` · **CAPTCHA** `captcha`
-> 📱 **AndroidWorld** `androidworld` · **AndroidLab** `androidlab` · **MobileWorld** `mobileworld` · **MobileGym** `mobilegym`
+> 📱 **AndroidWorld** `androidworld` · **PhoneWorld** `phoneworld` · **AndroidLab** `androidlab` · **MobileWorld** `mobileworld` · **MobileGym** `mobilegym`
 
 `lite.cuaworld` expands per application (`lite.cuaworld.blender3d`, `.qgis`, `.vscode`, … 40 in total) — list them at runtime with `gym.registry.registered_env_ids()`.
 
@@ -195,7 +195,7 @@ See [docs/eval.md](/docs/eval.md) for per-benchmark commands, setup, and options
 > - 🖱️ **Grounding** — [ScreenSpot-Pro](/lite/gym/envs/screenspot_pro/README.md), [OSWorld-G](/lite/gym/envs/osworld_g/README.md)
 > - 🖥️ **Desktop** — [OSWorld](/lite/gym/envs/osworld/README.md), [OSWorld-2](/lite/gym/envs/osworld_2/README.md), [Lite.OSWorld](/lite/gym/envs/lite/osworld/README.md), [WindowsAgentArena](/lite/gym/envs/waa/README.md), [CUABench](/lite/gym/envs/cua/README.md)
 > - 🌐 **Browser** — [WebVoyager](/lite/gym/envs/webharbor/webvoyager/README.md), [WebArena](/lite/gym/envs/browsergym/README.md), [VisualWebArena](/lite/gym/envs/browsergym/README.md), [MiniWoB](/lite/gym/envs/browsergym/README.md), [Online-Mind2Web](/lite/gym/envs/online_mind2web/README.md), [WebGym](/lite/gym/envs/webgym/README.md)
-> - 📱 **Mobile** — [AndroidWorld](/lite/gym/envs/androidworld/README.md), [AndroidLab](/lite/gym/envs/androidlab/README.md), [MobileWorld](/lite/gym/envs/mobileworld/README.md), [MobileGym](/lite/gym/envs/mobilegym/README.md)
+> - 📱 **Mobile** — [AndroidWorld](/lite/gym/envs/androidworld/README.md), [PhoneWorld](/lite/gym/envs/phoneworld/README.md), [AndroidLab](/lite/gym/envs/androidlab/README.md), [MobileWorld](/lite/gym/envs/mobileworld/README.md), [MobileGym](/lite/gym/envs/mobilegym/README.md)
 
 ## SFT any CUA on any Datasets
 

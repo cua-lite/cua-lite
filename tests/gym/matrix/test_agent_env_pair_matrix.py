@@ -99,9 +99,9 @@ _CONFIG_ROOTS = (Path("scripts/configs"),)
 # vacuously passing.
 _MIN_CONFIG_YAMLS = 150
 _MIN_DISTINCT_PAIRS = 110
-_EXPECTED_AGENT_CONFIG_ROWS = 196
-_EXPECTED_ENV_CONFIG_ROWS = 191
-_EXPECTED_DISTINCT_PAIRS = 153
+_EXPECTED_AGENT_CONFIG_ROWS = 199
+_EXPECTED_ENV_CONFIG_ROWS = 194
+_EXPECTED_DISTINCT_PAIRS = 155
 
 
 class ConfigRow:
@@ -675,6 +675,7 @@ _TOOL_SURFACE_VALIDATING_ENVS = (
     "screenspot_pro",
     "waa",
     "androidworld",
+    "phoneworld",
     "androidlab",
     "mobileworld",
     "webgym",

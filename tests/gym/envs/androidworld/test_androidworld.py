@@ -95,6 +95,52 @@ def test_services_health_uses_cached_dependency_preflight(monkeypatch):
 
     assert calls == ["androidworld"]
 
+
+def test_internal_retry_waits_until_failed_emulator_stops(monkeypatch):
+    from types import SimpleNamespace
+
+    from lite.gym.envs.androidworld import container as C
+
+    responses = iter([
+        SimpleNamespace(returncode=0, stdout="true\n", stderr=""),
+        SimpleNamespace(returncode=0, stdout="false\n", stderr=""),
+    ])
+    calls = []
+    monkeypatch.setattr(
+        C.subprocess,
+        "run",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or next(responses),
+    )
+    monkeypatch.setattr(C.time, "sleep", lambda _seconds: None)
+
+    assert C._wait_for_emulator_exit(
+        SimpleNamespace(name="failed-emulator", env_id="androidworld", rm_timeout_s=5)
+    ) is True
+
+    assert len(calls) == 2
+
+
+def test_internal_retry_stops_before_replacement_if_emulator_keeps_running(monkeypatch):
+    from types import SimpleNamespace
+
+    from lite.gym.envs.androidworld import container as C
+    from lite.gym.errors import CapacityExhausted
+
+    tracked = []
+    container = SimpleNamespace(
+        name="failed-emulator",
+        env_id="androidworld",
+        rm_timeout_s=60,
+        _register=lambda: tracked.append(True),
+    )
+    monkeypatch.setattr(C, "_wait_for_emulator_exit", lambda _container: False)
+
+    with pytest.raises(CapacityExhausted, match="refusing to overlap"):
+        C._block_overlapping_retry(container)
+
+    assert tracked == [True]
+
+
 # ---------------------------------------------------------------------------
 # Sync tests
 # ---------------------------------------------------------------------------

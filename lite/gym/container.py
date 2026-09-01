@@ -158,6 +158,7 @@ def boot_with_retry(
     *,
     start: Callable[[LiteContainerBase], None],
     attempt_gate: Callable[[], Any] | None = None,
+    before_retry: Callable[[LiteContainerBase], None] | None = None,
     max_attempts: int = 2,
     label: str = "container",
 ) -> LiteContainerBase:
@@ -177,6 +178,9 @@ def boot_with_retry(
       ``CapacityExhausted`` → 503 + Retry-After → client retry).
     * anything else (docker daemon down, image missing) → non-transient:
       destroy + raise immediately, no retry.
+
+    ``before_retry`` optionally blocks construction of a replacement until an
+    env-specific invariant holds. The failed attempt is still destroyed first.
     """
     last: Exception | None = None
     for attempt in range(1, max_attempts + 1):
@@ -190,6 +194,8 @@ def boot_with_retry(
                 logger.warning("%s acquire attempt %d/%d failed: %s",
                                label, attempt, max_attempts, e)
                 c.destroy()
+                if before_retry is not None and attempt < max_attempts:
+                    before_retry(c)
             except Exception:
                 c.destroy()
                 raise

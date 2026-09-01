@@ -1,0 +1,23 @@
+env_var_prefix: PHONEWORLD
+
+make_kwargs:
+  reset_timeout: 600.0
+
+env_kwargs:
+  max_steps: 60
+  post_action_delay: 1.0
+  observation_text: none
+  seed: null
+  valid_actions: null
+  extra_tools: []
+  image: "cua-lite/phoneworld:latest"
+
+server_kwargs:
+  avd_name: "lite_avd_androidworld"
+  max_workers: 256
+  max_resets_per_container: 0
+  init_max_attempts: 3
+  boot_timeout: 240
+  api_timeout: 120
+  android_ready_timeout: 120
+  memory_limit: "8g"

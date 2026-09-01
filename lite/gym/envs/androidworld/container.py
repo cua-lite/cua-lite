@@ -91,9 +91,9 @@ from typing import ClassVar
 from lite.gym.container import LiteContainerBase, boot_with_retry
 from lite.gym.errors import CapacityExhausted
 from lite.gym.utils import config as env_config
-from lite.gym.utils.config.naming import format_container_name as _format_container_name
 from lite.gym.utils.backend.docker import _rm_argv, docker_run_detached
 from lite.gym.utils.backend.ports import allocate_ports
+from lite.gym.utils.config.naming import format_container_name as _format_container_name
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +217,7 @@ class AndroidWorldContainer(LiteContainerBase):
     api_port: int
     image: str = DEFAULT_IMAGE
     avd_name: str = DEFAULT_AVD_NAME
+    env_id: str = "androidworld"
 
     #: ``api_port`` was reserved via ``backend.ports``; released on destroy().
     _ports_owned: tuple[int, ...] = field(default=(), repr=False)
@@ -284,7 +285,7 @@ class AndroidWorldContainer(LiteContainerBase):
             ports=((self.api_port, _CPORT_API),),
             command=("sleep", "86400"),
             timeout=180.0,
-            label="androidworld",
+            label=self.env_id,
         )
 
         # Launch the emulator inside the container.
@@ -842,6 +843,43 @@ class AndroidWorldContainer(LiteContainerBase):
 
 # ── Factory ──────────────────────────────────────────────────────────────────
 
+def _wait_for_emulator_exit(container: AndroidWorldContainer) -> bool:
+    """Block an internal retry until the failed attempt's qemu has exited."""
+    deadline = time.monotonic() + container.rm_timeout_s
+    while time.monotonic() < deadline:
+        try:
+            result = subprocess.run(
+                ["docker", "inspect", "--format", "{{.State.Running}}", container.name],
+                capture_output=True,
+                text=True,
+                timeout=min(5.0, max(0.1, deadline - time.monotonic())),
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            result = None
+        if result is not None:
+            if result.returncode == 0 and result.stdout.strip().lower() == "false":
+                return True
+            if result.returncode != 0 and (
+                "No such object" in result.stderr
+                or "No such container" in result.stderr
+            ):
+                return True
+        time.sleep(1.0)
+    return False
+
+
+def _block_overlapping_retry(container: AndroidWorldContainer) -> None:
+    if not _wait_for_emulator_exit(container):
+        # destroy() intentionally de-registers even when Docker's result is
+        # unknown. This stronger, env-local retry path knows the predecessor
+        # may still be live, so restore the process-exit cleanup backstop.
+        container._register()
+        raise CapacityExhausted.warming(
+            what=f"failed {container.env_id} attempt {container.name} is still running; "
+                 "refusing to overlap its emulator with an internal retry",
+        )
+
+
 class AndroidWorldContainerFactory:
     """Spawn one fresh ``AndroidWorldContainer`` per :meth:`acquire`; caller
     calls ``container.destroy()`` (or relies on atexit) to release.
@@ -866,6 +904,7 @@ class AndroidWorldContainerFactory:
         session_id: str | None = None,
         token_hash: str | None = None,
         server_port: int | None = None,
+        env_id: str = "androidworld",
     ):
         self.image = image
         self.avd_name = avd_name
@@ -881,6 +920,7 @@ class AndroidWorldContainerFactory:
         self.session_id = session_id
         self.token_hash = token_hash
         self.server_port = server_port
+        self.env_id = env_id
 
     def _make_name(self, api_port: int) -> str:
         """Canonical name: ``lite-env-[{server_port}-][{token_hash}-]{session_id}-androidworld-[{task_id}-]{api_port}``.
@@ -891,7 +931,7 @@ class AndroidWorldContainerFactory:
         are constant; each container binds a different host port).
         """
         return _format_container_name(
-            env_id="androidworld",
+            env_id=self.env_id,
             task_id=self.task_id,
             suffix=str(api_port),
             session_id=self.session_id or os.environ.get("SESSION_ID"),
@@ -948,6 +988,7 @@ class AndroidWorldContainerFactory:
                 api_port=api_port,
                 image=self.image,
                 avd_name=self.avd_name,
+                env_id=self.env_id,
                 _ports_owned=(api_port,),
             )
 
@@ -963,7 +1004,8 @@ class AndroidWorldContainerFactory:
         # fresh build + retry; else destroy + raise) is single-sourced in
         # boot_with_retry.
         return boot_with_retry(
-            _build, start=_start, max_attempts=max_attempts, label="androidworld",
+            _build, start=_start, max_attempts=max_attempts, label=self.env_id,
+            before_retry=_block_overlapping_retry,
         )
 
 
