@@ -870,6 +870,10 @@ def _wait_for_emulator_exit(container: AndroidWorldContainer) -> bool:
 
 def _block_overlapping_retry(container: AndroidWorldContainer) -> None:
     if not _wait_for_emulator_exit(container):
+        # destroy() intentionally de-registers even when Docker's result is
+        # unknown. This stronger, env-local retry path knows the predecessor
+        # may still be live, so restore the process-exit cleanup backstop.
+        container._register()
         raise CapacityExhausted.warming(
             what=f"failed {container.env_id} attempt {container.name} is still running; "
                  "refusing to overlap its emulator with an internal retry",

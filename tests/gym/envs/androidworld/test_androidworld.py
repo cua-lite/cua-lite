@@ -126,15 +126,19 @@ def test_internal_retry_stops_before_replacement_if_emulator_keeps_running(monke
     from lite.gym.envs.androidworld import container as C
     from lite.gym.errors import CapacityExhausted
 
+    tracked = []
     container = SimpleNamespace(
         name="failed-emulator",
         env_id="androidworld",
         rm_timeout_s=60,
+        _register=lambda: tracked.append(True),
     )
     monkeypatch.setattr(C, "_wait_for_emulator_exit", lambda _container: False)
 
     with pytest.raises(CapacityExhausted, match="refusing to overlap"):
         C._block_overlapping_retry(container)
+
+    assert tracked == [True]
 
 
 # ---------------------------------------------------------------------------
