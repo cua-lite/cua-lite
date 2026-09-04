@@ -1379,6 +1379,17 @@ async def _dispatch_desktop_action(
             text = _required_model_arg(args, "text", name)
             await interface.type_text(text)
             _record("type_text", text=text)
+            # ``press_enter`` is part of the canonical ``type`` schema
+            # (lite/core/tools/action_space/base.py) and the web envs honour it, so
+            # dropping it here left the field silently inert on desktop: a family that
+            # splits multi-line input into one ``type(press_enter=True)`` per line —
+            # qwen3_8, gemini, fara, ui_venus_2 all do — had every line break swallowed
+            # and typed its heredocs and multi-cell entries as a single run-on line.
+            if args.get("press_enter"):
+                await interface.hotkey(
+                    *project_model_keys(["enter"], action_name=name, backend="xdotool")
+                )
+                _record("hotkey", keys=["enter"])
 
         elif name == "key":
             keys = _xkeys  # pre-resolved xdotool keysyms (canonical → backend)

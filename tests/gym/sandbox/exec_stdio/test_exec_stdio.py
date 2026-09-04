@@ -759,3 +759,37 @@ async def test_type_text_host_budget_outlasts_server(text_len, min_budget_s):
         f"type_text timeout {captured['kwargs']['timeout']}s for {text_len}-char "
         f"text would race the server's ≥{min_budget_s}s xdotool budget"
     )
+
+
+def test_non_ascii_segment_types_at_a_slower_delay(monkeypatch):
+    """A codepoint outside the keymap needs a slower ``--delay`` or it is DROPPED.
+
+    xdotool borrows a spare keycode for such a character and announces the remap
+    with MappingNotify; at the 12 ms default the client has usually not processed
+    it yet and loses the key -- silently, with ok=true. Measured in the cuagym
+    image typing an em dash / en dash / ellipsis between ASCII letters: delay=12
+    delivered only the four ASCII characters, delay=30 delivered all seven.
+    Pure-ASCII text keeps the fast default.
+    """
+    from lite.gym.sandbox.exec_stdio import server
+
+    calls: list[tuple] = []
+    monkeypatch.setattr(server, "_xdo", lambda *a, **k: calls.append(a))
+
+    server.op_input({"action": "type", "text": "plain ascii"})
+    assert calls[0][calls[0].index("--delay") + 1] == "12"
+
+    calls.clear()
+    server.op_input({"action": "type", "text": "A—B"})
+    assert calls[0][calls[0].index("--delay") + 1] == str(server._NON_ASCII_DELAY_MS)
+    assert server._NON_ASCII_DELAY_MS >= 30
+
+
+def test_explicit_delay_above_the_floor_is_respected(monkeypatch):
+    from lite.gym.sandbox.exec_stdio import server
+
+    calls: list[tuple] = []
+    monkeypatch.setattr(server, "_xdo", lambda *a, **k: calls.append(a))
+    server.op_input({"action": "type", "text": "A—B", "delay_ms": 90})
+
+    assert calls[0][calls[0].index("--delay") + 1] == "90"

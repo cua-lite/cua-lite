@@ -61,6 +61,11 @@ if TYPE_CHECKING:
 PROTOCOL_VERSION = 4
 DEFAULT_RUN_COMMAND_TIMEOUT = 300.0
 
+#: Floor for ``xdotool type --delay`` on a segment holding a non-keymap codepoint.
+#: 12 ms drops them outright; 30 ms was the lowest measured value that kept every
+#: character. See ``op_input``.
+_NON_ASCII_DELAY_MS = 30
+
 # The env venv (/opt/env/venv, the eval getters' python + bs4/websocket/openpyxl) and
 # vendored CLIs (/opt/env/bin: xdotool/jq/pandoc/pdftk/xclip/convert, off /usr/bin) are
 # HARNESS tools. The server runs as the env's desktop user (EXEC_USER — `user` for
@@ -432,7 +437,10 @@ def op_input(req: dict) -> dict:
         # length (long paragraphs at --delay ms/char take real time).
         text = req["text"]
         delay = int(req.get("delay_ms", 12))
-        budget = 30.0 + len(text) * (delay / 1000.0) * 2
+        # Budget the row at the delay it will actually run at: a segment holding a
+        # non-keymap codepoint types at ``_NON_ASCII_DELAY_MS`` (see below).
+        _row_delay = max(delay, _NON_ASCII_DELAY_MS) if not text.isascii() else delay
+        budget = 30.0 + len(text) * (_row_delay / 1000.0) * 2
         # Uniform rule: a REAL control char means "press that key", a LITERAL
         # backslash-escape means "type those characters".
         #  * real '\n' (chr 10) -> press Return; real '\t' (chr 9) -> press Tab,
@@ -455,7 +463,17 @@ def op_input(req: dict) -> dict:
                 if ci:
                     _xdo("key", "--clearmodifiers", "Tab")
                 if cell:
-                    _xdo("type", "--clearmodifiers", "--delay", str(delay),
+                    # A codepoint outside the keymap forces xdotool to borrow a
+                    # spare keycode and announce it with MappingNotify. At the
+                    # 12 ms default the client has typically not processed that
+                    # remap yet and DROPS the key -- silently, with ok=true.
+                    # Measured in this image typing "A<em>B<en>C<ellipsis>D":
+                    # delay=12 delivered "ABCD" (every non-ASCII gone, every
+                    # ASCII kept); delay=30 delivered all 7 characters, as did
+                    # 60 and 120. Pay the slower rate only for the cells that
+                    # need it -- pure-ASCII typing keeps the 12 ms default.
+                    cell_delay = max(delay, _NON_ASCII_DELAY_MS) if not cell.isascii() else delay
+                    _xdo("type", "--clearmodifiers", "--delay", str(cell_delay),
                          "--", cell, timeout=budget)
     elif a == "key":
         # One key = a press; several = a chord (xdotool "ctrl+c" syntax).
