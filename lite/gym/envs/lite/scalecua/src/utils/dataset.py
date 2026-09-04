@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import functools
 import hashlib
 import json
 import os
@@ -1536,6 +1537,8 @@ def _exclude_reason(
         return "upstream_generated_eval_bug"
     if _has_uncompilable_python_heredoc(payload, runtime_split=runtime_split):
         return "upstream_generated_eval_bug"
+    if _has_metric_with_undefined_helper(payload, runtime_split=runtime_split):
+        return "upstream_generated_eval_bug"
     if unsupported:
         first = unsupported[0]
         if first == "unsupported_asset_url" or first.startswith("unsupported_schema:"):
@@ -1624,6 +1627,91 @@ def _has_uncompilable_python_heredoc(
             except SyntaxError:
                 continue
     return False
+
+
+@functools.lru_cache(maxsize=1)
+def _metrics_calling_undefined_helpers() -> frozenset[str]:
+    """Generated metric functions that call a helper this overlay never defines.
+
+    The generated shards were split from a larger source and some kept calls to
+    module-level helpers that did not come with them; ``judges`` injects 20 such
+    names back, but not these. The call raises ``NameError`` at scoring time, and
+    ``verify.evaluate_scalecua_task`` degrades any metric exception to 0.0 -- so
+    the row scores zero no matter what the agent did, and (before that handler
+    started logging) left no trace to tell it apart from a hard task.
+
+    Derived, not an id list: a future overlay refresh that fixes or breaks more
+    shards is picked up without anyone re-curating.
+    """
+    import ast
+    import builtins
+
+    from lite.gym.envs.lite.scalecua.src.osworld import judges
+
+    roots = [r for r in (judges.overlay_dir(s) for s in ("train", "rl")) if r and r.is_dir()]
+    if not roots:
+        return frozenset()
+    trees: dict[Path, ast.Module] = {}
+    # judges injects a fixed set of helpers back into every shard; those names
+    # resolve at runtime even though the shard never defines them.
+    defined: set[str] = set(judges._INJECTED_HELPER_NAMES)
+    for path in sorted(pth for r in roots for pth in r.rglob("verigen_metrics/*.py")):
+        try:
+            tree = ast.parse(path.read_text(errors="replace"), str(path))
+        except SyntaxError:
+            continue
+        trees[path] = tree
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                defined.add(node.name)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    defined.add((alias.asname or alias.name).split(".")[0])
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        defined.add(target.id)
+    known = defined | set(dir(builtins))
+    broken: set[str] = set()
+    for tree in trees.values():
+        for fn in tree.body:
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            local = {arg.arg for arg in fn.args.args}
+            local |= {
+                c.name for c in ast.walk(fn)
+                if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            local |= {
+                t.id for n in ast.walk(fn) if isinstance(n, ast.Assign)
+                for t in n.targets if isinstance(t, ast.Name)
+            }
+            for node in ast.walk(fn):
+                # Only CALL sites: a bare Name load can be a comprehension target or
+                # a nested-scope binding, and counting those over-reports wildly.
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id not in known
+                    and node.func.id not in local
+                ):
+                    broken.add(fn.name)
+    return frozenset(broken)
+
+
+def _has_metric_with_undefined_helper(
+    payload: dict[str, Any],
+    *,
+    runtime_split: str,
+) -> bool:
+    """True iff the row is scored by a metric that cannot run (see above)."""
+    if runtime_split not in {"train", "rl"}:
+        return False
+    broken = _metrics_calling_undefined_helpers()
+    if not broken:
+        return False
+    blob = json.dumps(payload)
+    return any(f'"{name}"' in blob for name in broken)
 
 
 def _has_thunderbird_gmail_auth_gap(

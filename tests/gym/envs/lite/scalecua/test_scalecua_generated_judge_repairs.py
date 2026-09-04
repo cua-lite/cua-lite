@@ -1439,3 +1439,47 @@ async def test_scalecua_generated_pptx_slide_subtitle_accepts_textbox_fallback(t
     )
 
     assert result == "A comprehensive guide"
+
+
+def test_injected_helper_names_match_the_installed_table() -> None:
+    """The constant and the dict that actually installs them cannot drift.
+
+    ``dataset._metrics_calling_undefined_helpers`` reads the constant to decide
+    which shards are unrunnable. If a helper is added to the install dict but not
+    the constant, every metric calling it gets mis-flagged as broken and its rows
+    are excluded for nothing; the reverse silently un-flags a metric that really
+    does raise.
+    """
+    import inspect
+    import re
+
+    from lite.gym.envs.lite.scalecua.src.osworld import judges
+
+    source = inspect.getsource(judges._install_generated_metric_helpers)
+    table = source[source.index("helpers = {"):source.index("modules = [overlay]")]
+    installed = frozenset(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)":', table))
+
+    assert judges._INJECTED_HELPER_NAMES == installed
+
+
+def test_metrics_calling_undefined_helpers_are_detected_and_excluded() -> None:
+    """A shard that calls a helper nobody defines cannot score, so it must be tagged.
+
+    The generated shards were split from a larger source and some kept calls to
+    module-level helpers that did not travel with them. The call raises NameError,
+    ``verify.evaluate_scalecua_task`` degrades any metric exception to 0.0, and the
+    row publishes a confident zero for a task the agent may have completed.
+    """
+    from lite.gym.envs.lite.scalecua.src.utils import dataset
+
+    broken = dataset._metrics_calling_undefined_helpers()
+    # The overlay ships with a real, non-empty set of these; an empty result means
+    # the scan silently stopped working (moved overlay, parse failure) rather than
+    # that the shards became clean.
+    assert broken, "no broken metrics found -- the overlay scan is not reaching the shards"
+    assert all(isinstance(name, str) for name in broken)
+
+    # Only train/rl carry the generated overlay; other splits must not be tagged.
+    payload = {"evaluator": {"func": sorted(broken)[0]}}
+    assert dataset._has_metric_with_undefined_helper(payload, runtime_split="train")
+    assert not dataset._has_metric_with_undefined_helper(payload, runtime_split="eval")

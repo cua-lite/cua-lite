@@ -2461,6 +2461,22 @@ def _string_similarity_ratio(a: Any, b: Any) -> float:
     return SequenceMatcher(None, str(a).lower(), str(b).lower()).ratio()
 
 
+#: Names ``_install_generated_metric_helpers`` puts back into every generated
+#: shard. A shard may CALL one of these without defining it and still run. Any
+#: other undefined call is a NameError at scoring time -- see
+#: ``dataset._metrics_calling_undefined_helpers``, which reads this set so the two
+#: never drift apart.
+_INJECTED_HELPER_NAMES: frozenset[str] = frozenset({
+    "similarity", "calculate_brightness", "normalize_brightness",
+    "measure_saturation", "structure_check_by_mse", "_colors_similar",
+    "detect_yellow_triangle", "_detect_yellow_triangle", "verify_horizontal_flip",
+    "_verify_horizontal_mirror", "_verify_vertical_mirror", "_check_result_only",
+    "_find_triangle_color", "_calculate_centroid", "_parse_rgb_color",
+    "_color_distance", "_rgb_distance", "_is_yellow_color", "is_yellow_color",
+    "_verify_single_check__7767eef2",
+})
+
+
 def _install_generated_metric_helpers(package: str, overlay: ModuleType) -> None:
     """Provide helpers omitted from some generated metric shards."""
 

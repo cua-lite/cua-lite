@@ -174,7 +174,10 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninte
         `# full vim (not vim-tiny): the guest agent has full vim, AND the stock vim.desktop's` \
         `# TryExec=vim only resolves with /usr/bin/vim present → fixes the missing dash icon.` \
         `# python3-tk: guest has it (tkinter 3.10.8) — agent clipboard/GUI habits transfer.` \
-        curl nano vim=2:8.2.3995-1ubuntu2.35 jq cron xclip locales python3-tk \
+        `# vim pin bumped .35 -> .36: jammy-updates carries one version at a time, so the` \
+        `# older point release stopped resolving and the layer failed to build once a` \
+        `# source edit invalidated the cache. Bump deliberately, as the pin policy says.` \
+        curl nano vim=2:8.2.3995-1ubuntu2.36 jq cron xclip locales python3-tk \
     && rm -rf /var/lib/apt/lists/*
 
 # Agent/env CLI separation — osworld's parity policy: the guest agent LACKS these CLIs, so move

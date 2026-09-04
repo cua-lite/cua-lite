@@ -233,6 +233,14 @@ async def evaluate_final_fn(
             try:
                 await _run_postconfig(computer, evaluator, cache_dir)
             except Exception as exc:
+                # Same reasoning as the per-metric handler below, and worse here:
+                # postconfig is what SAVES the app's state before anything is read,
+                # so a failure zeroes the whole trajectory before a single metric
+                # runs. Silently, outside --debug.
+                logger.warning(
+                    "scalecua postconfig raised %s: %s -- scoring 0.0",
+                    type(exc).__name__, exc,
+                )
                 if debug:
                     return 0.0, {"postconfig_error": str(exc)}
                 return 0.0
@@ -499,6 +507,18 @@ async def evaluate_scalecua_task(
                     1.0, conj, scores, details, debug, flush_stats=_flush_stats_snapshot(eval_env)
                 )
         except Exception as exc:
+            # A judge that CRASHED and an agent that genuinely earned nothing both
+            # land on 0.0, and outside --debug this branch used to leave no trace at
+            # all -- so a broken metric was indistinguishable from a hard task in
+            # every log and every published row. That is how 75 generated metrics
+            # calling helpers this overlay never defines (NameError, 132 live rows)
+            # stayed invisible until someone read the screenshots and saw the task
+            # finished on screen. Log unconditionally: the score still degrades to
+            # 0.0 for the caller, but the failure is now greppable.
+            logger.warning(
+                "scalecua metric %s raised %s: %s -- scoring 0.0",
+                fn_name, type(exc).__name__, exc,
+            )
             scores.append(0.0)
             if debug:
                 details.append({"func": fn_name, "error": str(exc), "score": 0.0})
