@@ -29,6 +29,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from lite.agents.core.agent import AutoAdapterAgent
+from lite.agents.types import AgentMessage
+from lite.core import LiteMessage
+
+
+#: The reply's own closing tag for the block ``build_generation_prompt`` opened.
+_THINK_CLOSE = "</think>"
 
 
 @dataclass
@@ -62,6 +68,36 @@ class Qwen3VLBaseAgent(
             tokenize=False,
             enable_thinking=enable_thinking,
         )
+
+    def _parse_generation_response(
+        self,
+        response: str,
+        *,
+        call_id_start: int,
+    ) -> tuple[AgentMessage, LiteMessage, str | None]:
+        """Trim the prompt-supplied ``<think>`` half out of the replay sidecar.
+
+        With ``enable_thinking`` on, ``build_generation_prompt`` above ends the
+        prompt at an OPEN ``<think>``, so the model's reply is only the second
+        half of that block: ``reasoning </think> answer``. The reasoning is
+        already parsed out into ``reasoning_content``, and the chat template
+        rebuilds the block from that field when it renders the turn as history.
+        Replaying the whole reply as the message CONTENT would therefore emit
+        the reasoning twice over -- once inside the template's block, once after
+        it -- and leave the reply's own ``</think>`` with no opening tag.
+
+        So the sidecar keeps only what belongs in ``content``. Tool-call markup
+        is untouched, which is what the byte-exact replay exists to preserve.
+        """
+        out_agent_message, out_lite_message, error = super()._parse_generation_response(
+            response, call_id_start=call_id_start
+        )
+        raw = out_lite_message.get("raw_response")
+        reasoning = out_lite_message.get("reasoning_content")
+        if raw and reasoning and _THINK_CLOSE in raw["text"]:
+            raw["text"] = raw["text"].split(_THINK_CLOSE, 1)[-1].lstrip("\n")
+            raw["reasoning_content"] = reasoning
+        return out_agent_message, out_lite_message, error
 
 
 # Desktop and browser share one agent class per task type — the
