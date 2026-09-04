@@ -21,6 +21,7 @@ from typing import Any
 
 from lite.core.tools import make_tool_call
 from lite.gym.envs.lite.cuagym.src.utils.container import write_text
+from lite.gym.errors import CuaGymTaskError
 from lite.gym.sandbox.base import SandboxBaseEnv
 from lite.gym.utils import config as env_config
 
@@ -97,10 +98,26 @@ async def validate_post_setup_runtime(
 
 async def window_ids(computer: Any) -> set[str]:
     """Return current X11 window IDs without depending on shell window names."""
-    result = await computer.interface.run_command(
-        "wmctrl -l 2>/dev/null | awk '{print $1}'"
-    )
-    return {line for line in (result.stdout or "").splitlines() if line}
+    # Every other X-touching command here names DISPLAY explicitly; this one used to
+    # ride whatever the image exported, which the transport deliberately does NOT
+    # promise ("DISPLAY/HOME ride the image env", exec_stdio/server.py). Silence made
+    # that dangerous rather than merely implicit: `2>/dev/null` dropped wmctrl's
+    # "cannot open display", and the pipe's exit code is awk's, so a broken X
+    # connection returned an EMPTY SET -- indistinguishable from "no windows yet".
+    # Every caller reads that as a missing window, which is a hard `no_task_window`
+    # setup failure for the browser and document branches.
+    result = await computer.interface.run_command("DISPLAY=:0 wmctrl -l")
+    if getattr(result, "returncode", 0) != 0:
+        raise CuaGymTaskError(
+            f"lite.cuagym cannot list windows: {(result.stderr or '').strip()[-200:]}",
+            phase="setup",
+            kind="command_failed",
+        )
+    return {
+        line.split(None, 1)[0]
+        for line in (result.stdout or "").splitlines()
+        if line.strip()
+    }
 
 
 async def wait_for_new_window(

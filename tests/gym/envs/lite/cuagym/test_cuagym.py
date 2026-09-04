@@ -878,12 +878,17 @@ def test_every_exclude_reason_is_used_by_the_pinned_catalogs():
         if (reason := (row["metadata"].get("others") or {}).get("exclude_reason"))
     ]
     assert set(tagged) <= set(dataset.EXCLUDE_REASONS)
-    assert (len(rows), len(tagged)) == (10910, 494)
+    assert (len(rows), len(tagged)) == (10910, 513)
     assert Counter(tagged) == Counter({
         "broken_reward:empty": 152,
         "broken_mock:blank_render": 81,
         "broken_reward:no_sentinel": 42,
         "broken_reward:syntax_error": 26,
+        # Structural, from dataset.reward_defect: the reward opens a `*_golden.*`
+        # only its authoring run had, while setup builds the same artifact without
+        # the suffix -- so os.path.exists is False on every trajectory and the
+        # script returns a SILENT 0.0 no matter what the agent did.
+        "broken_reward:missing_golden": 19,
         "broken_setup:unsatisfiable_gate": 1,
         "broken_setup:external_dependency": 8,
         "broken_setup:wrong_backend": 1,

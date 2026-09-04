@@ -113,6 +113,60 @@ RUN /opt/env/bin/uv pip install --python /opt/env/venv/bin/python --no-cache-dir
         playwright==1.60.0 \
         opencv-python-headless==4.13.0.90 pdfminer.six==20251107 toml==0.10.2
 
+# Passwordless sudo for the desktop user. 109 desktop setup scripts escalate as
+# `echo 'password' | sudo -S ...` and another 72 call bare `sudo ...`; NONE uses the
+# `echo user | sudo -S` idiom the parent's password-gated account expects (that idiom
+# is the OSWorld corpus's, and this corpus is not it). Bare `sudo` in a non-interactive
+# script only ever worked if the authoring VM was passwordless, so this restores what
+# those 181 bundles were written against instead of failing them at reset.
+#
+# Scoped to THIS image: the parent stays password-gated (`user:user`) for lite.osworld
+# and lite.scalecua, whose own generated tasks type that password. No capability is
+# added either way -- the account's password is its username, in plain sight.
+RUN printf 'user ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/99-cuagym-nopasswd \
+ && chmod 0440 /etc/sudoers.d/99-cuagym-nopasswd
+
+# A VM-parity `systemctl`, the same idiom the parent uses for `timedatectl` /
+# `hostname` / `powerprofilesctl`: "the OSWorld VM exposes systemd's ...; this
+# container does not run systemd, but tasks still expect the VM-shaped command
+# output. Install a shim so setup does not rewrite shell scripts on every reset."
+#
+# 738 desktop bundles drive services through systemctl. Real /usr/bin/systemctl is
+# the systemd binary and answers `System has not been booted with systemd as init
+# system (PID 1). Can't operate.` with rc=1, so `sudo systemctl restart nginx`
+# killed setup outright once passwordless sudo let it get that far.
+#
+# The packages these bundles install still ship SysV init scripts, and those work
+# here (verified: `service nginx start` -> rc=0, nginx serving). So map the verbs
+# onto /etc/init.d and answer the unit-state queries from the process table.
+# Env PATH only, so the agent's own `systemctl` keeps its real VM-shaped failure.
+RUN cat > /opt/env/bin/systemctl <<'SYSCTL' && chmod 0755 /opt/env/bin/systemctl
+#!/usr/bin/env bash
+# CUA-Gym env-side systemctl shim for upstream setup/reward scripts. See Dockerfile.
+set -u
+verb="${1:-}"; shift || true
+# Unit-file bookkeeping has no meaning without systemd, and every caller only cares
+# that it succeeded.
+case "$verb" in
+  daemon-reload|daemon-reexec|enable|disable|mask|unmask|preset) exit 0 ;;
+esac
+unit="${1:-}"; unit="${unit%.service}"
+[ -z "$unit" ] && exit 0
+case "$verb" in
+  is-active)  pgrep -x "$unit" >/dev/null && { echo active; exit 0; }; echo inactive; exit 3 ;;
+  is-enabled) echo enabled; exit 0 ;;
+  status)     service "$unit" status; exit $? ;;
+  start|stop|restart|reload|force-reload|try-restart)
+    [ "$verb" = force-reload ] && verb=restart
+    [ "$verb" = try-restart ] && verb=restart
+    if [ -x "/etc/init.d/$unit" ]; then service "$unit" "$verb"; exit $?; fi
+    # No init script: starting is a no-op the caller cannot act on, but stopping
+    # something that is running is still expected to work.
+    case "$verb" in stop) pkill -x "$unit" >/dev/null 2>&1; exit 0 ;; *) exit 0 ;; esac ;;
+esac
+exit 0
+SYSCTL
+
 # CUA-Gym shell setup scripts inherit exec-stdio's env PATH. Make their common
 # VM idioms env-side too:
 #   - `pip`, `pip3`, and `python3 -m pip` install into /opt/env/venv via uv.
@@ -248,6 +302,63 @@ for name in ("pip", "pip3", "pip3.12"):
     path.chmod(0o755)
 PY
 
+# The apt half of the same story. 130 desktop setup scripts `apt-get install` a tool
+# the source VM lacked; the parent strips /var/lib/apt/lists, so real apt answers
+# `E: Unable to locate package` (rc=100) and the script dies before turn_00.
+#
+# Two things must both hold, which is why this is a shim and not just restoring the
+# lists. Restoring them alone would let `apt-get install imagemagick|pandoc|tesseract-ocr`
+# SUCCEED and re-register convert/pandoc/tesseract on /usr/bin -- the agent-PATH re-leak
+# the parent's relocate step forbids, happening per task at reset, silently.
+#
+#   * Already provided (the image bakes every high-frequency package, most of them
+#     relocated to /opt/env/bin so dpkg no longer records them): exit 0, no network.
+#     This is where every CLI_FORBIDDEN name lands, so the leak path is never taken.
+#   * Anything else: refresh the lists ONCE per container, then run the real install so
+#     the package actually arrives, and re-run the relocate step afterwards in case a
+#     dependency dragged a forbidden CLI back onto /usr/bin. The refresh is lazy -- only
+#     the tasks that ask for an unbaked package pay it, not every reset.
+#
+# Env PATH only (/opt/env/bin), so the agent's own `apt-get` is untouched.
+RUN cat > /opt/env/bin/apt-get <<'SHIM' && chmod 0755 /opt/env/bin/apt-get \
+ && ln -sf /opt/env/bin/apt-get /opt/env/bin/apt
+#!/usr/bin/env bash
+# CUA-Gym env-side apt shim for upstream setup/reward scripts. See Dockerfile.
+set -u
+real=/usr/bin/apt-get
+[ "$(basename "$0")" = apt ] && real=/usr/bin/apt
+[ "${1:-}" != install ] && exec "$real" "$@"
+
+# Packages whose command the image provides from /opt/env/bin after the relocate
+# step, so dpkg no longer records them. Closed set: the parent's relocate list plus
+# this image's own. Every CLI_FORBIDDEN name is here.
+VENDORED=" imagemagick imagemagick-6.q16 xdotool xclip jq pandoc pdftk pdftk-java \
+ tesseract-ocr tesseract-ocr-eng sox sqlite3 cmake "
+HIDDEN="xdotool convert import mogrify identify compare composite montage animate conjure display stream \
+ xclip xsel jq pandoc pdftk tesseract sqlite3 sox cmake"
+
+missing=()
+for a in "$@"; do
+  case "$a" in install|-*) continue ;; esac
+  dpkg-query -W "$a" >/dev/null 2>&1 && continue
+  [[ "$VENDORED" == *" $a "* ]] && continue
+  missing+=("$a")
+done
+[ ${#missing[@]} -eq 0 ] && exit 0
+
+# Unbaked package: make the install actually work. The image bakes the apt indices, so
+# this normally needs no network -- refresh only if something emptied them, and only once.
+[ -n "$(ls -A /var/lib/apt/lists 2>/dev/null | grep -v '^lock$')" ] || [ -f /var/lib/lite/apt-refreshed ] || {
+  mkdir -p /var/lib/lite
+  DEBIAN_FRONTEND=noninteractive "$real" update >/dev/null 2>&1 && touch /var/lib/lite/apt-refreshed
+}
+shift
+DEBIAN_FRONTEND=noninteractive "$real" install "$@"
+rc=$?
+sh /opt/lite/relocate-clis.sh $HIDDEN >/dev/null 2>&1 || true
+exit $rc
+SHIM
+
 # --- desktop: the parent already owns gedit and the system-Python UNO bridge.
 #     Assert those inherited dependencies rather than reinstalling/upgrading
 #     base-pinned packages. Add only what CUA-Gym needs beyond the parent:
@@ -262,18 +373,81 @@ RUN dpkg-query -W gedit python3-uno >/dev/null \
       openssh-client rustc cargo \
  && rm -rf /var/lib/apt/lists/*
 
+# --- The four CLIs a setup script asks apt for that the parent does NOT already
+#     vendor. Everything else its `apt-get install` lines name is present already:
+#     convert/pandoc/jq/pdftotext/gs/node/ffmpeg/gimp/vlc/curl/gpg/java resolve on the
+#     env PATH, so those installs were only ever re-fetching what is here.
+#
+#     `relocate-clis.sh` MUST run after this install, exactly as the parent's own
+#     comment requires: tesseract, sqlite3 and sox are in the parity gate's
+#     CLI_FORBIDDEN, so leaving them on /usr/bin would re-leak them onto the agent
+#     PATH and change what the agent can do. cmake is not forbidden but is not in
+#     the OSWorld guest either, so it goes env-side for the same parity reason. ---
+RUN DEBIAN_FRONTEND=noninteractive apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      tesseract-ocr sqlite3 sox cmake \
+ && sh /opt/lite/relocate-clis.sh tesseract sqlite3 sox cmake \
+ && rm -rf /var/lib/apt/lists/*
+
 # A few official setup scripts need both LibreOffice's Python-3.10-only UNO
 # bridge and document libraries. Keep that combination env-facing under
 # /opt/env rather than installing those packages into the agent's system Python.
 RUN /opt/env/bin/uv venv --python /usr/bin/python3 --system-site-packages \
       /opt/env/uno-venv \
  && /opt/env/bin/uv pip install --python /opt/env/uno-venv/bin/python --no-cache-dir \
-      openpyxl==3.1.5 python-docx==1.1.2 odfpy==1.4.1
+      openpyxl==3.1.5 python-docx==1.1.2 odfpy==1.4.1 \
+ && chown -R user:user /home/user/.cache/uv
+
+# The uv steps above run as root but inherit HOME=/home/user, so uv writes its
+# INTERPRETER cache (`~/.cache/uv/interpreter-v4/<hash>/`) into the desktop user's
+# home as root — `--no-cache-dir` suppresses only the PACKAGE cache. The pip shim
+# above routes every `pip install` from a setup/reward script through uv as `user`,
+# and uv refreshes that same entry, so a root-owned directory makes those scripts
+# die with `Permission denied ... interpreter-v4/<hash>/.tmpXXXX` (rc=2 → a
+# CuaGymTaskError setup failure). 1006 of the 9405 desktop bundles install packages
+# at setup, so the chown above is what keeps that tenth of the split runnable.
+
 
 # --- browser side: Node 20 (NodeSource) to serve the mocks via `vite preview` ---
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs \
  && rm -rf /var/lib/apt/lists/*
+
+# Restore the parent's baked apt indices. This image's own apt RUNs each end with the
+# standard `rm -rf /var/lib/apt/lists/*`, which silently undid lite.osworld's deliberate
+# decision to KEEP them (see its Dockerfile: "the osworld VM guest ships populated
+# indices ... VM-faithful"). With them gone, `apt-get install <pkg>` answered
+# `E: Unable to locate package` for BOTH callers: a setup script at reset, and the AGENT
+# itself typing `sudo apt-get install ...` in the guest terminal -- something the real VM
+# allows and lite.osworld already allows. ~40-60 MB, and it keeps the reset critical path
+# free of network I/O.
+#
+# This does NOT reopen the agent-PATH leak: the env-side apt shim above short-circuits
+# every vendored package before real apt sees it, and re-runs the relocate step on the
+# installs that do go through.
+RUN DEBIAN_FRONTEND=noninteractive apt-get update -qq
+
+# Re-hide the parent's JRE CLIs. The parent removes java's siblings by walking every
+# /usr/bin symlink that resolves into /usr/lib/jvm, and warns that its step "MUST stay
+# after every apt install, or a later install could re-register the CLI on /usr/bin and
+# re-leak it onto the agent PATH". This image's apt RUNs sit after that step, and one of
+# them pulled an openjdk-11-jre point upgrade whose postinst re-ran
+# `update-alternatives --install` -- putting java/keytool/rmiregistry/jjs/jexec/pack200/
+# unpack200/rmid back on the agent PATH. `--no-upgrade` does not help: it constrains the
+# packages NAMED on the command line, not their dependencies.
+#
+# Same walk as the parent, so the set stays complete-by-construction rather than a list
+# that drifts, plus `java` itself (the parent vendors it to /opt/env/bin, which is where
+# LibreOffice and pdftk find it).
+RUN for l in /usr/bin/*; do [ -L "$l" ] || continue; \
+        case "$(readlink -f "$l" 2>/dev/null)" in \
+          /usr/lib/jvm/*) c="$(basename "$l")"; \
+                          update-alternatives --remove-all "$c" >/dev/null 2>&1 || true; \
+                          rm -f "$l" ;; \
+        esac; \
+    done \
+ && chmod -R a+rX /opt/env
+
 
 # --- browser side: one shared node_modules (union of mock deps) + the pre-built mocks ---
 COPY --chmod=0644 mocks-package.json /opt/mocks/package.json

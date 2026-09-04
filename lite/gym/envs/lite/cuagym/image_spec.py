@@ -3,9 +3,35 @@
 from __future__ import annotations
 
 import os
+import subprocess
 
 from lite.gym.utils.backend.freshness import ContainerImage
 from lite.gym.utils.config.manifest import baked_asset_lock_sources
+
+
+def _base_identity(base_image: str) -> str:
+    """The base's image ID when it is built, else its tag.
+
+    Hashing the TAG alone only catches a base whose Dockerfile changed -- and the
+    parent's Dockerfile is already a source above. It misses the other way a base
+    moves: a rebuild that changes CONTENT while the tag stays put, which is what an
+    apt dependency bump does (an openjdk point release re-registered java on
+    /usr/bin here without a single line of parent Dockerfile changing). That leaves
+    this image silently running on a stale base with no test able to see it.
+
+    Falls back to the tag when docker cannot answer -- a host with no daemon, or a
+    base that was never built. Both already fail later with a clearer error than a
+    freshness probe could give, and neither should make `image_for` raise.
+    """
+    try:
+        out = subprocess.run(
+            ["docker", "image", "inspect", "--format", "{{.Id}}", base_image],
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return base_image
+    image_id = out.stdout.strip()
+    return image_id if out.returncode == 0 and image_id else base_image
 
 
 def image_for(env_id: str) -> ContainerImage:
@@ -49,5 +75,5 @@ def image_for(env_id: str) -> ContainerImage:
             "lite/gym/envs/lite/cuagym/scripts/utils/import_desktop_tasks.py",
             "lite/gym/envs/lite/cuagym/scripts/utils/validation_sweep.py",
         ),
-        extra_hash_inputs=(f"base={base_image}",),
+        extra_hash_inputs=(f"base={_base_identity(base_image)}",),
     )
