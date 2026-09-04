@@ -1,5 +1,8 @@
-"""Shared Lite.OSWorld/Lite.CUAGym quality-ANNOTATION pass — the single step before
-stage/export_sft.
+"""Shared desktop quality-ANNOTATION pass — the single step before stage/export_sft.
+
+Used by Lite.OSWorld, Lite.CUAGym, Lite.ScaleCUA, and Lite.CUAWorld, and by every
+teacher within them: it runs on canonical Lite rows, after the adapter has already
+projected each model family's wire format, so it carries no model-family branch.
 
 Pipeline: collect (scripts/rollout.py) → **annotate** (this) → stage (lite.data.hf.stage)
 → upload; consumers download the published canonical dataset before ``export_sft``. Read
@@ -82,10 +85,12 @@ Three layers, grounded in per-batch trajectory audits:
      also performs an ordinary action, to an incomplete/failed trajectory, or to data
      whose terminal semantics are only structural.
 
-Usage (recommended — keeps Ctrl+S):  # <commit> = the batch's pinned cua-lite commit (see AGENTS.md)
+Usage (recommended — keeps Ctrl+S):  # <teacher>/<commit> per the dataset's
+                                     # per-teacher runbook, e.g.
+                                     # devs/data/lite.osworld/gpt5_5/AGENTS.md
     uv run python devs/data/lite.osworld/filter.py \
-        --log-root .data/rollout/lite.osworld/gpt/<commit>/train.synth \
-        --out      .data/rollout/lite.osworld/gpt/<commit>/train.synth_annotated \
+        --log-root .data/rollout/lite.osworld/<teacher>/<commit>/train.synth \
+        --out      .data/rollout/lite.osworld/<teacher>/<commit>/train.synth_annotated \
         --drop-loops --drop-undo-storm
 
 Tests: uv run pytest devs/data/lite.osworld/tests/test_lite_osworld_filter.py

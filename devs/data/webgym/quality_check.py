@@ -30,9 +30,9 @@ trajectories. NOTE: this measures ACTION-PATTERN quality only; it cannot tell
 whether an answer is truly grounded in a visited page (e.g. a search-card answer)
 — that needs an LLM/VLM grounding judge.
 
-Run (host):  # <commit> = pinned cua-lite commit; see devs/data/webgym/AGENTS.md §4
-    uv run python devs/data/webgym/quality_check.py .data/rollout/webgym/gpt/<commit>/d7
-    uv run python devs/data/webgym/quality_check.py .data/rollout/webgym/gpt/<commit>   # all tiers
+Run (host):  # <commit> = pinned cua-lite commit; see devs/data/webgym/gpt5_5/AGENTS.md
+    uv run python devs/data/webgym/quality_check.py .data/rollout/webgym/gpt5_5/<commit>/d7
+    uv run python devs/data/webgym/quality_check.py .data/rollout/webgym/gpt5_5/<commit>   # all tiers
 """
 from __future__ import annotations
 

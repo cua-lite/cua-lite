@@ -1,5 +1,5 @@
 {
-  "description": "Lite.ScaleCUA GPT-5.5 grounded teacher trajectories collected on ScaleCUA's OSWorld tasks and judges via the cua-lite `lite.scalecua` runtime; ordinary quality gates tagged in metadata.others.exclude_reason, publish-invalid tool leaks/OOB coordinates hard-dropped (filter with not exclude_reason and episode_return>0.5)",
+  "description": "Lite.ScaleCUA grounded teacher trajectories collected on ScaleCUA's OSWorld tasks and judges via the cua-lite `lite.scalecua` runtime, from two teachers published as separate configs (`*.gpt5_5` from gpt-5.5, `*.qwen3_8_27b` from Qwen/Qwen3.8-27B) and annotated by the same quality pass; ordinary quality gates tagged in metadata.others.exclude_reason, publish-invalid tool leaks/OOB coordinates hard-dropped (filter with not exclude_reason and episode_return>0.5)",
   "original_urls": [
     "https://github.com/THUDM/SCALE-CUA",
     "https://huggingface.co/datasets/extreme1228/ScaleCUA",

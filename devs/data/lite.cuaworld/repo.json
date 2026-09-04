@@ -1,5 +1,5 @@
 {
-  "description": "Lite.CUAWorld GPT-5.5 grounded teacher trajectories (train, 38 softwares) collected on Gym-Anything / CUA-World tasks and verifiers via the cua-lite `lite.cuaworld` runtime; trajectories kept except /opt/env and OOB-coordinate hard-drops, quality gates tagged in metadata.others.exclude_reason (filter with not exclude_reason and episode_return>0.5)",
+  "description": "Lite.CUAWorld grounded teacher trajectories (train, 38 softwares) collected on Gym-Anything / CUA-World tasks and verifiers via the cua-lite `lite.cuaworld` runtime, from two teachers published as separate configs (`*.gpt5_5` from gpt-5.5, `*.qwen3_8_27b` from Qwen/Qwen3.8-27B) and annotated by the same quality pass; trajectories kept except /opt/env and OOB-coordinate hard-drops, quality gates tagged in metadata.others.exclude_reason (filter with not exclude_reason and episode_return>0.5)",
   "original_urls": [
     "https://github.com/cmu-l3/gym-anything",
     "https://arxiv.org/abs/2604.06126"

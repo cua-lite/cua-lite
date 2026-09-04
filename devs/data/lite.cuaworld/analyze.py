@@ -17,7 +17,7 @@ software's log-root, or a parent dir holding several ``<software>/`` roots.
 Memory-safe: reads one sample's summary.json + trajectory.parquet at a time.
 
     uv run python devs/data/lite.cuaworld/analyze.py \
-        --log-root .data/rollout/lite.cuaworld/gpt/<commit>
+        --log-root .data/rollout/lite.cuaworld/gpt5_5/<commit>
 """
 from __future__ import annotations
 

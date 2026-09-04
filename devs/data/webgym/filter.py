@@ -81,7 +81,8 @@ Run (host):
         --drop-failed --drop-loops --drop-serp-only \
         --drop-captcha --drop-unsubmitted --drop-illposed-task
     # then stage the --out root (stage no longer filters): see
-    #   devs/data/webgym/AGENTS.md §5 / docs/examples/rollout_to_hf.md.
+    #   devs/data/webgym/AGENTS.md (Stage, Upload Transport, And Download) /
+    #   docs/examples/rollout_to_hf.md.
     # tests: uv run pytest devs/data/webgym/tests/test_webgym_filter.py
 
 Default stripped set is the env-agnostic ``screenshot,wait`` pair; override with

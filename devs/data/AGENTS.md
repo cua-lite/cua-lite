@@ -10,7 +10,7 @@ promoted dataset batch. The row must include:
 
 | Field | Required evidence |
 |---|---|
-| Dataset / cohort | Dataset name plus config/cohort names, e.g. `Lite.OSWorld desktop.use.synth` |
+| Dataset / cohort | Dataset name plus config/cohort names, e.g. `Lite.OSWorld desktop.use.synth.gpt5_5` |
 | Producing commit | Pinned cua-lite commit or batch tag used for collection/filter/export |
 | Command | Exact collect/preproc/filter/stage command, including filters and `--config-path` |
 | Raw subset | Source split, prompt-data parquet, task-id list, or log-root glob |

@@ -24,9 +24,19 @@ COMMAND_DOC_PATHS = (
     "devs/agents/local/mai_ui.md",
     "devs/agents/local/step_gui.md",
     "devs/data/lite.cuagym/AGENTS.md",
+    "devs/data/lite.cuagym/gpt5_5/AGENTS.md",
+    "devs/data/lite.cuagym/qwen3_8_27b/AGENTS.md",
     "devs/data/lite.cuaworld/AGENTS.md",
+    "devs/data/lite.cuaworld/gpt5_5/AGENTS.md",
+    "devs/data/lite.cuaworld/qwen3_8_27b/AGENTS.md",
     "devs/data/lite.osworld/AGENTS.md",
+    "devs/data/lite.osworld/gpt5_5/AGENTS.md",
+    "devs/data/lite.osworld/qwen3_8_27b/AGENTS.md",
     "devs/data/lite.scalecua/AGENTS.md",
+    "devs/data/lite.scalecua/gpt5_5/AGENTS.md",
+    "devs/data/lite.scalecua/qwen3_8_27b/AGENTS.md",
+    "devs/data/webgym/AGENTS.md",
+    "devs/data/webgym/gpt5_5/AGENTS.md",
     "devs/envs/AGENTS.md",
     "devs/envs/lite.cuagym/AGENTS.md",
     "devs/envs/lite.osworld/synth/vlc.md",
@@ -183,7 +193,16 @@ def _normalize_placeholders(command: str) -> str:
         "$SW": "pymol",
         "$SUB": "synth",
         "$COMMIT": "abc1234",
+        "$TRAIN_N": "16139",
         "$CUAGYM_INPUT": "/tmp/prompt.parquet",
+        "${CUAGYM_INPUT%.parquet}": "/tmp/prompt",
+        "$PLAT": "desktop",
+        "<GPU_A>": "0",
+        "<GPU_B>": "1",
+        "$SGLANG_URL": "http://127.0.0.1:30000",
+        "$D": "7",          # webgym difficulty tier
+        "$N": "2000",       # webgym per-tier attempt budget
+        "$REC": "/tmp/reconstructed",
         "$CUAWORLD_CONCURRENCY": "24",
         "$LOG_ROOT": ".logs/rollout/test",
         "$RESUME_ROOT": ".logs/rollout/test",
@@ -350,13 +369,20 @@ def test_documented_rollout_commands_parse_without_running() -> None:
     parser = make_infer_parser()
     parsed_docs = set()
 
+    # Mirrors ``LiteCUAMetadata``: ``dims`` is the (platform, task_type) routing
+    # pair, and ``others`` is the domain catch-all. Documented filters slice on
+    # both, so a stub missing either would let a broken filter through.
     sample = SimpleNamespace(
+        dims=("desktop", "use"),
+        platform="desktop",
+        task_type="use",
         others={
             "exclude_reason": None,
             "episode_return": 1.0,
             "domain": "chrome",
             "sites": [],
-        }
+            "task_id": "some_task_0001",
+        },
     )
     for command in rollout_commands:
         args = _tokens_after(command.tokens, ("uv", "run", "python", "scripts/rollout.py"))
@@ -377,6 +403,26 @@ def test_documented_rollout_commands_parse_without_running() -> None:
             _assert_json_dict(parsed, attr)
         if parsed.filter_expr:
             assert isinstance(parse_filter(parsed.filter_expr)(sample), bool)
+        # ``--prompt-data`` selects tasks from a frozen parquet, so the registry
+        # selectors do not apply and ``_resolve_run_tasks`` raises on the pair.
+        # argparse accepts them together, so only this check catches a doc that
+        # combines them.
+        if parsed.prompt_data:
+            assert parsed.filter_expr is None, (
+                f"{command.doc}: --filter is rejected with --prompt-data "
+                f"(lite/infer/rollout.py); filter the frozen parquet instead\n"
+                f"{command.text}"
+            )
+            assert parsed.splits is None, (
+                f"{command.doc}: --splits is rejected with --prompt-data\n"
+                f"{command.text}"
+            )
+        # A repeated ``--filter`` is last-wins, so a doc that appends a second one
+        # silently drops the first (typically the ``exclude_reason`` gate).
+        assert list(args).count("--filter") <= 1, (
+            f"{command.doc}: two --filter flags — argparse keeps only the last, "
+            f"so the earlier gate is silently dropped\n{command.text}"
+        )
 
     assert "devs/agents/local/fara.md" in parsed_docs
     assert "devs/envs/lite.osworld/validate/rollout/plan.md" in parsed_docs
@@ -669,3 +715,16 @@ def test_waa_direct_and_server_smoke_snippets_are_parseable_python() -> None:
         assert '"action": "drag"' in body
         assert "call_waa_action_smoke" in body
         assert "await env.close()" in body
+
+def test_documented_code_fences_are_balanced() -> None:
+    """An unclosed ```fence swallows the prose after it into the code block, and
+    the shell comments that follow render as headings. Both are invisible to the
+    command extractor, which reads fenced blocks only — so nothing else catches
+    it. Cheap to check, and it has bitten this manifest before."""
+    unbalanced = []
+    for rel in COMMAND_DOC_PATHS:
+        text = (ROOT / rel).read_text()
+        opens = sum(1 for line in text.splitlines() if line.startswith("```"))
+        if opens % 2:
+            unbalanced.append(f"{rel} ({opens} fence markers)")
+    assert not unbalanced, "unclosed code fence:\n  " + "\n  ".join(unbalanced)
