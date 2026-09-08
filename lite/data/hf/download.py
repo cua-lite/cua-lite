@@ -298,6 +298,7 @@ def download_dataset(
     snapshot_dir: Path | None = None,
     allow_patterns: list[str] | str | None = None,
     overwrite: bool = False,
+    max_workers: int = 16,
 ) -> Path:
     """Pull ``<org>/<name>`` and rewrite to canonical local layout.
 
@@ -322,6 +323,10 @@ def download_dataset(
     makes step 1 of ``devs/migration`` (pull the old rows) unrunnable on exactly
     the rows migration exists to fix.
 
+    *max_workers* is the shard fetch concurrency (``snapshot_download``'s own
+    default is 8; these repos are hundreds of shards, so the default here is
+    higher).
+
     *allow_patterns* restricts BOTH the fetch and the walk to matching paths —
     useful to pull a single cohort (``mobile/grounding.point/**``) instead of the
     full repo. Shell-glob syntax (fnmatch); a ``(desktop|browser|mobile)/...``
@@ -338,7 +343,7 @@ def download_dataset(
         log.info("snapshot_download %s (allow_patterns=%s)", repo_id, allow_patterns)
         snapshot_dir = Path(snapshot_download(
             repo_id=repo_id, repo_type="dataset", revision=revision,
-            allow_patterns=allow_patterns,
+            allow_patterns=allow_patterns, max_workers=max_workers,
         ))
     else:
         snapshot_dir = Path(snapshot_dir)
@@ -469,6 +474,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--overwrite", action="store_true",
                    help="replace an existing non-empty output dir. Without this, download "
                         "requires a fresh --out so old cohorts cannot survive a subset rerun.")
+    p.add_argument("--max-workers", type=int, default=16,
+                   help="shard fetch concurrency (default: 16; snapshot_download's own "
+                        "default is 8, which is slow for the several-hundred-shard repos)")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
@@ -484,6 +492,7 @@ def main(argv: list[str] | None = None) -> int:
         snapshot_dir=args.snapshot_dir,
         allow_patterns=args.allow_patterns,
         overwrite=args.overwrite,
+        max_workers=args.max_workers,
     )
     return 0
 

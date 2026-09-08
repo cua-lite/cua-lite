@@ -1,13 +1,12 @@
-# Lite v1 — desktop.use consolidated training walkthrough
+# Lite v1 — desktop.use teacher-comparison training walkthrough
 
 ## Desktop
 
-Train one model on **several desktop.use datasets at once** by concatenating them into a single
-SFT parquet — here **Lite.ScaleCUA + Lite.CUAGym**; add more as they land. They share the same
-`qwen3_5` reasoning adapter and identical `agent_kwargs`, so one config drives the export.
-Lite.ScaleCUA is far larger, so we cap it to 5000 train trajectories (as in
-[README.md](/README.md#sft-any-cua-on-any-datasets)) and concatenate that with the full
-Lite.CUAGym set.
+Train **two checkpoints on the same tasks from two different teachers** — `gpt5_5` and
+`qwen3_8_27b` — and compare them head to head on the same eval. Both draw from
+**Lite.ScaleCUA**, whose `desktop.use.train` rows are published one shard per teacher, and both
+are capped at 5000 train trajectories (as in
+[README.md](/README.md#sft-any-cua-on-any-datasets)) so the only moving part is the teacher.
 
 ### SFT
 
@@ -16,57 +15,54 @@ Lite.CUAGym set.
 ```bash
 # --- host ---
 export CUA_LITE_DATASETS_ROOT="$PWD/.data/huggingface"
-OUT=.data/sft/qwen3_5-reasoning/desktop.use
-
-# 1. download both datasets into the local dataset cache
-uv run python -m lite.data.hf.download Lite.ScaleCUA --out "${CUA_LITE_DATASETS_ROOT}/cua-lite/Lite.ScaleCUA"
-uv run python -m lite.data.hf.download Lite.CUAGym   --out "${CUA_LITE_DATASETS_ROOT}/cua-lite/Lite.CUAGym"
-
-# 2. internalize CoT: the config reasons in Qwen3.5's native <think> channel, but the teacher
-#    saved its Thought as an inline_reasoning part. Move it into reasoning_content, which the
-#    chat template renders as <think>. Images stay path-referenced, so the .think copy is tiny.
-for ds in Lite.ScaleCUA Lite.CUAGym; do
-  uv run python examples/lite/v1/internalize_cot.py \
-    --in "${CUA_LITE_DATASETS_ROOT}/cua-lite/${ds}" --out "${CUA_LITE_DATASETS_ROOT}/cua-lite/${ds}.think"
-done
-
-# 3. export one SFT parquet per dataset (--image-root = the dir ABOVE cua-lite/). --filter keeps
-#    the clean, successful trajectories. --sample is GLOBAL over --data-paths, so Lite.ScaleCUA is
-#    exported on its own to cap only it.
+OUT=.data/sft/qwen3_5/desktop.use
 FILTER="lambda m: not m.others.get('exclude_reason') and (m.others.get('episode_return') or 0) > 0.5"
 
-uv run python -m lite.train.export.export_sft \
-  --config examples/lite/v1/configs/qwen3_5/desktop.use.compact.reasoning.yaml \
-  --model-id Qwen/Qwen3.5-4B \
-  --data-paths "${CUA_LITE_DATASETS_ROOT}/cua-lite/Lite.ScaleCUA.think" \
-  --image-root "${CUA_LITE_DATASETS_ROOT}" \
-  --filter "$FILTER" --sample 5000 --seed 42 \
-  -o "$OUT/scalecua_5k.parquet"
+# One download + one export per teacher. The HF config name IS the shard directory on the Hub
+# (`<platform>/<task_type>/<split>/<variant>/shard-*.parquet`), so `--allow-patterns` selects a
+# teacher by that same name — the token you would pass to
+# `load_dataset("cua-lite/Lite.ScaleCUA", "desktop.use.train.gpt5_5")`.
+#
+# Each teacher gets its own root, and that costs nothing: image bytes are embedded in the shards
+# on the Hub, so a root only ever materializes the images its own shards carry. `download`
+# reshapes the Hub layout to the local one and extracts those bytes back into `<root>/images/`,
+# which is why the root must keep the canonical `cua-lite/Lite.ScaleCUA/` tail — rows reference
+# images as `cua-lite/<Name>/images/...`, resolved against `--image-root`.
+#
+# `--filter` runs before `--sample`, so the 5000 cap lands per teacher.
+# `--overwrite` is what makes this block re-runnable: `download` refuses a non-empty
+# `--out` so an earlier subset pull cannot survive into a later one.
+for T in gpt5_5 qwen3_8_27b; do
+  uv run python -m lite.data.hf.download Lite.ScaleCUA \
+    --allow-patterns "desktop/use/train/desktop.use.train.$T/*" \
+    --out ".data/huggingface-$T/cua-lite/Lite.ScaleCUA" --overwrite
 
-uv run python -m lite.train.export.export_sft \
-  --config examples/lite/v1/configs/qwen3_5/desktop.use.compact.reasoning.yaml \
-  --model-id Qwen/Qwen3.5-4B \
-  --data-paths "${CUA_LITE_DATASETS_ROOT}/cua-lite/Lite.CUAGym.think" \
-  --image-root "${CUA_LITE_DATASETS_ROOT}" \
-  --filter "$FILTER" \
-  -o "$OUT/cuagym.parquet"
-
-# 4. concat the two into one training set
-uv run python -m lite.data.merge -i "$OUT/cuagym.parquet" "$OUT/scalecua_5k.parquet" -o "$OUT/train.parquet"
+  uv run python -m lite.train.export.export_sft \
+    --config examples/lite/v1/configs/qwen3_5/desktop.use.compact.yaml \
+    --model-id Qwen/Qwen3.5-4B \
+    --data-paths ".data/huggingface-$T/cua-lite/Lite.ScaleCUA" \
+    --image-root ".data/huggingface-$T" \
+    --filter "$FILTER" --sample 5000 --seed 42 --no-strict \
+    -o "$OUT/scalecua_5k.$T.parquet"
+done
 ```
+
 
 #### Train
 
 ```bash
 # --- Slime container ---
-# Same SFT recipe, pointed at the desktop.use parquet. SFT at TP=2 (8 GPUs → DP=4).
-# BSHD + MBS; do NOT pass MAX_TOKENS_PER_GPU (qwen3_5/GDN can't THD-pack). One ckpt per epoch.
-TP_SIZE=2 MBS=1 NUM_TRAIN_GPUS=8 \
-  MODEL_ID=Qwen/Qwen3.5-4B \
-  SAVE=1 NO_SAVE_OPTIM=1 NUM_EPOCH=3 GLOBAL_BATCH_SIZE=32 LR=5e-6 \
-  PROMPT_DATA=/workspaces/cua-lite/.data/sft/qwen3_5-reasoning/desktop.use/train.parquet \
-  SAVE_HF_DIR=/workspaces/cua-lite/.ckpts/qwen3_5-reasoning-4b/desktop.use/sft/iter_{rollout_id} \
-  bash /workspaces/cua-lite/scripts/train/run_sft.sh
+# One run per teacher, same recipe, only PROMPT_DATA and SAVE_HF_DIR differ. SFT at TP=2
+# (8 GPUs → DP=4). BSHD + MBS; do NOT pass MAX_TOKENS_PER_GPU (qwen3_5/GDN can't THD-pack).
+# One ckpt per epoch. Run them one after the other: each takes all 8 GPUs.
+for T in gpt5_5 qwen3_8_27b; do
+  TP_SIZE=2 MBS=1 NUM_TRAIN_GPUS=8 \
+    MODEL_ID=Qwen/Qwen3.5-4B \
+    SAVE=1 NO_SAVE_OPTIM=1 NUM_EPOCH=3 GLOBAL_BATCH_SIZE=32 LR=5e-6 \
+    PROMPT_DATA=/workspaces/cua-lite/.data/sft/qwen3_5/desktop.use/scalecua_5k.$T.parquet \
+    SAVE_HF_DIR=/workspaces/cua-lite/.ckpts/qwen3_5-4b/desktop.use/sft.$T/iter_{rollout_id} \
+    bash /workspaces/cua-lite/scripts/train/run_sft.sh
+done
 ```
 
 - `MBS=1` is the safe start (4-image steps are heavy); raise to `MBS=2` only if it fits.
@@ -74,9 +70,9 @@ TP_SIZE=2 MBS=1 NUM_TRAIN_GPUS=8 \
 
 #### Eval
 
-Base model vs SFT checkpoint on the full `lite.osworld` eval split (332 scored tasks after
-`--filter`) — the [Lite.OSWorld row](/docs/eval.md#osworld--liteosworld) of
-[docs/eval.md](/docs/eval.md). Env setup:
+Three runs — base model and both SFT checkpoints — on the full `lite.osworld` eval split
+(332 scored tasks after `--filter`) — the [Lite.OSWorld row](/docs/eval.md#osworld--liteosworld)
+of [docs/eval.md](/docs/eval.md). Env setup:
 [`lite/gym/envs/lite/osworld/README.md`](/lite/gym/envs/lite/osworld/README.md).
 
 ```bash
@@ -91,118 +87,121 @@ CUDA_VISIBLE_DEVICES=0 uv run python scripts/rollout.py \
   --config-path examples/lite/v1/configs/qwen3_5/desktop.use.compact.yaml \
   --log-root .logs/rollout/Qwen_Qwen3.5-4B/lite.osworld/base &
 
-# SFT checkpoint (GPU 1)
+# SFT on gpt5_5 data (GPU 1)
 CUDA_VISIBLE_DEVICES=1 uv run python scripts/rollout.py \
-  --model-id Qwen/Qwen3.5-4B --model-path .ckpts/qwen3_5-reasoning-4b/desktop.use/sft/iter_<N> \
+  --model-id Qwen/Qwen3.5-4B --model-path .ckpts/qwen3_5-4b/desktop.use/sft.gpt5_5/iter_<N> \
   --env-id lite.osworld --splits eval --concurrency 8 \
   --filter "lambda m: not m.others.get('exclude_reason')" \
   --sampling-kwargs '{"temperature":0,"top_p":1}' \
-  --config-path examples/lite/v1/configs/qwen3_5/desktop.use.compact.reasoning.yaml \
-  --log-root .logs/rollout/Qwen_Qwen3.5-4B/lite.osworld/sft &
+  --config-path examples/lite/v1/configs/qwen3_5/desktop.use.compact.yaml \
+  --log-root .logs/rollout/Qwen_Qwen3.5-4B/lite.osworld/sft.gpt5_5 &
+
+# SFT on qwen3_8_27b data (GPU 2)
+CUDA_VISIBLE_DEVICES=2 uv run python scripts/rollout.py \
+  --model-id Qwen/Qwen3.5-4B --model-path .ckpts/qwen3_5-4b/desktop.use/sft.qwen3_8_27b/iter_<N> \
+  --env-id lite.osworld --splits eval --concurrency 8 \
+  --filter "lambda m: not m.others.get('exclude_reason')" \
+  --sampling-kwargs '{"temperature":0,"top_p":1}' \
+  --config-path examples/lite/v1/configs/qwen3_5/desktop.use.compact.yaml \
+  --log-root .logs/rollout/Qwen_Qwen3.5-4B/lite.osworld/sft.qwen3_8_27b &
 
 wait
 ```
 
 Score each run from `.logs/rollout/<model_slug>/<env_id>/<role>/summary.json` →
-`stats.mean_episode_return` (denominator is `num_valid`).
+`stats.mean_episode_return` (denominator is `num_valid`). All three runs use the same tasks,
+seeds, and step budget, so the only moving part is the teacher the checkpoint was trained on.
 
 <!--
 ## Ablations
 
-The reasoning ablation: train a second checkpoint on the same trajectories with the same
-recipe, only swapping `desktop.use.compact.reasoning.yaml` for `desktop.use.compact.yaml`
-(Action-only, no `<think>` channel). Everything below mirrors [SFT](#sft) step for step.
+The reasoning ablation: train a checkpoint with the same recipe, only swapping
+`desktop.use.compact.yaml` for `desktop.use.compact.reasoning.yaml` (reasoning in Qwen3.5's
+native `<think>` channel). Everything below mirrors [SFT](#sft) step for step, so it yields one
+more checkpoint comparable to its Action-only counterpart.
 
-One flow difference, and it is forced: `desktop.use.compact.yaml` leaves `enable_thinking` off
-(the adapter default), so it must export from the ORIGINAL datasets, not the `.think` copies.
-Exporting `.think` data with thinking off fails fast — the internalized reasoning lives in the
-target, so the prompt/target boundary no longer holds (`SFT prompt/target boundary broke
-(enable_thinking=False)`). So there is no internalize-CoT step here.
+**This ablation applies to `gpt5_5` only.** It is the one teacher whose rows carry a Thought:
+`gpt5_5` is prompted for a `Thought:` line and stores it as an `inline_reasoning` part, while
+`qwen3_8_27b` runs with thinking off and stores only `action_description` + `tool_calls`
+(see [the dataset runbook](/devs/data/lite.scalecua/AGENTS.md)). Running internalize-CoT on the
+`qwen3_8_27b` root is a no-op, and exporting it under a thinking-enabled config would train an
+empty `<think>` block.
 
-### SFT (Action-only)
+One flow difference, and it is forced: `desktop.use.compact.reasoning.yaml` reasons in the
+`<think>` channel, so the Thought must first be moved out of `inline_reasoning` and into
+`reasoning_content` — an extra internalize-CoT step producing a `.think` copy, which this flow
+exports from. Exporting `.think` data with thinking off fails fast in the other direction
+(`SFT prompt/target boundary broke (enable_thinking=False)`): the internalized reasoning lives
+in the target, so the prompt/target boundary no longer holds.
 
-#### Export
+### SFT (Reasoning)
+
+#### Export (Reasoning)
 
 ```bash
 # --- host ---
 export CUA_LITE_DATASETS_ROOT="$PWD/.data/huggingface"
-OUT=.data/sft/qwen3_5/desktop.use
-
-# 1. export one SFT parquet per dataset (--image-root = the dir ABOVE cua-lite/). --filter keeps
-#    the clean, successful trajectories. --sample is GLOBAL over --data-paths, so Lite.ScaleCUA is
-#    exported on its own to cap only it. Both datasets are already in the cache from the SFT flow
-#    above; these are the ORIGINAL trees, not the .think copies.
+OUT=.data/sft/qwen3_5-reasoning/desktop.use
 FILTER="lambda m: not m.others.get('exclude_reason') and (m.others.get('episode_return') or 0) > 0.5"
 
+# The gpt5_5 root is already downloaded by the SFT flow above. Internalize CoT into a sibling
+# `.think` root, then export from that. Images stay path-referenced, so the `.think` copy is
+# tiny — but its rows still resolve images against the ORIGINAL root, which is why
+# `--image-root` keeps pointing there.
+T=gpt5_5
+
+uv run python examples/lite/v1/internalize_cot.py \
+  --in  ".data/huggingface-$T/cua-lite/Lite.ScaleCUA" \
+  --out ".data/huggingface-$T/cua-lite/Lite.ScaleCUA.think"
+
 uv run python -m lite.train.export.export_sft \
-  --config examples/lite/v1/configs/qwen3_5/desktop.use.compact.yaml \
+  --config examples/lite/v1/configs/qwen3_5/desktop.use.compact.reasoning.yaml \
   --model-id Qwen/Qwen3.5-4B \
-  --data-paths "${CUA_LITE_DATASETS_ROOT}/cua-lite/Lite.ScaleCUA" \
-  --image-root "${CUA_LITE_DATASETS_ROOT}" \
+  --data-paths ".data/huggingface-$T/cua-lite/Lite.ScaleCUA.think" \
+  --image-root ".data/huggingface-$T" \
   --filter "$FILTER" --sample 5000 --seed 42 \
-  -o "$OUT/scalecua_5k.parquet"
-
-uv run python -m lite.train.export.export_sft \
-  --config examples/lite/v1/configs/qwen3_5/desktop.use.compact.yaml \
-  --model-id Qwen/Qwen3.5-4B \
-  --data-paths "${CUA_LITE_DATASETS_ROOT}/cua-lite/Lite.CUAGym" \
-  --image-root "${CUA_LITE_DATASETS_ROOT}" \
-  --filter "$FILTER" \
-  -o "$OUT/cuagym.parquet"
-
-# 2. concat the two into one training set
-uv run python -m lite.data.merge -i "$OUT/cuagym.parquet" "$OUT/scalecua_5k.parquet" -o "$OUT/train.parquet"
+  -o "$OUT/scalecua_5k.$T.parquet"
 ```
 
-#### Train
+#### Train (Reasoning)
 
 ```bash
 # --- Slime container ---
-# Same SFT recipe, pointed at the Action-only desktop.use parquet. SFT at TP=2 (8 GPUs → DP=4).
-# BSHD + MBS; do NOT pass MAX_TOKENS_PER_GPU (qwen3_5/GDN can't THD-pack). One ckpt per epoch.
+# Same recipe as the Action-only runs, only PROMPT_DATA and SAVE_HF_DIR differ. SFT at TP=2
+# (8 GPUs → DP=4). BSHD + MBS; do NOT pass MAX_TOKENS_PER_GPU (qwen3_5/GDN can't THD-pack).
+# One ckpt per epoch. A single run: this ablation has one teacher.
 TP_SIZE=2 MBS=1 NUM_TRAIN_GPUS=8 \
   MODEL_ID=Qwen/Qwen3.5-4B \
   SAVE=1 NO_SAVE_OPTIM=1 NUM_EPOCH=3 GLOBAL_BATCH_SIZE=32 LR=5e-6 \
-  PROMPT_DATA=/workspaces/cua-lite/.data/sft/qwen3_5/desktop.use/train.parquet \
-  SAVE_HF_DIR=/workspaces/cua-lite/.ckpts/qwen3_5-4b/desktop.use/sft/iter_{rollout_id} \
+  PROMPT_DATA=/workspaces/cua-lite/.data/sft/qwen3_5-reasoning/desktop.use/scalecua_5k.gpt5_5.parquet \
+  SAVE_HF_DIR=/workspaces/cua-lite/.ckpts/qwen3_5-reasoning-4b/desktop.use/sft.gpt5_5/iter_{rollout_id} \
   bash /workspaces/cua-lite/scripts/train/run_sft.sh
 ```
 
 - `MBS=1` is the safe start (4-image steps are heavy); raise to `MBS=2` only if it fits.
 - TP=2 fits the 4-image step at 4B; fall back to `TP_SIZE=4` only if it OOMs.
 
-#### Eval
+#### Eval (Reasoning)
 
-Base model vs SFT checkpoint on the full `lite.osworld` eval split (332 scored tasks after
-`--filter`) — the [Lite.OSWorld row](/docs/eval.md#osworld--liteosworld) of
-[docs/eval.md](/docs/eval.md). Env setup:
-[`lite/gym/envs/lite/osworld/README.md`](/lite/gym/envs/lite/osworld/README.md).
+One run — `gpt5_5` is the only teacher this ablation has — on the same `lite.osworld` eval
+split as [Eval](#eval). The base model is already scored there; it is not re-run.
 
 ```bash
 # --- host ---  (replace iter_<N> with the saved iter, e.g. iter_369 for epoch 3)
 
-# base (GPU 0)
+# reasoning SFT on gpt5_5 data (GPU 0)
 CUDA_VISIBLE_DEVICES=0 uv run python scripts/rollout.py \
   --model-id Qwen/Qwen3.5-4B \
+  --model-path .ckpts/qwen3_5-reasoning-4b/desktop.use/sft.gpt5_5/iter_<N> \
   --env-id lite.osworld --splits eval --concurrency 8 \
   --filter "lambda m: not m.others.get('exclude_reason')" \
   --sampling-kwargs '{"temperature":0,"top_p":1}' \
-  --config-path examples/lite/v1/configs/qwen3_5/desktop.use.compact.yaml \
-  --log-root .logs/rollout/Qwen_Qwen3.5-4B/lite.osworld/base &
-
-# SFT checkpoint (GPU 1)
-CUDA_VISIBLE_DEVICES=1 uv run python scripts/rollout.py \
-  --model-id Qwen/Qwen3.5-4B --model-path .ckpts/qwen3_5-4b/desktop.use/sft/iter_<N> \
-  --env-id lite.osworld --splits eval --concurrency 8 \
-  --filter "lambda m: not m.others.get('exclude_reason')" \
-  --sampling-kwargs '{"temperature":0,"top_p":1}' \
-  --config-path examples/lite/v1/configs/qwen3_5/desktop.use.compact.yaml \
-  --log-root .logs/rollout/Qwen_Qwen3.5-4B/lite.osworld/sft &
-
-wait
+  --config-path examples/lite/v1/configs/qwen3_5/desktop.use.compact.reasoning.yaml \
+  --log-root .logs/rollout/Qwen_Qwen3.5-4B/lite.osworld/sft.reasoning.gpt5_5
 ```
 
-Compare `stats.mean_episode_return` against the reasoning checkpoint from [Eval](#eval). Both runs
-use the same tasks, seeds, and step budget, so the only moving part is the `<think>` channel.
-Do not compare runs that use different task sets, sampling configurations, or task budgets.
+Compare its `stats.mean_episode_return` against the `gpt5_5` Action-only checkpoint from
+[Eval](#eval). Both use the same tasks, seeds, and step budget, so the only moving part is the
+`<think>` channel. Do not compare runs that use different task sets, sampling
+configurations, or task budgets.
 -->

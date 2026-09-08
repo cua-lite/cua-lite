@@ -48,6 +48,7 @@ from pathlib import Path
 
 from datasets import Dataset, Image, Sequence
 from huggingface_hub import CommitOperationAdd, CommitOperationDelete, HfApi, create_repo
+from huggingface_hub.errors import HfHubHTTPError
 
 from lite.data.hf.card import load_repo_json, render_card
 from lite.data.hf.fold import fold_rows, should_fold
@@ -467,8 +468,37 @@ def main(argv: list[str] | None = None) -> int:
                 log.warning("could not resolve git commit for default tag; skipping tag")
         if tag:
             repo_id = f"{args.org}/{args.name}"
-            HfApi().create_tag(repo_id, tag=tag, repo_type="dataset", exist_ok=True)
-            log.info("created HF tag '%s' on %s", tag, repo_id)
+            api = HfApi()
+            # A re-publish under the same tag name is the NORMAL case (the default
+            # tag is the git short HEAD, so publishing twice from one commit reuses
+            # it). ``exist_ok=True`` would leave the tag on the superseded revision
+            # while still logging success, which silently breaks the one thing the
+            # tag is for: pinning THIS data. Move it instead.
+            try:
+                api.create_tag(repo_id, tag=tag, repo_type="dataset")
+                log.info("created HF tag '%s' on %s", tag, repo_id)
+            except HfHubHTTPError as exc:
+                if exc.response.status_code != 409:
+                    raise
+                # 409 == the tag exists. The Hub has no move, so this is
+                # delete-then-create, and the window between them is the one way
+                # this can end with NO tag: say so with the superseded revision in
+                # hand, because that is what an operator needs to put it back.
+                superseded = api.dataset_info(repo_id, revision=tag).sha
+                api.delete_tag(repo_id, tag=tag, repo_type="dataset")
+                try:
+                    api.create_tag(repo_id, tag=tag, repo_type="dataset")
+                except Exception as recreate_failed:
+                    raise RuntimeError(
+                        f"tag {tag!r} on {repo_id} was deleted but could not be "
+                        f"recreated, so the repo now has NO {tag!r}; the data is "
+                        f"pushed and reachable on main. It previously pointed at "
+                        f"{superseded}."
+                    ) from recreate_failed
+                log.info(
+                    "moved HF tag '%s' on %s off %s onto the new commit",
+                    tag, repo_id, superseded[:12],
+                )
     return 0
 
 if __name__ == "__main__":

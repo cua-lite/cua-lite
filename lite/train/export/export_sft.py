@@ -331,7 +331,12 @@ def main():
     parser.add_argument("--head", type=int, default=None,
                         help="Keep first N rows after all input parquets are pooled")
     parser.add_argument("--sample", type=int, default=None,
-                        help="Randomly sample N rows from the pooled input (seeded by --seed)")
+                        help="Write N rows (seeded by --seed). Rows dropped by conversion are "
+                             "topped up from the same shuffled order, so N is a guarantee on "
+                             "the OUTPUT, not on what was fed to the converter. Fewer only "
+                             "when the pool runs out. Re-running a previous export with the "
+                             "same seed therefore yields a superset-prefix of its rows, not "
+                             "the identical set.")
     parser.add_argument("--seed", type=int, default=42,
                         help="Global RNG seed for --sample (default 42 for reproducibility).")
     parser.add_argument("--filter", default=None, dest="filter_expr",
@@ -370,6 +375,8 @@ def main():
         parser.error("--model-id is required — steps are tokenized at export")
     if not paths:
         parser.error("--data-paths is required (or set data_paths in config)")
+    if args.sample is not None and args.sample < 1:
+        parser.error("--sample must be >= 1; a zero-row export has no output to write")
 
     files = discover_files_under_paths(paths, splits=args.splits)
     if not files:
@@ -383,7 +390,7 @@ def main():
     )
 
     import pyarrow as pa
-    from datasets import Dataset
+    from datasets import Dataset, concatenate_datasets
 
     # === STEP 1: Pool all files into one Dataset ===
     # ``num_proc`` only parallelizes across rows of a single ``.map`` /
@@ -432,43 +439,91 @@ def main():
     if args.head is not None and len(combined_in) > args.head:
         combined_in = combined_in.select(range(args.head))
 
-    # === STEP 3b: --sample cap before mapping (avoids decoding all images) ===
-    if args.sample is not None and len(combined_in) > args.sample:
-        combined_in = combined_in.shuffle(seed=args.seed).select(
-            range(min(args.sample, len(combined_in)))
-        )
-
     if len(combined_in) == 0:
         print(f"No rows remain after filter for agent_id={agent_id}")
         return
 
-    # === STEP 4: Parallel per-row conversion ===
-    print(f"Converting {len(combined_in)} rows with num_proc={args.num_proc}...")
-    # Declare 64-bit image offsets at the first Arrow writer boundary. The
-    # smaller writer batch is then only a worker-memory bound, not a correctness
-    # workaround for list<binary>'s 2 GiB ceiling.
-    combined_out = combined_in.map(
-        _convert_sample,
-        num_proc=args.num_proc if len(combined_in) >= args.num_proc else 1,
-        fn_kwargs=map_fn_kwargs,
-        remove_columns=combined_in.column_names,
-        desc="convert",
-        writer_batch_size=args.map_writer_batch_size,
-        features=_output_features(),
-    )
+    # === STEP 3b/4: convert until --sample rows SURVIVE conversion ===
+    #
+    # ``--sample N`` is a contract on the OUTPUT. Under ``--no-strict`` a row
+    # can be dropped after it is sampled, so sampling N up front would
+    # under-deliver by a teacher-dependent amount -- an asymmetry a paired
+    # comparison must not inherit. Shuffle once (``--seed``), then walk a cursor
+    # over that fixed order in rounds, converting only as far as needed. Under
+    # ``--strict`` a failure raises, so round 1 always fills the quota and this
+    # degenerates to the single ``.map`` it replaces.
+    shuffled = combined_in
+    if args.sample is not None and len(combined_in) > args.sample:
+        shuffled = combined_in.shuffle(seed=args.seed)
 
-    # In --strict mode failures already raised above. In --no-strict mode, drop
-    # the rows that failed conversion (corrupt images, missing files, etc.).
-    # ``_error`` is present on every row (success = ""), so the filter is stable.
-    if not args.strict:
-        n_before_err_filter = len(combined_out)
-        combined_out = combined_out.filter(
-            lambda row: not row.get("_error"),
+    target = args.sample if args.sample is not None else len(shuffled)
+    target = min(target, len(shuffled))
+
+    converted_parts = []
+    n_kept = 0
+    n_dropped = 0
+    cursor = 0
+    round_no = 0
+    while n_kept < target and cursor < len(shuffled):
+        round_no += 1
+        need = target - n_kept
+        if round_no == 1:
+            take = need
+        else:
+            # Size the top-up from the observed survival rate, with a margin so
+            # a third round is rare. A round that kept nothing falls back to
+            # ``need`` so the cursor always advances.
+            attempted = cursor
+            rate = n_kept / attempted if attempted else 0.0
+            take = int(need / rate * 1.1) + 1 if rate > 0 else need
+        take = min(take, len(shuffled) - cursor)
+
+        chunk = shuffled.select(range(cursor, cursor + take))
+        cursor += take
+        if round_no == 1:
+            print(f"Converting {take} rows with num_proc={args.num_proc}...")
+        else:
+            print(f"Top-up round {round_no}: converting {take} more rows "
+                  f"({n_kept}/{target} kept so far)")
+
+        # Declare 64-bit image offsets at the first Arrow writer boundary. The
+        # smaller writer batch is then only a worker-memory bound, not a
+        # correctness workaround for list<binary>'s 2 GiB ceiling.
+        out = chunk.map(
+            _convert_sample,
+            num_proc=args.num_proc if len(chunk) >= args.num_proc else 1,
+            fn_kwargs=map_fn_kwargs,
+            remove_columns=chunk.column_names,
+            desc="convert",
             writer_batch_size=args.map_writer_batch_size,
+            features=_output_features(),
         )
-        n_errors = n_before_err_filter - len(combined_out)
-        if n_errors > 0:
-            print(f"Skipped {n_errors} rows due to conversion errors")
+
+        # In --strict mode failures already raised above. In --no-strict mode,
+        # drop the rows that failed conversion (corrupt images, missing files,
+        # unrenderable actions). ``_error`` is present on every row
+        # (success = ""), so the filter is stable.
+        if not args.strict:
+            before = len(out)
+            out = out.filter(
+                lambda row: not row.get("_error"),
+                writer_batch_size=args.map_writer_batch_size,
+            )
+            n_dropped += before - len(out)
+
+        n_kept += len(out)
+        converted_parts.append(out)
+
+    if n_dropped > 0:
+        print(f"Skipped {n_dropped} rows due to conversion errors")
+
+    combined_out = (converted_parts[0] if len(converted_parts) == 1
+                    else concatenate_datasets(converted_parts))
+    if len(combined_out) > target:
+        combined_out = combined_out.select(range(target))
+    if args.sample is not None and len(combined_out) < args.sample:
+        print(f"Only {len(combined_out)} rows convertible; --sample "
+              f"{args.sample} exceeds what the pool can supply")
 
     # ``_error`` is a transient filter marker — drop it so it never reaches the parquet.
     combined_out = combined_out.remove_columns("_error")
