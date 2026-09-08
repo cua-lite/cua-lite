@@ -111,7 +111,7 @@ Coordinates are `[0, 1000]` normalized → pixels (`1280×720` viewport by defau
 | Action | Arguments | Mind2Web / Playwright Op | Description |
 |---|---|---|---|
 | `click(coordinate)` | `coordinate`, `button` (default: left), `clicks` (default: 1) | `page.click(x, y)` | Click at coordinates |
-| `type(text)` | `text`, `press_enter` (optional bool) | `element.fill()` / `keyboard.type()` | Type text at focused element |
+| `type(text)` | `text`, `press_enter` (bool, derived host-side from a trailing newline) | `element.fill()` / `keyboard.type()` | Type text at focused element |
 | `key(keys)` | `keys` (list or single) | `keyboard.press()` | Key combo (Enter, Tab, ArrowDown, …) |
 | `scroll(direction, amount)` | `direction` (down/up/left/right), `amount` (default: 3), `coordinate` (optional) | `mouse.wheel()` / `keyboard.press()` | Scroll page or element (1 amount = 100 px) |
 | `wait(duration)` | `duration` (seconds, default: 1.0) | `asyncio.sleep()` | Wait before next action |

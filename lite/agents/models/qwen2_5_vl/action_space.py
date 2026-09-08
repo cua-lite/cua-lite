@@ -26,7 +26,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from collections.abc import Collection
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from lite.agents.core.action_space.base import (
     BaseActionSpace,
@@ -36,11 +36,13 @@ from lite.agents.core.action_space.base import (
 )
 from lite.agents.core.action_space.utils.geometry import (
     PIXELS_PER_CLICK,
-    RAW_NOTCH_THRESHOLD,
     compact_number,
     optional_coord,
     required_coord,
+    required_model_text,
     required_scroll_pixels,
+    scroll_clicks,
+    scroll_wire_magnitude,
 )
 from lite.agents.core.action_space.utils.grounding_point import (
     convert_non_point_call_for_grounding_space,
@@ -198,6 +200,11 @@ class Qwen2_5VLDesktopActionSpace(
     [0, 1000] normalized coords are rescaled by the adapter (this layer is
     identity on coords).
     """
+
+
+    #: No Qwen2.5-VL rollouts on this host to measure; keeps the screen-unit
+    #: spelling of the Qwen3-VL prompt family it shares.
+    SCROLL_WIRE_UNIT: ClassVar[int] = PIXELS_PER_CLICK
 
     platform: str = "desktop"
     _QWEN_NATIVE_TOOL_NAME = "computer_use"
@@ -375,7 +382,10 @@ class Qwen2_5VLDesktopActionSpace(
                     "its action enum has no 'hscroll' and 'pixels' carries the "
                     "vertical axis only"
                 )
-            scroll_pixels = amount * PIXELS_PER_CLICK
+            # ``int(round(...))``: the schema type is integer, so a float
+            # ``amount`` from source data must not leak a float onto the wire.
+            scroll_pixels = scroll_wire_magnitude(int(round(amount)),
+                                                  wire_unit=type(self).SCROLL_WIRE_UNIT)
             if direction == "down":
                 scroll_pixels = -scroll_pixels
             c = args.get("coordinate")
@@ -512,7 +522,7 @@ class Qwen2_5VLDesktopActionSpace(
             coordinate = required_coord(args.get("coordinate"), dimensions=2)
             return [LiteDesktopActionSpace.click(coordinate=coordinate, clicks=2)]
         if action == "type":
-            return [LiteDesktopActionSpace.type(text=args.get("text", ""))]
+            return [LiteDesktopActionSpace.type(text=required_model_text(args, action=action))]
         if action == "key":
             raw_keys = args.get("keys", [])
             return [LiteDesktopActionSpace.key(keys=raw_keys)]
@@ -521,11 +531,7 @@ class Qwen2_5VLDesktopActionSpace(
             # See ``required_scroll_pixels`` for why a default is never right.
             scroll_pixels = required_scroll_pixels(args, action)
             direction = "down" if scroll_pixels < 0 else "up"
-            abs_val = abs(scroll_pixels)
-            if abs_val < RAW_NOTCH_THRESHOLD:
-                amount = max(1, round(abs_val))
-            else:
-                amount = max(1, round(abs_val / PIXELS_PER_CLICK))
+            amount = scroll_clicks(scroll_pixels)
             return [LiteDesktopActionSpace.scroll(
                 direction=direction, amount=amount,
                 coordinate=optional_coord(args.get("coordinate"), dimensions=2),
@@ -948,7 +954,7 @@ class Qwen2_5VLMobileActionSpace(
                 coordinate=coordinate,
             )]
         if action == "type":
-            return [LiteMobileActionSpace.type(text=args.get("text", ""))]
+            return [LiteMobileActionSpace.type(text=required_model_text(args, action=action))]
         if action == "key":
             # Native ``key`` is an adb ``keyevent`` (upstream examples:
             # "volume_up", "volume_down", "power", "camera", "clear"). cua-lite

@@ -16,6 +16,7 @@ from lite.gym.envs.online_mind2web.main import (
     RemoteOnlineMind2WebEnv,
     _format_schema_action,
     _pair_online_mind2web_action_errors,
+    _to_container_action,
 )
 from lite.gym.errors import EnvDepsMissingError
 
@@ -874,6 +875,56 @@ async def test_scalar_key_returns_current_feedback_without_rpc(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "expected_text", "expected_flag"),
+    # om2w always spells the flag out; webvoyager omits it when false. Both
+    # reach the same container default, so each test states its own env's wire.
+    [("search me\n", "search me", True), ("search me", "search me", False)],
+    ids=["trailing-newline-submits", "no-newline-types-only"],
+)
+async def test_type_projects_a_trailing_newline_onto_the_container_flag(
+    tmp_path, text, expected_text, expected_flag
+):
+    """The trailing newline must reach the container as its ``press_enter``.
+
+    Driven through ``step()`` on purpose: the projection lives in the ``/step``
+    payload literal, and the unit tests for ``_to_container_action`` pass whether
+    or not it is still called there. Without this, deleting the call silently
+    removes every Enter press.
+    """
+    env = _make_env(tmp_path)
+    captured: list[dict] = []
+
+    def _route(path: str, body: dict) -> dict:
+        if path == "/reset":
+            return _reset_resp()
+        if path == "/step":
+            captured.append(body)
+            return _step_resp()
+        if path == "/close":
+            return _close_resp()
+        raise AssertionError(path)
+
+    env._post = MagicMock(side_effect=_route)
+    await env.reset()
+    await env.step(
+        [
+            make_tool_call(
+                "computer",
+                {"actions": [{"action": "type", "text": text}]},
+                call_id="call-type",
+            ),
+        ]
+    )
+    await env.close()
+
+    action = captured[0]["actions"][0]
+    assert action["name"] == "type"
+    assert action["arguments"]["text"] == expected_text
+    assert action["arguments"].get("press_enter") == expected_flag
+
+
+@pytest.mark.asyncio
 async def test_key_glyphs_project_to_playwright_wire(tmp_path):
     env = _make_env(tmp_path)
     captured: list[dict] = []
@@ -1693,9 +1744,10 @@ def test_a_terminating_batch_keeps_the_previous_actions_frame(monkeypatch, tmp_p
 async def test_container_type_without_press_enter_types_only():
     """Absent ``press_enter`` means TYPE ONLY, on every env that reads it.
 
-    The model is never told a default (the canonical schema declares
-    ``press_enter: bool | None`` and ``None`` is dropped on the wire), and the
-    error is asymmetric: a missing Enter costs one turn, a spurious Enter
+    The container flag is host-derived: canonical spells Enter as a trailing
+    newline, and the env strips it onto ``press_enter``. Absent means the model
+    did not ask to submit, and the error is asymmetric: a missing Enter costs
+    one turn, a spurious Enter
     irreversibly submits a form or navigates away.
     """
     from lite.gym.envs.online_mind2web.docker import server
@@ -1737,3 +1789,55 @@ async def test_container_goto_requires_canonical_url_argument():
     for args in ({}, {"web": "https://example.com/"}, {"page": "https://example.com/"}):
         with pytest.raises(ValueError, match="goto requires url"):
             await server._execute_action(inst, "goto", args)
+
+
+# ---------------------------------------------------------------------------
+# Canonical -> container action wire
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,value,submits",
+    [
+        ("query\n", "query", True),
+        ("query", "query", False),
+        ("line one\nline two", "line one\nline two", False),
+        ("", "", False),
+    ],
+    ids=["trailing", "plain", "interior", "empty"],
+)
+def test_to_container_action_projects_a_trailing_newline(text, value, submits):
+    """Canonical spells Enter as a trailing newline, but the container reaches
+    for ``locator.fill()`` first, which STORES a newline instead of pressing
+    Return. So the host strips it onto the flag the container already reads.
+    An interior newline is part of the value and stays put."""
+    out = _to_container_action({"name": "type", "arguments": {"text": text}})
+    assert out["arguments"]["text"] == value
+    assert out["arguments"]["press_enter"] is submits
+
+
+def test_to_container_action_leaves_every_other_action_alone():
+    """Only ``type`` carries an Enter spelling, so nothing else is rewritten --
+    and the canonical list itself must survive untouched, because the judged v2
+    trajectory and the error pairing both read it."""
+    click = {"name": "click", "arguments": {"coordinate": [1, 2]}}
+    assert _to_container_action(click) is click
+
+    typed = {"name": "type", "arguments": {"text": "q\n"}}
+    _to_container_action(typed)
+    assert typed["arguments"] == {"text": "q\n"}
+
+
+def test_action_description_still_reports_the_enter_after_projection():
+    """The v2 trajectory renders from the CANONICAL action, so it must see the
+    trailing newline. Projecting in place would strip it first and silently drop
+    'and press Enter' from what the judge scores."""
+    submitting, _ = _format_schema_action(
+        "type", {"text": "shoes\n"}, status="SUCCESS", viewport=(1280, 720), description=None,
+    )
+    plain, _ = _format_schema_action(
+        "type", {"text": "shoes"}, status="SUCCESS", viewport=(1280, 720), description=None,
+    )
+    assert "and press Enter" in submitting
+    assert "shoes\\n" not in submitting
+    assert "and press Enter" not in plain

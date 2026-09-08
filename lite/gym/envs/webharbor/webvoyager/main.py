@@ -204,6 +204,31 @@ _WEBHARBOR_LOCAL_TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
 _WEBHARBOR_LOCAL_TOOL_NAMES = frozenset(_WEBHARBOR_LOCAL_TOOL_SCHEMAS)
 
 
+def _to_container_action(action: EnvAction) -> EnvAction:
+    """Project one canonical action onto the container's action wire.
+
+    Only ``type`` differs. Canonical spells "submit" as a trailing newline, but
+    the container types through Selenium ``send_keys``, where U+000A is an
+    ordinary character rather than the Return key (WebDriver spells Enter
+    ``\ue007``) -- and its ``press_enter`` flag also picks the longer
+    post-navigation settle. So the newline becomes that flag here.
+    ``actions_to_send`` itself stays canonical: it is what the error pairing and
+    the recorded trajectory read.
+    """
+    if action["name"] != "type":
+        return action
+    text = str(action["arguments"].get("text", ""))
+    press_enter = text.endswith("\n")
+    return {
+        **action,
+        "arguments": {
+            **action["arguments"],
+            "text": text[:-1] if press_enter else text,
+            "press_enter": press_enter,
+        },
+    }
+
+
 class WebVoyagerTools(BaseTools):
     """What webharbor.webvoyager declares: two shared nav tools + five local ones.
 
@@ -1034,7 +1059,7 @@ class RemoteWebVoyagerEnv(LiteBaseEnv):
             "/step",
             {
                 "instance_id": self._instance_id,
-                "actions": actions_to_send,
+                "actions": [_to_container_action(a) for a in actions_to_send],
                 "post_action_delay": self._post_action_delay,
                 "cursor": self._cursor,
                 # The host owns the budget: it is the side that sees the turns

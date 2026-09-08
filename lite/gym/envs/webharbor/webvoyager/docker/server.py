@@ -866,15 +866,37 @@ def _execute_action(inst: _Instance, name: str, args: dict[str, Any]) -> dict[st
         text = str(args.get("text", ""))
         element = _active_or_last_element(inst)
         if element is None:
-            ActionChains(driver).send_keys(text).perform()
-            time.sleep(1)
+            # Nothing focused. This is not a corner: ``_initial_page_setup``
+            # clicks ``<body>`` at reset, so the FIRST ``type`` of every episode
+            # lands here. It therefore has to match the focused branch on all
+            # three counts, not just deliver the keystrokes:
+            #   * ``press_enter`` -- the host strips the canonical trailing
+            #     newline in ``_to_container_action`` (``webvoyager/main.py``)
+            #     and hands the submit over as this flag, so ignoring it loses
+            #     the Enter with nothing left in ``text`` to carry it;
+            #   * the spacebar guard -- a navigation wipes the reset-time
+            #     handler, and without it a space typed at a body-focused page
+            #     scrolls instead of typing;
+            #   * the settle -- a submit navigates, so it needs the same longer
+            #     wait ``_exec_action_type`` uses or the screenshot catches the
+            #     page mid-navigation.
+            press_enter = bool(args.get("press_enter", False))
+            _install_spacebar_guard(driver)
+            actions = ActionChains(driver).send_keys(text)
+            if press_enter:
+                actions.pause(2)
+                actions.send_keys(Keys.ENTER)
+            actions.perform()
+            time.sleep(10 if press_enter else 3)
         else:
-            # Absent ``press_enter`` means TYPE ONLY. The model is never told a
-            # default (the canonical schema declares ``press_enter: bool | None``
-            # and ``None`` is dropped on the wire), and the error is asymmetric:
-            # a missing Enter costs one turn, a spurious Enter irreversibly
-            # submits a form or navigates away. Enter is an explicit
-            # ``press_enter=true`` or a separate ``key(["enter"])``.
+            # Absent ``press_enter`` means TYPE ONLY, and the error is
+            # asymmetric: a missing Enter costs one turn, a spurious Enter
+            # irreversibly submits a form or navigates away. The flag is this
+            # container's own wire, not the model's -- canonical ``type`` takes
+            # only ``text``, and the host derives the flag from a trailing
+            # newline in ``_to_container_action`` (``webvoyager/main.py``). The
+            # model spells Enter as that newline or as a separate
+            # ``key(["enter"])``.
             warn = _exec_action_type(inst, element, text, press_enter=bool(args.get("press_enter", False)))
             if warn:
                 out["warning"] = warn

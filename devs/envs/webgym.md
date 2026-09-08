@@ -57,7 +57,7 @@ Browser envs use `LiteBrowserActionSpace` (desktop-coordinate browser actions) a
 | CUA-Lite action | WebGym HTTP command |
 |---|---|
 | `click(coordinate, button, clicks)` | `click_coords(x, y)` |
-| `type(text)` | `fill_coords(x, y, value, press_enter=False, delete_existing=True)` — uses the last `click` focus point unless `coordinate` is present |
+| `type(text)` | `fill_coords(x, y, value, press_enter, delete_existing=True)` — `press_enter` is derived from a trailing newline in `text` and stripped from `value`; uses the last `click` focus point unless `coordinate` is present |
 | `key(keys=["ctrl", "c"])` | `keypress(keys=["Control", "c"])` |
 | `scroll(coordinate, direction, amount)` | `hover_and_scroll_coords(x, y, direction, amount)` or `page_down`/`page_up` with scaled pixel amount |
 | `mouse_move(coordinate)` | `hover_coords(x, y)` |

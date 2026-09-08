@@ -1613,24 +1613,20 @@ class WebGymEnv(LiteBaseEnv):
                 x, y = _px(coord_raw)
             else:
                 x, y = self._last_click_x, self._last_click_y
-            # fill_coords does click + type + optional enter in one call.
-            # ``press_enter`` is the MODEL's choice, not ours. It used to be
-            # hardcoded True "to match the reference implementation", which meant
-            # webgym advertised the argument on canonical ``type`` and then threw
-            # the model's value away -- there was no way to type without
-            # submitting, and fara's own prompt tells the model to send
-            # ``press_enter=False`` on auto-suggest search bars. The container
-            # already honors the parameter (``docker/patches/playwright_instance.py``
-            # reads it), so the capability was being discarded one layer above it.
-            # Default False across envs: the error is asymmetric -- a missing
-            # Enter costs one turn (the model sees the un-submitted field and
-            # sends ``key(["enter"])``), while a spurious Enter submits a form or
-            # navigates away irreversibly.
+            # fill_coords does click + type + optional enter in one call. The
+            # container's ``press_enter`` is THIS TRANSPORT's spelling of the
+            # trailing newline canonical uses; strip it here so the flag the
+            # container already honours stays the single carrier of "submit".
+            # Only a trailing newline submits -- an interior one is part of the
+            # value, and Playwright's ``keyboard.type`` presses Enter for it.
+            press_enter = text.endswith("\n")
+            if press_enter:
+                text = text[:-1]
             return {"fill_coords": {
                 "x": x,
                 "y": y,
                 "value": text,
-                "press_enter": bool(args.get("press_enter", False)),
+                "press_enter": press_enter,
                 "delete_existing": True,
             }}
 

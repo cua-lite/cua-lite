@@ -41,6 +41,7 @@ from lite.agents.core.action_space import BaseActionSpace
 from lite.agents.core.action_space.base import LiteDesktopActionSpace
 from lite.agents.core.action_space.utils.geometry import (
     compact_number,
+    model_keys,
     required_coord,
 )
 from lite.agents.models.qwen3_5.action_space import Qwen3_5DesktopActionSpace
@@ -211,15 +212,6 @@ class Qwen3_8DesktopActionSpace(Qwen3_5DesktopActionSpace, key=r"qwen3_8@(deskto
         if name == "screenshot":
             return [Qwen3_8DesktopActionSpace.computer_use(action="screenshot")["function"]]
 
-        if name == "type":
-            # ``press_enter`` has no schema slot in the wrapper; the expanded
-            # harness spells it as a newline inside ``text``. Inverse of the
-            # from-agent split below, so SFT replay round-trips.
-            text = args.get("text", "")
-            if args.get("press_enter"):
-                text = f"{text}\n"
-            return [Qwen3_8DesktopActionSpace.computer_use(action="type", text=text)["function"]]
-
         if name == "wait":
             return [Qwen3_8DesktopActionSpace.computer_use(
                 action="wait", time=compact_number(args.get("duration", 3)),
@@ -267,19 +259,18 @@ class Qwen3_8DesktopActionSpace(Qwen3_5DesktopActionSpace, key=r"qwen3_8@(deskto
         if action not in _EXPANDED_ONLY_ACTION_VALUES:
             return super()._convert_single_from_agent(agent_tool_call, **kwargs)
 
-        if action == "type":
-            # The expanded harness executes an embedded newline as a real Enter
-            # press (``parse_internal_response`` splits into typewrite / press
-            # enter runs); the base harness types it literally. Lite carries the
-            # same meaning in ``type(press_enter=...)``, so one Qwen call lowers
-            # to one canonical action per line.
-            return _type_with_newlines(args.get("text"))
-
-        if action == "key_down":
-            return [LiteDesktopActionSpace.key_down(keys=args.get("keys", []))]
-
-        if action == "key_up":
-            return [LiteDesktopActionSpace.key_up(keys=args.get("keys", []))]
+        if action in ("key_down", "key_up"):
+            # Through ``model_keys`` for the same reason ``key`` is: the shared
+            # key vocabulary raises a BARE ``ValueError`` on an unknown token,
+            # which escapes the agent's parse boundary and loses the whole
+            # trajectory instead of reaching the model as feedback.
+            keys = model_keys(args.get("keys", []), action=action)
+            ctor = (
+                LiteDesktopActionSpace.key_down
+                if action == "key_down"
+                else LiteDesktopActionSpace.key_up
+            )
+            return [ctor(keys=keys)]
 
         if action in ("left_mouse_down", "left_mouse_up"):
             # ``coordinate`` is optional here: with one, the press/release
@@ -311,24 +302,10 @@ class Qwen3_8DesktopActionSpace(Qwen3_5DesktopActionSpace, key=r"qwen3_8@(deskto
 # whether ``_convert_single_from_agent`` handles a call locally or delegates to
 # the inherited Qwen3.5 branches.
 #
-# ``type`` is listed even though the base enum has it: only the expanded
-# harness executes an embedded newline as an Enter press.
 _EXPANDED_ONLY_ACTION_VALUES = frozenset({
     "key_down", "key_up", "left_mouse_down", "left_mouse_up",
-    "screenshot", "call_user", "type",
+    "screenshot", "call_user",
 })
-
-
-def _type_with_newlines(text: str | None) -> list[dict[str, Any]]:
-    """One canonical ``type`` per line, Enter pressed after all but the last."""
-    lines = str(text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    calls = [
-        LiteDesktopActionSpace.type(text=line, press_enter=True)
-        for line in lines[:-1]
-    ]
-    if lines[-1]:
-        calls.append(LiteDesktopActionSpace.type(text=lines[-1]))
-    return calls or [LiteDesktopActionSpace.type(text="")]
 
 
 # =============================================================================

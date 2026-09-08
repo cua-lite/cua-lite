@@ -31,7 +31,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from collections.abc import Collection
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 from urllib.parse import quote_plus
 
 from lite.agents.core.action_space import BaseActionSpace
@@ -42,11 +42,12 @@ from lite.agents.core.action_space.base import (
 from lite.agents.core.action_space.errors import ModelToolCallParseError
 from lite.agents.core.action_space.utils.geometry import (
     PIXELS_PER_CLICK,
-    RAW_NOTCH_THRESHOLD,
     compact_number,
     optional_coord,
     required_coord,
     required_scroll_pixels,
+    scroll_clicks,
+    scroll_wire_magnitude,
 )
 from lite.agents.core.action_space.utils.grounding_point import (
     convert_non_point_call_for_grounding_space,
@@ -131,6 +132,11 @@ class FaraDesktopActionSpace(BaseActionSpace, key=r"fara@(desktop|browser)"):
     resized image dims per render. Coordinate space is **pixels in the
     smart-resized image**; the adapter rescales to/from cua-lite [0, 1000].
     """
+
+
+    #: Fara's wire is real image pixels; its reference reads only the SIGN
+    #: (``fara_agent.py:534``), so the magnitude cannot change what executes.
+    SCROLL_WIRE_UNIT: ClassVar[int] = PIXELS_PER_CLICK
 
     platform: str = "desktop"
 
@@ -327,9 +333,16 @@ class FaraDesktopActionSpace(BaseActionSpace, key=r"fara@(desktop|browser)"):
             )["function"])
 
         elif name == "type":
+            # Canonical's trailing newline is Fara's ``press_enter``; without
+            # this the Enter would be dropped on the way back to the model.
+            text = args.get("text", "")
+            type_kwargs: dict[str, Any] = {}
+            if text.endswith("\n"):
+                text, type_kwargs["press_enter"] = text[:-1], True
             results.append(FaraDesktopActionSpace.computer_use(
                 action="type",
-                text=args.get("text", ""),
+                text=text,
+                **type_kwargs,
             )["function"])
 
         elif name == "key":
@@ -360,7 +373,10 @@ class FaraDesktopActionSpace(BaseActionSpace, key=r"fara@(desktop|browser)"):
                 )
             # Fara ``pixels``: positive = up, negative = down (see reference
             # execute_action).
-            scroll_pixels = amount * PIXELS_PER_CLICK
+            # ``int(round(...))``: the schema type is integer, so a float
+            # ``amount`` from source data must not leak a float onto the wire.
+            scroll_pixels = scroll_wire_magnitude(int(round(amount)),
+                                                  wire_unit=type(self).SCROLL_WIRE_UNIT)
             if direction == "down":
                 scroll_pixels = -scroll_pixels
             results.append(FaraDesktopActionSpace.computer_use(
@@ -512,18 +528,17 @@ class FaraDesktopActionSpace(BaseActionSpace, key=r"fara@(desktop|browser)"):
             # only types into the already-focused element, so decompose into:
             #   click(coordinate)  → focuses the field AND draws the crosshair
             #   type(text)         → types into it
-            # ``press_enter`` is threaded through so envs that read it (e.g. the
-            # WebVoyager container) submit-or-not per the model; the container
-            # clears existing text itself, so ``delete_existing_text`` needs no
-            # separate mapping.
+            # ``press_enter`` becomes canonical's trailing newline, which every
+            # transport executes as Return; the container clears existing text
+            # itself, so ``delete_existing_text`` needs no separate mapping.
             out: list[dict[str, Any]] = []
             focus_coordinate = optional_coord(args.get("coordinate"), dimensions=2)
             if focus_coordinate is not None:
                 out.append(LiteDesktopActionSpace.click(coordinate=focus_coordinate))
-            type_args: dict[str, Any] = {"text": args.get("text", "")}
-            if "press_enter" in args:
-                type_args["press_enter"] = args["press_enter"]
-            out.append(make_tool_call("type", type_args))
+            text = args.get("text", "")
+            if args.get("press_enter"):
+                text = f"{text}\n"
+            out.append(LiteDesktopActionSpace.type(text=text))
             return out
         if action == "key":
             raw_keys = args.get("keys", [])
@@ -533,11 +548,7 @@ class FaraDesktopActionSpace(BaseActionSpace, key=r"fara@(desktop|browser)"):
             # See ``required_scroll_pixels`` for why a default is never right.
             scroll_pixels = required_scroll_pixels(args, action)
             direction = "down" if scroll_pixels < 0 else "up"
-            abs_val = abs(scroll_pixels)
-            if abs_val < RAW_NOTCH_THRESHOLD:
-                amount = max(1, round(abs_val))
-            else:
-                amount = max(1, round(abs_val / PIXELS_PER_CLICK))
+            amount = scroll_clicks(scroll_pixels)
             return [LiteDesktopActionSpace.scroll(direction=direction, amount=amount)]
         if action == "wait":
             return [LiteDesktopActionSpace.wait(duration=float(args.get("time", 3)))]

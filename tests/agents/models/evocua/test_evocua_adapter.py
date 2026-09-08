@@ -389,7 +389,7 @@ _DESKTOP_RAWS: dict[str, str] = {
         "Action: Scroll down.\n"
         "<tool_call>\n"
         '{"name": "computer_use", "arguments": {"action": "scroll", '
-        '"pixels": -300, "coordinate": [500, 500]}}\n'
+        '"pixels": -3, "coordinate": [500, 500]}}\n'
         "</tool_call>"
     ),
     "wait": (
@@ -483,7 +483,9 @@ _DESKTOP_LITE_GOLDEN: dict[str, dict] = {
     },
     "scroll": {
         "role": "assistant",
-        # OBSERVED: pixels=-300 → direction="down", amount=3 (300/100 px/click).
+        # EvoCUA writes scrolls as raw notch counts -- every value it emitted
+        # across its OSWorld evals is in 1..20 -- so ``pixels=-3`` IS three
+        # wheel clicks down, not three hundredths of a screen.
         "tool_calls": [
             _computer_action("scroll", coordinate=[500, 500], direction="down", amount=3)
         ],
@@ -608,6 +610,8 @@ _DESKTOP_AGENT_GOLDEN: dict[str, dict] = {
     },
     "scroll": {
         "role": "assistant",
+        # Rendered in EvoCUA's own dialect (``SCROLL_WIRE_UNIT = 1``), so the
+        # wire value equals the click count -- the round trip is byte-exact.
         # OBSERVED: on convert_to_agent, `coordinate` is emitted BEFORE `pixels`
         # (argument order in `_convert_single_to_agent` injects coordinate via
         # the `computer_use(...)` kwargs, and computer_use's own signature puts
@@ -615,7 +619,7 @@ _DESKTOP_AGENT_GOLDEN: dict[str, dict] = {
         "tool_calls": [
             {
                 "name": "computer_use",
-                "arguments": {"action": "scroll", "coordinate": [500, 500], "pixels": -300},
+                "arguments": {"action": "scroll", "coordinate": [500, 500], "pixels": -3},
             }
         ],
         "content": [{"type": "text", "text": "Action: Scroll down."}],

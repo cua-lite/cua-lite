@@ -364,3 +364,15 @@ def test_missing_scroll_pixels_becomes_terminal_response_not_wrong_scroll() -> N
     ), f"a scroll reached the env: {env.seen_actions}"
     assert rl.terminated is True
     assert rl.truncated is False
+
+
+@pytest.mark.parametrize("space_cls", _SCROLL_SPACES)
+@pytest.mark.parametrize("wire", [0, 0.0, "0", "-0.0"])
+def test_a_zero_scroll_is_refused_like_a_missing_one(space_cls, wire) -> None:
+    """The sign of ``pixels`` is the ONLY carrier of the direction, so zero is
+    as unusable as absent. It used to fall through to the magnitude conversion,
+    where ``max(1, ...)`` turned "scroll nothing" into a real one-click scroll
+    UP -- an action the model never asked for, executed and recorded as if it
+    had happened."""
+    with pytest.raises(ValueError, match="must be nonzero"):
+        _convert(space_cls, {"action": "scroll", "pixels": wire})

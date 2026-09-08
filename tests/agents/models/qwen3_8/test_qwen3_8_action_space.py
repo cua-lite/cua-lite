@@ -13,7 +13,7 @@ Coverage:
   * each added action, both directions, nested under the provider-native
     wrapper AND flat (the model dropping the wrapper).
   * ``call_user`` <-> ``response``; env extras still outrank a name collision.
-  * ``type`` newline <-> ``press_enter`` split, round-tripping both ways.
+  * ``type`` carries its text verbatim in both directions.
   * gate wiring — ``valid_actions`` reaches the added actions; ``call_user``
     stays closed until ``response`` is an active extra.
   * mobile deliberately does NOT inherit the Qwen3.5 ``left_click`` alias.
@@ -299,44 +299,29 @@ def test_active_env_extra_outranks_a_colliding_flat_native_value():
 
 
 # =============================================================================
-# type: embedded newline is an Enter press
+# type: text passes through verbatim
 # =============================================================================
 
 
 @pytest.mark.parametrize(
-    "text,expected_actions",
-    [
-        ("hi", [{"action": "type", "text": "hi"}]),
-        ("hi\n", [{"action": "type", "text": "hi", "press_enter": True}]),
-        (
-            "a\nb",
-            [
-                {"action": "type", "text": "a", "press_enter": True},
-                {"action": "type", "text": "b"},
-            ],
-        ),
-        (
-            "a\r\nb",
-            [
-                {"action": "type", "text": "a", "press_enter": True},
-                {"action": "type", "text": "b"},
-            ],
-        ),
-        ("", [{"action": "type", "text": ""}]),
-    ],
+    "text",
+    ["hi", "hi\n", "a\nb", "a\r\nb", ""],
     ids=["plain", "trailing-newline", "internal-newline", "crlf", "empty"],
 )
-def test_type_newlines_become_press_enter(text, expected_actions):
+def test_type_text_is_not_split_on_newlines(text):
+    """The sandbox already executes an embedded newline as a real Enter press
+    (``exec_stdio`` splits on ``\n`` and sends Return), so one Qwen ``type``
+    lowers to exactly one canonical ``type`` carrying the same text."""
     assert _from_agent(Qwen3_8DesktopActionSpace(), {"action": "type", "text": text}) == [
-        _batch(*expected_actions)
+        _batch({"action": "type", "text": text})
     ]
 
 
-def test_press_enter_renders_back_as_a_trailing_newline():
-    """``press_enter`` has no schema slot in the wrapper, so it must spell
-    itself as the newline the expanded harness executes."""
+def test_type_renders_back_verbatim():
+    """Qwen3.8 inherits Qwen3.5's ``type`` projection: canonical and wire use the
+    same spelling for Enter, so nothing is rewritten in either direction."""
     rendered = Qwen3_8DesktopActionSpace().convert_tool_calls_to_agent(
-        [LiteDesktopActionSet.type(text="hi", press_enter=True)]
+        [LiteDesktopActionSet.type(text="hi\n")]
     )
     assert rendered == [{"name": "computer_use", "arguments": {"action": "type", "text": "hi\n"}}]
 
@@ -346,7 +331,7 @@ def test_type_round_trips_through_both_directions(text):
     space = Qwen3_8DesktopActionSpace()
     lowered = _from_agent(space, {"action": "type", "text": text})
     back = space.convert_tool_calls_to_agent(lowered)
-    assert "".join(tc["arguments"]["text"] for tc in back) == text.replace("\r\n", "\n")
+    assert "".join(tc["arguments"]["text"] for tc in back) == text
 
 
 # =============================================================================

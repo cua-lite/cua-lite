@@ -20,16 +20,17 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from lite.agents.core.action_space.base import LiteDesktopActionSpace
 from lite.agents.core.action_space.utils.geometry import (
-    PIXELS_PER_CLICK,
-    RAW_NOTCH_THRESHOLD,
     compact_number,
     optional_coord,
     required_coord,
+    required_model_text,
     required_scroll_pixels,
+    scroll_clicks,
+    scroll_wire_magnitude,
 )
 from lite.agents.core.action_space.utils.unknown_wrapper_action import unknown_wrapper_action_batch
 from lite.agents.models.qwen3_vl.action_space import (
@@ -72,6 +73,11 @@ class EvoCUADesktopActionSpace(Qwen3VLDesktopActionSpace, key=r"evocua@(desktop|
         tools = action_space.get_tool_schemas()
         action = EvoCUADesktopActionSpace.computer_use(action="key_down", keys=["shift"])
     """
+
+    #: EvoCUA writes raw notch counts: 261 (value, trajectory) pairs measured,
+    #: every one in 1..20, never a value that could be a screen-unit reading.
+    SCROLL_WIRE_UNIT: ClassVar[int] = 1
+
 
     # -------------------------------------------------------------------------
     # Single computer_use tool with all parameters
@@ -239,7 +245,10 @@ class EvoCUADesktopActionSpace(Qwen3VLDesktopActionSpace, key=r"evocua@(desktop|
                     "action enum has no 'hscroll' and 'pixels' carries the "
                     "vertical axis only"
                 )
-            scroll_pixels = amount * PIXELS_PER_CLICK
+            # ``int(round(...))``: the schema type is integer, so a float
+            # ``amount`` from source data must not leak a float onto the wire.
+            scroll_pixels = scroll_wire_magnitude(int(round(amount)),
+                                                  wire_unit=type(self).SCROLL_WIRE_UNIT)
             if direction == "down":
                 scroll_pixels = -scroll_pixels
             c = args.get("coordinate")
@@ -360,7 +369,7 @@ class EvoCUADesktopActionSpace(Qwen3VLDesktopActionSpace, key=r"evocua@(desktop|
             return [LiteDesktopActionSpace.click(coordinate=coordinate, clicks=3)]
 
         elif action == "type":
-            return [LiteDesktopActionSpace.type(text=args.get("text", ""))]
+            return [LiteDesktopActionSpace.type(text=required_model_text(args, action=action))]
 
         elif action == "key":
             raw_keys = args.get("keys", [])
@@ -380,11 +389,7 @@ class EvoCUADesktopActionSpace(Qwen3VLDesktopActionSpace, key=r"evocua@(desktop|
             # float()s first. See ``required_scroll_pixels``.
             scroll_pixels = required_scroll_pixels(args, action)
             direction = "down" if scroll_pixels < 0 else "up"
-            abs_val = abs(scroll_pixels)
-            if abs_val < RAW_NOTCH_THRESHOLD:
-                amount = max(1, round(abs_val))
-            else:
-                amount = max(1, round(abs_val / PIXELS_PER_CLICK))
+            amount = scroll_clicks(scroll_pixels)
             return [LiteDesktopActionSpace.scroll(
                 direction=direction,
                 amount=amount,

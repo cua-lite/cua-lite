@@ -18,7 +18,7 @@ Usage:
 from __future__ import annotations
 
 import dataclasses
-from typing import Any
+from typing import Any, ClassVar
 
 from lite.agents.core.action_space import BaseActionSpace
 from lite.agents.models.qwen3_vl.action_space import (
@@ -35,6 +35,10 @@ class Qwen3_5DesktopActionSpace(Qwen3VLDesktopActionSpace, key=r"qwen3_5@(deskto
     for both platforms: browser nav is an env extra_tool, not a per-platform
     action space; Qwen3.5's desktop delta is the XML wire format handled by
     :mod:`lite.agents.models.qwen3_5.adapter`."""
+
+    #: Qwen3.5 and Qwen3.8 write raw notch counts, not screen units: 70.0% and
+    #: 99.3% of the values they emit are below one click's worth of screen.
+    SCROLL_WIRE_UNIT: ClassVar[int] = 1
 
 
 # Mobile action alias that Qwen3.5 emits on mobile despite the prompt only

@@ -353,12 +353,9 @@ class GPTDesktopActionSpace(BaseActionSpace, key=r"gpt@(desktop|browser)"):
 
         elif action_type == "type":
             # GPT spells "press Enter after typing" as a trailing newline inside
-            # ``text``, and on desktop that IS the working mechanism: the env
-            # hands ``text`` straight to ``computer.interface.type_text``, which
-            # types the newline as the keystroke. Do NOT re-spell it as canonical
-            # ``press_enter`` — no desktop env reads that argument (only the
-            # three browser envs do), so the translation would silently drop the
-            # Enter and leave shell commands typed but never executed.
+            # ``text`` — the same spelling canonical uses, so this is 1:1. The
+            # env hands ``text`` straight to ``computer.interface.type_text``,
+            # which sends the newline as a discrete Return keypress.
             return [LiteDesktopActionSpace.type(text=action.get("text", ""))]
 
         elif action_type == "keypress":
@@ -382,10 +379,10 @@ class GPTDesktopActionSpace(BaseActionSpace, key=r"gpt@(desktop|browser)"):
             # Convert pixel deltas to click units
             if abs(scroll_x) > abs(scroll_y):
                 direction = "right" if scroll_x > 0 else "left"
-                amount = max(1, abs(scroll_x) // PIXELS_PER_CLICK)
+                amount = max(1, round(abs(scroll_x) / PIXELS_PER_CLICK))
             else:
                 direction = "down" if scroll_y >= 0 else "up"
-                amount = max(1, abs(scroll_y) // PIXELS_PER_CLICK) if scroll_y != 0 else 3
+                amount = max(1, round(abs(scroll_y) / PIXELS_PER_CLICK)) if scroll_y != 0 else 3
             return [
                 LiteDesktopActionSpace.scroll(
                     direction=direction,

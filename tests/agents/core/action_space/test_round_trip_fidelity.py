@@ -71,6 +71,16 @@ DESKTOP_CASES: dict[str, dict] = {
     "key_down": LiteDesktopActionSpace.key_down(keys=["shift"]),
     "key_up": LiteDesktopActionSpace.key_up(keys=["shift"]),
     "hold_key": LiteDesktopActionSpace.hold_key(keys=["shift"], duration=2.0),
+    # MAGNITUDE cases, deliberately without a ``coordinate`` so a family that
+    # cannot carry the coordinate fails on the magnitude here rather than
+    # masking it. ``amount=3`` alone is not enough coverage: a family renders
+    # one click as exactly its notch/screen-unit boundary, so ``1`` is the value
+    # a boundary read inclusively sends back multiplied by a hundred, and the
+    # larger ones catch a conversion that only saturates further up.
+    "scroll_amount_1": LiteDesktopActionSpace.scroll(direction="down", amount=1),
+    "scroll_amount_2": LiteDesktopActionSpace.scroll(direction="up", amount=2),
+    "scroll_amount_10": LiteDesktopActionSpace.scroll(direction="down", amount=10),
+    "scroll_amount_50": LiteDesktopActionSpace.scroll(direction="up", amount=50),
     "scroll_down": LiteDesktopActionSpace.scroll(direction="down", amount=3, coordinate=[400, 400]),
     "scroll_up": LiteDesktopActionSpace.scroll(direction="up", amount=3, coordinate=[400, 400]),
     "scroll_left": LiteDesktopActionSpace.scroll(direction="left", amount=3, coordinate=[400, 400]),
@@ -320,6 +330,10 @@ DECLARED_GAPS: dict[str, dict[str, str]] = {
         "scroll_up": "the wire's scroll carries no amount; parse re-invents 5",
         "scroll_left": "the wire's scroll carries no amount; parse re-invents 5",
         "scroll_right": "the wire's scroll carries no amount; parse re-invents 5",
+        "scroll_amount_1": "the wire's scroll carries no amount; parse re-invents 5",
+        "scroll_amount_2": "the wire's scroll carries no amount; parse re-invents 5",
+        "scroll_amount_10": "the wire's scroll carries no amount; parse re-invents 5",
+        "scroll_amount_50": "the wire's scroll carries no amount; parse re-invents 5",
         "wait": "the wire's wait carries no duration; parse re-invents 5",
     },
     "ui_tars_15_v1@desktop": {
@@ -327,6 +341,10 @@ DECLARED_GAPS: dict[str, dict[str, str]] = {
         "scroll_up": "the wire's scroll carries no amount; parse re-invents 5",
         "scroll_left": "the wire's scroll carries no amount; parse re-invents 5",
         "scroll_right": "the wire's scroll carries no amount; parse re-invents 5",
+        "scroll_amount_1": "the wire's scroll carries no amount; parse re-invents 5",
+        "scroll_amount_2": "the wire's scroll carries no amount; parse re-invents 5",
+        "scroll_amount_10": "the wire's scroll carries no amount; parse re-invents 5",
+        "scroll_amount_50": "the wire's scroll carries no amount; parse re-invents 5",
         "wait": "the wire's wait carries no duration; parse re-invents 5",
     },
     "ui_venus_2@desktop": {
@@ -344,6 +362,10 @@ DECLARED_GAPS: dict[str, dict[str, str]] = {
         "scroll_up": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
         "scroll_left": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
         "scroll_right": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
+        "scroll_amount_1": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
+        "scroll_amount_2": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
+        "scroll_amount_10": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
+        "scroll_amount_50": "Scroll keeps the anchor but carries no amount; parse re-invents 5",
         "wait": "the wire's Wait carries no duration; parse re-invents 1s",
     },
     "ui_venus_2@mobile": {

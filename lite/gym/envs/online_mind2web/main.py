@@ -494,6 +494,29 @@ def _terminal_action(
     return action
 
 
+def _to_container_action(action: EnvAction) -> EnvAction:
+    """Project one canonical action onto the container's action wire.
+
+    Only ``type`` differs: canonical spells "submit" as a trailing newline, but
+    the container prefers ``locator.fill()``, which stores a newline as text
+    instead of pressing Return. So the newline becomes the ``press_enter`` flag
+    the container already reads. ``actions_to_send`` itself stays canonical --
+    it is also what the judged v2 trajectory is rendered from.
+    """
+    if action["name"] != "type":
+        return action
+    text = str(action["arguments"].get("text", ""))
+    press_enter = text.endswith("\n")
+    return {
+        **action,
+        "arguments": {
+            **action["arguments"],
+            "text": text[:-1] if press_enter else text,
+            "press_enter": press_enter,
+        },
+    }
+
+
 def _format_schema_action(
     name: str,
     args: dict[str, Any],
@@ -515,9 +538,11 @@ def _format_schema_action(
         return f"CLICK {target} -> {desc}{suffix}", action_status
 
     if name == "type":
-        text = _quote_text(args.get("text", ""))
+        raw = str(args.get("text", ""))
+        press_enter = raw.endswith("\n")
+        text = _quote_text(raw[:-1] if press_enter else raw)
         desc = description or f"type {text} into the focused input"
-        if args.get("press_enter"):
+        if press_enter:
             desc += " and press Enter"
         return f"TYPE page -> {desc}{suffix}", action_status
 
@@ -1421,7 +1446,7 @@ class RemoteOnlineMind2WebEnv(LiteBaseEnv):
             "/step",
             {
                 "instance_id": self._instance_id,
-                "actions": actions_to_send,
+                "actions": [_to_container_action(a) for a in actions_to_send],
                 "post_action_delay": self._post_action_delay,
                 "cursor": self._cursor,
                 # The host owns the budget: it is the side that sees the turns

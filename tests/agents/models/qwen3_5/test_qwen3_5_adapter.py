@@ -1181,10 +1181,14 @@ def test_no_tool_call_text_round_trips_through_agent_wire(adapter_cls, final_tex
     assert no_tool_call_final_text(out) == final_text
 
 
-def test_from_agent_first_line_fallback_when_no_action_prefix():
-    """Action turns without an ``Action: `` line fall back to the first
-    non-empty line. No-tool-call turns are covered separately by the shared
-    content-only-final tests and must stay plain text."""
+def test_from_agent_keeps_the_whole_prose_when_no_action_prefix():
+    """Without an ``Action: `` line the WHOLE reply is the action description.
+
+    Keeping only its first line dropped the model's reasoning on 17% of
+    tool-call turns, and these teachers run with thinking OFF, so that prose IS
+    the reasoning a cross-family student is trained on. No-tool-call turns are
+    covered separately by the shared content-only-final tests and stay plain
+    text."""
     adapter = Qwen3_5DesktopUseAdapter()
     msg = adapter.parse_raw_assistant_response(
         "Click the search bar.\nAdditional reasoning.\n"
@@ -1198,8 +1202,7 @@ def test_from_agent_first_line_fallback_when_no_action_prefix():
     out = adapter.convert_message_from_agent(msg)
     action_part = next((c for c in out["content"] if c["type"] == "action_description"), None)
     assert action_part is not None
-    assert action_part["text"] == "Click the search bar."
-    assert "Additional reasoning." not in action_part["text"]
+    assert action_part["text"] == "Click the search bar.\nAdditional reasoning."
 
 
 def test_to_agent_renders_xml_tool_call_inline_in_text():
@@ -1680,3 +1683,40 @@ def test_tools_section_byte_policy_is_one_ascii_escaped_json_object_per_line():
     # Default ASCII escaping: the rendered prompt carries no raw non-ASCII.
     assert "\\u2713" in lines[1]
     assert "✓" not in section
+
+
+def test_a_literal_think_tag_in_typed_text_does_not_split_the_tool_call():
+    """A ``<think>`` inside a tool-call payload is CONTENT, not a control token.
+
+    The unclosed-``<think>`` branch partitions the reply so the body cannot fall
+    through into ``action_description``. Partitioning the RAW reply cut a tool
+    call in half when the model typed the literal characters -- publishing the
+    block's first half as narration and its tail as reasoning, which is exactly
+    the leak the branch exists to prevent. The decision runs on the
+    tool-call-scrubbed text instead.
+    """
+    from lite.agents.models.qwen3_5.adapter import Qwen3_5DesktopUseAdapter
+
+    adapter = Qwen3_5DesktopUseAdapter()
+    raw = (
+        "Action: type the tag\n"
+        "<tool_call>\n<function=computer_use>\n"
+        "<parameter=action>\ntype\n</parameter>\n"
+        "<parameter=text>\n<think>\n</parameter>\n"
+        "</function>\n</tool_call>"
+    )
+    agent_message = adapter.parse_raw_assistant_response(raw)
+    message = adapter.convert_message_from_agent(agent_message)
+
+    described = [
+        part["text"] for part in message.get("content") or []
+        if isinstance(part, dict) and part.get("type") == "action_description"
+    ]
+    assert described == ["type the tag"]
+    assert "reasoning_content" not in agent_message
+    actions = [
+        action
+        for call in message["tool_calls"]
+        for action in call["function"]["arguments"]["actions"]
+    ]
+    assert actions == [{"action": "type", "text": "<think>"}]

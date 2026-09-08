@@ -26,7 +26,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from collections.abc import Collection
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from lite.agents.core.action_space.base import (
     BaseActionSpace,
@@ -36,11 +36,15 @@ from lite.agents.core.action_space.base import (
 )
 from lite.agents.core.action_space.utils.geometry import (
     PIXELS_PER_CLICK,
-    RAW_NOTCH_THRESHOLD,
     compact_number,
+    model_duration,
+    model_keys,
     optional_coord,
     required_coord,
+    required_model_text,
     required_scroll_pixels,
+    scroll_clicks,
+    scroll_wire_magnitude,
 )
 from lite.agents.core.action_space.utils.grounding_point import (
     convert_non_point_call_for_grounding_space,
@@ -256,6 +260,14 @@ class Qwen3VLDesktopActionSpace(
         action = Qwen3VLDesktopActionSpace.computer_use(action="left_click", coordinate=[500, 500])
     """
 
+
+    #: The spelling this family writes on the wire: one click as this many
+    #: ``pixels``. Measured per family, deduplicated per trajectory: Qwen3-VL
+    #: is 84.5% screen units; Qwen3.5/3.8/EvoCUA write raw notch counts.
+    #: Rendering a notch writer in screen units teaches a student to write
+    #: 300 where its teacher wrote 3.
+    SCROLL_WIRE_UNIT: ClassVar[int] = PIXELS_PER_CLICK
+
     platform: str = "desktop"
     _QWEN_NATIVE_TOOL_NAME = "computer_use"
 
@@ -419,10 +431,10 @@ class Qwen3VLDesktopActionSpace(
         elif name == "scroll":
             direction = args.get("direction", "down")
             amount = args.get("amount", 3)
-            # Lite amount is in wheel clicks; Qwen3VL expects pixels as an INT
-            # (schema type is integer; a float ``amount`` from source data must
-            # not leak a float ``pixels`` into the SFT target).
-            scroll_pixels = int(round(amount)) * PIXELS_PER_CLICK
+            # ``int(round(...))``: the schema type is integer, so a float
+            # ``amount`` from source data must not leak onto the wire.
+            scroll_pixels = scroll_wire_magnitude(int(round(amount)),
+                                                  wire_unit=type(self).SCROLL_WIRE_UNIT)
             # Native Qwen3-VL splits vertical (``scroll``) vs horizontal
             # (``hscroll``); both are pixels-only with NO coordinate (the
             # ``coordinate`` arg is for click/move). Signs mirror the from_agent
@@ -601,13 +613,14 @@ class Qwen3VLDesktopActionSpace(
             return [LiteDesktopActionSpace.click(coordinate=coordinate, clicks=3)]
 
         elif action == "type":
-            return [LiteDesktopActionSpace.type(text=args.get("text", ""))]
+            return [LiteDesktopActionSpace.type(text=required_model_text(args, action=action))]
 
         elif action == "key":
-            raw_keys = args.get("keys", [])
             # Raw key payloads pass through the shared key vocabulary owner so
-            # every model family reaches the same canonical tokens.
-            return [LiteDesktopActionSpace.key(keys=raw_keys)]
+            # every model family reaches the same canonical tokens; ``model_keys``
+            # adds the list-element ``+`` split and makes a bad token model-visible
+            # feedback instead of an uncaught error that loses the trajectory.
+            return [LiteDesktopActionSpace.key(keys=model_keys(args.get("keys", []), action=action))]
 
         elif action == "scroll":
             # ``pixels`` is REQUIRED here — it is the only carrier of the
@@ -616,14 +629,7 @@ class Qwen3VLDesktopActionSpace(
             # int("5.0") raises ValueError, so the helper float()s first.
             scroll_pixels = required_scroll_pixels(args, action)
             direction = "down" if scroll_pixels < 0 else "up"
-            # Qwen3VL outputs pixels; Lite expects wheel clicks.
-            # When the value is tiny (< 10) the model likely output notch
-            # counts instead of pixels, so use the raw value directly.
-            abs_val = abs(scroll_pixels)
-            if abs_val < RAW_NOTCH_THRESHOLD:
-                amount = max(1, round(abs_val))
-            else:
-                amount = max(1, round(abs_val / PIXELS_PER_CLICK))
+            amount = scroll_clicks(scroll_pixels)
             return [LiteDesktopActionSpace.scroll(
                 direction=direction,
                 amount=amount,
@@ -634,11 +640,7 @@ class Qwen3VLDesktopActionSpace(
             # Same required-argument + string-float guard as scroll above.
             scroll_pixels = required_scroll_pixels(args, action)
             direction = "left" if scroll_pixels < 0 else "right"
-            abs_val = abs(scroll_pixels)
-            if abs_val < RAW_NOTCH_THRESHOLD:
-                amount = max(1, round(abs_val))
-            else:
-                amount = max(1, round(abs_val / PIXELS_PER_CLICK))
+            amount = scroll_clicks(scroll_pixels)
             return [LiteDesktopActionSpace.scroll(
                 direction=direction,
                 amount=amount,
@@ -654,7 +656,7 @@ class Qwen3VLDesktopActionSpace(
             return [LiteDesktopActionSpace.mouse_move(coordinate=coordinate)]
 
         elif action == "wait":
-            return [LiteDesktopActionSpace.wait(duration=float(args.get("time", 3)))]
+            return [LiteDesktopActionSpace.wait(duration=model_duration(args, action=action, default=3))]
 
         elif action == "answer":
             return [LiteFinishToolSet.response(text=args.get("text", ""))]
@@ -1016,7 +1018,7 @@ class Qwen3VLMobileActionSpace(
             )]
 
         elif action == "type":
-            return [LiteMobileActionSpace.type(text=args.get("text", ""))]
+            return [LiteMobileActionSpace.type(text=required_model_text(args, action=action))]
 
         elif action == "open":
             return _qwen_mobile_open_app_call(
@@ -1035,7 +1037,7 @@ class Qwen3VLMobileActionSpace(
             return [LiteMobileActionSpace.system_button(button=btn)]
 
         elif action == "wait":
-            return [LiteMobileActionSpace.wait(duration=float(args.get("time", 3)))]
+            return [LiteMobileActionSpace.wait(duration=model_duration(args, action=action, default=3))]
 
         elif action == "answer":
             return [LiteFinishToolSet.response(text=args.get("text", ""))]

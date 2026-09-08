@@ -501,20 +501,28 @@ class TestActionTranslation:
             }
         }
 
-    def test_type_honors_the_models_press_enter(self):
-        """The model owns `press_enter`; webgym must not discard or override it.
+    def test_type_projects_a_trailing_newline_onto_the_container_flag(self):
+        """The model owns whether to submit; webgym must not override it.
 
-        This used to be hardcoded True, so a model that explicitly asked NOT to
-        submit got Enter anyway with no feedback -- and fara's own prompt tells
-        the model to send `press_enter=False` on auto-suggest search bars. The
-        container always honored the parameter; only the host threw it away.
+        Canonical spells "submit" as a trailing newline inside ``text``. The
+        container's own wire keeps a ``press_enter`` flag, so the host strips
+        the newline and sets the flag -- rather than letting the newline ride
+        along, which would leave the value one character long and depend on the
+        container's typing path. Only a TRAILING newline submits; an interior
+        one is part of the value.
         """
         env = _make_env()
         env._viewport = (1280, 768)
         env._last_click_x, env._last_click_y = 640, 384
-        for sent, expected in ((True, True), (False, False)):
-            cmd = env._translate_action("type", {"text": "q", "press_enter": sent})
-            assert cmd["fill_coords"]["press_enter"] is expected, sent
+        for text, value, submits in (
+            ("q\n", "q", True),
+            ("q", "q", False),
+            ("a\nb", "a\nb", False),
+            ("", "", False),
+        ):
+            cmd = env._translate_action("type", {"text": text})
+            assert cmd["fill_coords"]["value"] == value, text
+            assert cmd["fill_coords"]["press_enter"] is submits, text
 
     def test_type_with_coordinate(self):
         """Type action with explicit coordinate uses it instead of last click."""

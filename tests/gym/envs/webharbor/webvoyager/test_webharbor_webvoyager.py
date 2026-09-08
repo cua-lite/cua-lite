@@ -32,6 +32,7 @@ from lite.gym.envs.webharbor.webvoyager.main import (
     _KNOWN_STANDALONE_TOOL_NAMES,
     RemoteWebVoyagerEnv,
     _pair_webvoyager_action_errors,
+    _to_container_action,
 )
 
 # ---------------------------------------------------------------------------
@@ -386,6 +387,26 @@ class TestActionSpace:
         action = body["actions"][0]
         assert action["name"] == "type"
         assert action["arguments"]["text"] == "vegetarian lasagna"
+
+    @pytest.mark.asyncio
+    async def test_type_with_a_trailing_newline_submits(self):
+        """The trailing newline must reach the container as its ``press_enter``.
+
+        Driven through ``step()`` on purpose: the projection lives in the
+        ``/step`` payload literal, and the unit tests for
+        ``_to_container_action`` pass whether or not it is still called there.
+        Without this, deleting the call silently removes every Enter press.
+        """
+        body = await self._step_one("type", {"text": "vegetarian lasagna\n"})
+        action = body["actions"][0]
+        assert action["name"] == "type"
+        assert action["arguments"]["text"] == "vegetarian lasagna"
+        assert action["arguments"]["press_enter"] is True
+
+    @pytest.mark.asyncio
+    async def test_type_without_a_trailing_newline_does_not_submit(self):
+        body = await self._step_one("type", {"text": "vegetarian lasagna"})
+        assert body["actions"][0]["arguments"].get("press_enter") is not True
 
     @pytest.mark.asyncio
     async def test_scroll(self):
@@ -2614,9 +2635,10 @@ def test_a_terminating_batch_keeps_the_previous_actions_frame(monkeypatch, tmp_p
 def test_container_type_without_press_enter_types_only(monkeypatch):
     """Absent ``press_enter`` means TYPE ONLY, on every env that reads it.
 
-    The model is never told a default (the canonical schema declares
-    ``press_enter: bool | None`` and ``None`` is dropped on the wire), and the
-    error is asymmetric: a missing Enter costs one turn, a spurious Enter
+    The container flag is host-derived: canonical spells Enter as a trailing
+    newline, and the env strips it onto ``press_enter``. Absent means the model
+    did not ask to submit, and the error is asymmetric: a missing Enter costs
+    one turn, a spurious Enter
     irreversibly submits a form or navigates away. ``fill`` is the DOM-index
     extra, a DIFFERENT action, and already agreed.
     """
@@ -2639,6 +2661,56 @@ def test_container_type_without_press_enter_types_only(monkeypatch):
     assert seen == [False, True, False]
 
 
+def test_container_type_with_nothing_focused_matches_the_focused_branch(monkeypatch):
+    """The unfocused branch is the FIRST type of every episode, not a corner.
+
+    ``_initial_page_setup`` clicks ``<body>`` at reset, so ``_active_or_last_element``
+    returns None until the model clicks something. That branch bypasses
+    ``_exec_action_type`` entirely, so it has to reproduce all three of its
+    behaviours itself: honour ``press_enter`` (the host already stripped the
+    canonical trailing newline into that flag), reinstall the spacebar guard a
+    navigation wipes, and settle as long as a submit needs.
+    """
+    from lite.gym.envs.webharbor.webvoyager.docker import server
+
+    sent: list = []
+    performed: list = []
+    guarded: list = []
+    slept: list = []
+
+    class _Chain:
+        def __init__(self, _driver):
+            pass
+
+        def send_keys(self, value):
+            sent.append(value)
+            return self
+
+        def pause(self, _seconds):
+            return self
+
+        def perform(self):
+            performed.append(tuple(sent))
+
+    monkeypatch.setattr(server, "ActionChains", _Chain)
+    monkeypatch.setattr(server, "_active_or_last_element", lambda _inst: None)
+    monkeypatch.setattr(server, "_install_spacebar_guard", lambda _d: guarded.append(True))
+    monkeypatch.setattr(server.time, "sleep", lambda s: slept.append(s))
+    inst = SimpleNamespace(driver=None, web_eles=[], last_element=None)
+
+    server._execute_action(inst, "type", {"text": "query", "press_enter": True})
+    assert sent == ["query", server.Keys.ENTER]
+    assert performed == [("query", server.Keys.ENTER)], "the chain must be dispatched"
+    assert guarded == [True], "a navigation wipes the reset-time guard; reinstall it"
+    assert slept == [10], "a submit navigates and needs the long settle"
+
+    sent.clear(); performed.clear(); guarded.clear(); slept.clear()
+    server._execute_action(inst, "type", {"text": "query"})
+    assert sent == ["query"], "a plain type must not submit"
+    assert performed == [("query",)]
+    assert slept == [3], "a plain type uses the short settle"
+
+
 def test_container_goto_requires_canonical_url_argument():
     from lite.gym.envs.webharbor.webvoyager.docker import server
 
@@ -2647,3 +2719,40 @@ def test_container_goto_requires_canonical_url_argument():
     for args in ({}, {"web": "https://example.com/"}, {"page": "https://example.com/"}):
         with pytest.raises(ValueError, match="requires url"):
             server._execute_action(inst, "goto", args)
+
+
+# ---------------------------------------------------------------------------
+# Canonical -> container action wire
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,value,submits",
+    [
+        ("query\n", "query", True),
+        ("query", "query", False),
+        ("line one\nline two", "line one\nline two", False),
+        ("", "", False),
+    ],
+    ids=["trailing", "plain", "interior", "empty"],
+)
+def test_to_container_action_projects_a_trailing_newline(text, value, submits):
+    """``type`` is a CANONICAL action here (``valid_actions`` in the env config
+    lists it), and the container types through Selenium ``send_keys``, where a
+    newline is an ordinary character rather than the Return key. Without this
+    projection a submitting ``type`` types its text and never submits -- and the
+    container's longer post-navigation settle never runs either."""
+    out = _to_container_action({"name": "type", "arguments": {"text": text}})
+    assert out["arguments"]["text"] == value
+    assert out["arguments"]["press_enter"] is submits
+
+
+def test_to_container_action_leaves_the_canonical_action_untouched():
+    """Error pairing and the recorded trajectory both read ``actions_to_send``,
+    so the projection must not mutate it in place."""
+    typed = {"name": "type", "arguments": {"text": "q\n"}}
+    _to_container_action(typed)
+    assert typed["arguments"] == {"text": "q\n"}
+
+    scroll = {"name": "scroll", "arguments": {"direction": "down", "amount": 3}}
+    assert _to_container_action(scroll) is scroll
