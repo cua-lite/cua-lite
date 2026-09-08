@@ -65,11 +65,12 @@ identical is what makes the pairing checkable by eye.
 
 Lite.CUAWorld uses [`devs/data/lite.osworld/filter.py`](/devs/data/lite.osworld/filter.py). It is mostly an
 **annotation** pass: it keeps trajectories and tags quality gates in
-`metadata.others.exclude_reason` (comma-joined; the key is omitted when clean). Two
+`metadata.others.exclude_reason` (comma-joined; the key is omitted when clean). Four
 publish-invalid classes are physically dropped before staging: a trajectory whose
 agent typed a `/opt/env/` path leaked an env-only tool tree and is
-non-reproducible, and any trajectory with GUI coordinates outside normalized
-`[0, 1000]` would fail publish validation. Downstream selects the training set with
+non-reproducible, and a trajectory with GUI coordinates outside normalized
+`[0, 1000]`, one calling a tool it never declared, or one naming an action that
+does not exist would all fail publish validation. Downstream selects the training set with
 `not m.others.get('exclude_reason') and (m.others.get('episode_return') or 0) > 0.5`.
 
 ```bash

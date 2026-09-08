@@ -80,9 +80,10 @@ It is mostly an **annotation** pass: it keeps trajectories and tags quality gate
 in the *trajectory-level* `metadata.others.exclude_reason` (comma-joined; the key
 is omitted when clean) — a separate namespace from the *task-level*
 `exclude_reason` on catalog rows (see [Collection Targets](#collection-targets)).
-Two publish-invalid classes are physically dropped before staging: trajectories
-whose agent typed a `/opt/env/` path, and trajectories with GUI coordinates
-outside normalized `[0, 1000]`. Downstream consumers filter with
+Four publish-invalid classes are physically dropped before staging: trajectories
+whose agent typed a `/opt/env/` path, trajectories with GUI coordinates outside
+normalized `[0, 1000]`, a call naming a tool the row never declared, and an
+action-batch child naming an action that does not exist. Downstream consumers filter with
 `not m.others.get('exclude_reason')`.
 
 ```bash

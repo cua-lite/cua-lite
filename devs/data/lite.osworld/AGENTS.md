@@ -64,10 +64,10 @@ eye.
 datasets. It **keeps every ordinary quality-failed trajectory** and tags gates in
 `metadata.others.exclude_reason` (comma-joined; the key is omitted when clean) —
 downstream consumers filter with `not m.others.get('exclude_reason')`, exactly
-like the task-level idiom. The only physical drops are env-tool leaks and OOB
-coordinates: trajectories whose agent typed a `/opt/env/` path are not
-reproducible in the faithful guest, and out-of-range GUI coordinates fail the
-staging row-format check.
+like the task-level idiom. The physical drops are env-tool leaks, OOB
+coordinates, undeclared tool calls and invalid action-batch children:
+trajectories whose agent typed a `/opt/env/` path are not reproducible in the
+faithful guest, and the other three fail the staging row-format check.
 
 ```bash
 uv run python devs/data/lite.osworld/filter.py \

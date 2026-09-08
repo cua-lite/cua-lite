@@ -15,7 +15,7 @@ promoted dataset batch. The row must include:
 | Command | Exact collect/preproc/filter/stage command, including filters and `--config-path` |
 | Raw subset | Source split, prompt-data parquet, task-id list, or log-root glob |
 | Input / output rows | Raw attempted row count, output row count, and per-config counts |
-| Skips / hard drops | Task skips, trajectory `exclude_reason` tag counts, `/opt/env` and OOB hard drops |
+| Skips / hard drops | Task skips, trajectory `exclude_reason` tag counts, `/opt/env`, OOB, undeclared-tool and invalid-action hard drops |
 | Stage / publish gate | Exact `hf.stage` command plus its `seen=... kept=... dropped_by_filter=...` line and per-config row lines; this is the row-content validation gate |
 | Strict validation | Exact `validate_canonical_rows`, `log_contract`, migration `--verify`, or repo-local pytest command and result |
 | Visual/sample artifact | Path to a rendered prompt, inspected row JSON, screenshot sample, or QA note |
@@ -28,6 +28,11 @@ synthetic smoke matrix in `lite/data/preproc/AGENTS.md`.
 Upload and download are transport/layout checks only. They prove the staged tree
 can be packaged, pushed, tagged, and read back; they do not replace the stage
 gate, migration `--verify`, filter tests, or `export_sft` conversion smoke.
+
+`hf.download` fetches shards with `--max-workers` (default 16). These repos run
+to hundreds of shards, so raise it — 32 is roughly 4x the `huggingface_hub`
+default of 8 — and run independent datasets concurrently rather than in
+sequence.
 
 Row helpers shared by the cohort filters live in
 [devs/data/utils.py](/devs/data/utils.py) — `compact_row_images` (the one place

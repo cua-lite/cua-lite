@@ -8,11 +8,13 @@ Pipeline: collect (scripts/rollout.py) → **annotate** (this) → stage (lite.d
 → upload; consumers download the published canonical dataset before ``export_sft``. Read
 every ``trajectory.parquet`` under ``--log-root``, clean + tag each, and write them to
 ``--out``. Quality gates are recorded in ``metadata.others.exclude_reason`` (comma-joined;
-the key is omitted when clean) and the consumer decides — with two hard-drop exceptions:
-a trajectory whose agent **typed a ``/opt/env/`` path**, or a trajectory with an
-out-of-range GUI coordinate. ``/opt/env`` is the env-only tool tree the agent must not
-reach; OOB coordinates fail the staging row-format check and should never enter the
-canonical dataset. Both are physically excluded rather than left for a downstream threshold.
+the key is omitted when clean) and the consumer decides — with four hard-drop
+exceptions: a trajectory whose agent **typed a ``/opt/env/`` path**, one with an
+out-of-range GUI coordinate, one naming a tool the row never declared, and one
+naming an action that does not exist. ``/opt/env`` is the env-only tool tree the
+agent must not reach; the other three fail the staging row-format check and should
+never enter the canonical dataset. All four are physically excluded rather than
+left for a downstream threshold.
 Everything else is kept. Downstream selects the training set with
 ``not m.others.get('exclude_reason') and (m.others.get('episode_return') or 0) > 0.5`` — the same
 ``exclude_reason`` idiom used for task-level exclusion.
@@ -101,6 +103,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import multiprocessing as mp
 import re
 import shutil
 import sys
@@ -113,7 +116,9 @@ import pandas as pd
 from lite.core.tools import make_tool_call
 from lite.core.tools.action_space import (
     LITE_ACTION_BATCH_TOOL_NAMES,
+    LITE_VALID_ACTION_NAMES,
     action_coordinate_arguments_out_of_range,
+    is_lite_action_name_or_action_batch_tool_name,
 )
 from lite.core.tools.calls import stamp_messages_tool_call_ids, tool_call_id, tool_call_name
 from lite.core.tools.extra_tools import LiteFinishToolSet
@@ -410,6 +415,76 @@ def has_oob_coordinate(messages: list[dict]) -> bool:
     return False
 
 
+def has_invalid_action_batch(messages: list[dict]) -> bool:
+    """True if an action-batch child names an action that does not exist.
+
+    The model sometimes invents an action name (``terminal``, ``select_all``) or lets
+    raw wire text land in it (``<parameter=action>\nkey``). The batch tool itself is
+    schema-free, so ``has_undeclared_tool_call`` cannot see inside it, and staging
+    rejects the row -- ``computer.actions cannot contain terminal``.
+
+    Only the NAME is checked. Validating the child ARGUMENTS here would make this a
+    second row validator against a contract the filter has not applied yet: it runs
+    before normalisation, so an argument shape this pass is about to fix would be
+    read as publish-invalid and the row deleted instead of repaired.
+    """
+    for m in messages:
+        if not isinstance(m, dict) or m.get("role") != "assistant":
+            continue
+        for tc in m.get("tool_calls") or []:
+            fn = tc.get("function") or {}
+            if fn.get("name") not in LITE_ACTION_BATCH_TOOL_NAMES:
+                continue
+            args = fn.get("arguments") or {}
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except (TypeError, ValueError):
+                    return True
+            for act in (args.get("actions") or []) if isinstance(args, dict) else []:
+                if not isinstance(act, dict):
+                    return True
+                name = act.get("action")
+                if not isinstance(name, str) or name not in LITE_VALID_ACTION_NAMES:
+                    return True
+    return False
+
+
+def has_undeclared_tool_call(messages: list[dict], metadata: dict) -> bool:
+    """True if a tool call names a tool the row never declared.
+
+    The model occasionally hallucinates a tool NAME while emitting real arguments
+    (``command(pixels=-3)`` where it meant ``computer(scroll)``). Staging rejects
+    the row -- ``tool_call 'x' is standalone but missing from
+    metadata.extra_tool_schemas`` -- so, like an OOB coordinate, it is hard-dropped
+    here rather than left to fail the publish.
+
+    "Known" is the canonical vocabulary plus what the row declares, NOT the gate's
+    per-surface schema-free set: reproducing that set here would make this filter a
+    second row validator, and an earlier version that hardcoded the action-batch
+    names alone dropped every row calling a bare canonical ``click``.
+    """
+    declared = {
+        tool_schema_name(t)
+        for t in (metadata.get("extra_tool_schemas") or [])
+    }
+    # ``_annotate_metadata`` adds TERMINATE_SCHEMA for a row that CALLS terminate
+    # without declaring it, so such a row is repaired, not publish-invalid. This
+    # predicate runs before that repair, so it must not count the name the
+    # repair guarantees -- dropping the row here deletes data the filter fixes.
+    declared.add(tool_schema_name(TERMINATE_SCHEMA))
+    for m in messages:
+        if not isinstance(m, dict) or m.get("role") != "assistant":
+            continue
+        for tc in m.get("tool_calls") or []:
+            name = (tc.get("function") or {}).get("name")
+            if is_lite_action_name_or_action_batch_tool_name(name):
+                continue
+            if name not in declared:
+                return True
+    return False
+
+
 def _keys_of(tc: dict) -> list[str]:
     """Lower-cased key list for a ``key`` action (e.g. ['ctrl','s']); [] otherwise."""
     ks = _args_of(tc).get("keys")
@@ -452,6 +527,21 @@ def _is_export_traj(messages: list[dict]) -> bool:
             if name == "key" and "shift" in keys and "s" in keys and "ctrl" in keys:
                 return True
     return False
+
+
+def _is_empty_type_action(action_name: str, action_args: dict) -> bool:
+    """A ``type`` with no text typed nothing, so it is a no-op like ``wait``.
+
+    Two producers put one here, and only one of them is still live. A malformed
+    reply that dropped the ``<parameter=text>`` opener used to yield ``text=""``;
+    that is now refused at the parse boundary (``geometry.required_model_text``),
+    so it survives only in rows collected before that fix. What still arrives is
+    an explicitly empty parameter body -- the model's own choice, and still a
+    no-op. Either way the turn was recorded as a successfully executed action
+    that moved no state, and keeping it teaches the student to emit typing
+    actions that do nothing.
+    """
+    return action_name == "type" and not (action_args.get("text") or "")
 
 
 def strip_noop_actions(
@@ -507,8 +597,10 @@ def strip_noop_actions(
                 kept_actions = []
                 for action in actions:
                     action_name, action_args = _action_name_args(action, name)
-                    if action_name in noop or (
-                        save_ok and _is_bare_ctrl_s_action(action_name, action_args)
+                    if (
+                        action_name in noop
+                        or _is_empty_type_action(action_name, action_args)
+                        or (save_ok and _is_bare_ctrl_s_action(action_name, action_args))
                     ):
                         n_stripped += 1
                     else:
@@ -814,6 +906,13 @@ def _typed_opt_env(messages: list[dict]) -> bool:
     return False
 
 
+def _process_one(task: tuple) -> tuple:
+    """Pool worker: unpack, run, and return the source path with the counts."""
+    src, dst, noop, strip_noop_save, out_root, dl, du, dns, usm, et, cr, dry = task
+    return src, _process_file(src, dst, noop, strip_noop_save, out_root,
+                              dl, du, dns, usm, et, cr, dry)
+
+
 def _process_file(
     src: Path, dst: Path, noop: frozenset[str], strip_noop_save: bool,
     output_root: Path,
@@ -841,6 +940,15 @@ def _process_file(
         msgs = coerce_messages(row["messages"])
         # HARD DROP (not a tag): these trajectories either leak an env-only tool or
         # fail the staging row-format check, so remove them from the output.
+        #
+        # The invented-action-name check runs FIRST and must stay there. Every
+        # other pass below walks the batch through ``_iter_action_items``, whose
+        # ``_action_name_args`` RAISES on a child name that is not in the tool's
+        # action set -- so a single such row aborts the whole log-root before any
+        # later drop can remove it, taking every clean sibling with it.
+        if has_invalid_action_batch(msgs):
+            reason_counts["_dropped_invalid_action"] += 1
+            continue
         if _typed_opt_env(msgs):
             reason_counts["_dropped_optenv"] += 1
             continue
@@ -848,6 +956,9 @@ def _process_file(
             reason_counts["_dropped_oob"] += 1
             continue
         metadata = _metadata(row)
+        if has_undeclared_tool_call(msgs, metadata):
+            reason_counts["_dropped_undeclared_tool"] += 1
+            continue
         reasons = _exclude_reasons(
             msgs, metadata, drop_loops, drop_undo_storm, drop_no_submit, undo_storm_min
         )
@@ -990,6 +1101,11 @@ def main() -> None:
         "requires a fresh output root so stale trajectory.parquet files "
         "cannot survive a rerun.",
     )
+    ap.add_argument(
+        "--jobs", type=int, default=16,
+        help="worker processes (default 16). Each trajectory is independent, so "
+             "this scales nearly linearly; use 1 to debug a traceback.",
+    )
     args = ap.parse_args()
 
     if not args.dry_run and not args.out:
@@ -1021,13 +1137,22 @@ def main() -> None:
           f"collapse_reasoning={args.collapse_reasoning}")
     ts = td = tterm = tcollapse = tfinal = nw = 0
     reason_counts: Counter[str] = Counter()
-    for src in traj_files:
+    tasks = [
+        (src, out_root / src.relative_to(src_root), noop, args.strip_noop_save,
+         out_root, args.drop_loops, args.drop_undo_storm, args.drop_no_submit,
+         args.undo_storm_min, args.ensure_terminate, args.collapse_reasoning,
+         args.dry_run)
+        for src in traj_files
+    ]
+    if args.jobs > 1:
+        with mp.Pool(args.jobs) as pool:
+            results = pool.imap_unordered(_process_one, tasks, chunksize=8)
+            results = list(results)
+    else:
+        results = [_process_one(t) for t in tasks]
+
+    for src, (ns, nd, nterm, ncol, nfinal, npolicy, wrote) in results:
         dst = out_root / src.relative_to(src_root)
-        ns, nd, nterm, ncol, nfinal, npolicy, wrote = _process_file(
-            src, dst, noop, args.strip_noop_save, out_root, args.drop_loops,
-            args.drop_undo_storm, args.drop_no_submit, args.undo_storm_min,
-            args.ensure_terminate, args.collapse_reasoning, args.dry_run,
-        )
         ts += ns
         td += nd
         tterm += nterm
@@ -1050,7 +1175,10 @@ def main() -> None:
     dest = "(dry run — nothing written)" if args.dry_run else f"→ {out_root}"
     print(
         f"done (ANNOTATE mode — HARD-DROPPED {dropped_optenv} trajectories that typed "
-        f"/opt/env/ and {dropped_oob} with OOB coordinates; all {total} trajectories "
+        f"/opt/env/, {dropped_oob} with OOB coordinates, "
+        f"{reason_counts['_dropped_undeclared_tool']} with an undeclared tool call and "
+        f"{reason_counts['_dropped_invalid_action']} with an invalid action name; "
+        f"all {total} trajectories "
         "kept after hard drops): "
         f"stripped {ts} no-op actions, dropped {td} no-op-only turns, injected terminate "
         f"into {tterm} trajectories, collapsed {tcollapse} inline_reasoning blocks, "
@@ -1058,9 +1186,12 @@ def main() -> None:
         f"{clean} clean (no exclude_reason) + {annotated} {verb} tagged  "
         f"= {100*clean//max(total,1)}% clean"
     )
+    # Bookkeeping keys are underscore-prefixed and real exclude_reasons never are,
+    # so the convention filters them -- a hard-drop counter listed here would read as
+    # a tag on rows still in the output, when those rows were removed.
     print("exclude_reason tag counts: " + ", ".join(
         f"{reason}={count}" for reason, count in sorted(reason_counts.items())
-        if reason not in ("_trajectories", "_total", "_dropped_optenv", "_dropped_oob")
+        if not reason.startswith("_")
     ))
 
 

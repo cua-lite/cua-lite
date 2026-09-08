@@ -57,8 +57,9 @@ eye.
 Lite.ScaleCUA uses `devs/data/lite.osworld/filter.py`. It is an **annotation**
 pass for ordinary quality gates: it keeps those trajectories and tags them in
 `metadata.others.exclude_reason` (comma-joined; the key is omitted when clean).
-Two publish-invalid classes are hard-dropped before staging: typed `/opt/env/`
-tool leaks and out-of-range GUI coordinates. Downstream consumers filter with
+Four publish-invalid classes are hard-dropped before staging: typed `/opt/env/`
+tool leaks, out-of-range GUI coordinates, a call naming a tool the row never
+declared, and an action-batch child naming an action that does not exist. Downstream consumers filter with
 `not m.others.get('exclude_reason')` (the same idiom as the task-level
 `exclude_reason` above, though the meaning differs: task-level marks unrunnable
 tasks, trajectory-level marks quality gates).
@@ -84,7 +85,9 @@ It tags, in `exclude_reason`:
 It hard-drops:
 
 - typed `/opt/env/` paths — env-only tool leaks that are not reproducible on the faithful guest;
-- OOB coordinates — coordinates outside normalized `[0, 1000]`, which fail publish validation.
+- OOB coordinates — coordinates outside normalized `[0, 1000]`, which fail publish validation;
+- undeclared tool calls — a hallucinated tool NAME (`command(pixels=-3)` for `computer(scroll)`);
+- invalid action-batch children — an invented action name (`terminal`), or raw wire text landing in it.
 
 Reward is deliberately **not** a tag: `episode_return` is already in
 `metadata.others.episode_return`, so a consumer thresholds it directly (`episode_return > 0.5`).
@@ -299,8 +302,8 @@ off `sample_*/summary.json` presence (`get_pending`); `hf.unstage` recreates tho
 summaries from any staged dataset. So stage the **RAW** log-root — **skip `filter.py`**:
 failures carry a summary too, so resume then **skips every attempted sample (success OR
 failure)** rather than re-running failures. `filter.py` (the annotation pass — it keeps
-ordinary quality-failed trajectories, tags `exclude_reason`, and hard-drops
-publish-invalid tool leaks/OOB rows; see [Shared Filter](#shared-filter)) runs
+ordinary quality-failed trajectories, tags `exclude_reason`, and hard-drops the
+four publish-invalid classes; see [Shared Filter](#shared-filter)) runs
 **ONCE at the very end** on the final merged log-root to produce the canonical dataset
 (the teacher runbook's annotate step → §3). Delete the temp dataset afterward.
 
@@ -353,11 +356,11 @@ uv run python -m lite.data.hf.unstage \
 # (resume skips attempted)
 uv run python scripts/rollout.py --model-id gpt-5.5 --env-id lite.scalecua --splits rl \
   --filter "$TASK_FILTER" --concurrency 32 --max-attempts 2 \
-  --save-data true --save-video true --save-gif false \
+  --save-data true --save-video false --save-gif false \
   --config-path scripts/configs/gpt/recipes/collect/lite.scalecua.yaml --log-root "$RESUME_ROOT"
 uv run python scripts/rollout.py --model-id gpt-5.5 --env-id lite.scalecua --splits train \
   --filter "$TASK_FILTER" --sample "$TRAIN_N" --concurrency 32 --max-attempts 2 \
-  --save-data true --save-video true --save-gif false \
+  --save-data true --save-video false --save-gif false \
   --config-path scripts/configs/gpt/recipes/collect/lite.scalecua.yaml --log-root "$RESUME_ROOT"
 ```
 
@@ -374,6 +377,6 @@ plus an offline unstage of the real staged dataset — `--config-names desktop.u
 trajectories into their own split dirs with **zero cross-contamination**, so per-split
 resume is correct. Because RAW stages every attempted sample (success **or** failure),
 resume treats *attempted* as done and never re-runs it; `filter.py` annotates
-ordinary quality gates and hard-drops publish-invalid tool leaks/OOB rows once at
+ordinary quality gates and hard-drops the four publish-invalid classes once at
 the end. (That run predates the teacher suffix, so it names the configs as they
 were spelled then; the mechanism it verifies is unchanged.)
