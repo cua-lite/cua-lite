@@ -196,6 +196,13 @@ def _pytest_collected_test_counts(
         "-qq",
         "-p",
         "no:cacheprovider",
+        # Collection is what is being measured, so it must be serial: xdist
+        # distributes collection across workers and reports it in a shape this
+        # parser cannot read, which would score every file as zero. `-n 0`
+        # rather than `-p no:xdist` -- unloading the plugin would make the
+        # `addopts` default an unrecognized argument.
+        "-n",
+        "0",
     ]
     if marker_expression is not None:
         command.extend(["-m", marker_expression])

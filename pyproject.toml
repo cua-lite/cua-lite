@@ -119,8 +119,11 @@ testpaths = ["tests", "examples"]
 python_files = ["test_*.py"]
 pythonpath = [".", "tests"]
 # Keep default test runs bounded and skip live/stress suites unless requested.
-# Add `-n <workers>` locally or in CI when parallelism is useful for that host.
-addopts = "-v -ra --strict-markers -m 'not live and not stress'"
+# `-n 32` is the default worker count: an explicit value, not `-n auto`, so a
+# run costs the same on any host. Override with `-n <workers>`, or `-n 0` for a
+# serial run -- NOT `-p no:xdist`, which unloads the plugin that owns `-n` and
+# makes this line an unrecognized argument.
+addopts = "-v -ra --strict-markers -n 32 -m 'not live and not stress'"
 asyncio_mode = "auto"
 markers = [
     "live: requires production-like environment (live env-server on port 30200 OR real docker daemon)",

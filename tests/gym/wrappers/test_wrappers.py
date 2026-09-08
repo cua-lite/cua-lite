@@ -8,7 +8,7 @@ triggering action with an internal ``terminate`` and drop the rest of the batch.
 The default terminal status is ``success``; tests also pin the explicit status
 parameter so scoring policy stays outside loop detection.
 
-Run: uv run pytest -n auto tests/gym/wrappers/test_wrappers.py -v
+Run: uv run pytest -n 0 tests/gym/wrappers/test_wrappers.py -v
 """
 from __future__ import annotations
 

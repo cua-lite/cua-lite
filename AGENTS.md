@@ -336,8 +336,11 @@ patches, generated files, or `slime/` to satisfy them.
   [pyproject.toml](/pyproject.toml). On the normal host/dev venv path, use
   `uv run pytest` for the default suite; inside Slime or another configured
   container, use that container's expected pytest/Python invocation.
-- Do not use `-n auto` by habit. If you override xdist workers, choose an
-  explicit value appropriate to the current machine and test size.
+- The default is `-n 32`, already in `addopts`. Do not use `-n auto`. Override
+  with an explicit `-n <workers>` only when the host is smaller than that, and
+  use `-n 0` for a serial run when debugging a single test. Do NOT reach for
+  `-p no:xdist`: it unloads the plugin that owns `-n`, so the `addopts` default
+  becomes an unrecognized argument and pytest refuses to start.
 - Live and stress tests are excluded by default through pytest markers. Opt in
   explicitly with marker selection when the required env-server, Docker daemon,
   credentials, or other live resource is available.

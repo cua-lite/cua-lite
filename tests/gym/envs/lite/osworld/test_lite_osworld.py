@@ -17,10 +17,10 @@ Coverage groups:
 - TestEvalPull                                 — read_bytes RPC download
 
 Usage:
-    uv run pytest tests/gym/envs/lite/osworld/test_lite_osworld.py -n auto
+    uv run pytest tests/gym/envs/lite/osworld/test_lite_osworld.py -n 0
 
 Inside Slime container:
-    pytest tests/gym/envs/lite/osworld/test_lite_osworld.py -n auto
+    pytest tests/gym/envs/lite/osworld/test_lite_osworld.py -n 0
 """
 
 from __future__ import annotations
