@@ -24,6 +24,8 @@
 
 agent_id: "qwen3_5"
 agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; export_sft drops it, RL sets sampling via the trainer
+    temperature: 0.0
   # resolution omitted     → no agent-side downsample. Qwen smart_resize still
   #                          rounds each side to a multiple of 32 and caps pixels.
   # protocol_kwargs omitted → Qwen3_5HistoryProtocol defaults
@@ -31,3 +33,10 @@ agent_kwargs:
 
 env_kwargs:
   max_steps: 30
+  loop_detect: 5
+  # Qwen native `answer` lowers to `response`; imperative tasks still need `terminate`.
+  # The sandbox accepts both unconditionally (LiteFinishToolSet), so this is about the
+  # PROMPT: without it the rendered action enum omits them and the model is evaluated
+  # on a surface its SFT data did not have. Sync with
+  # scripts/configs/qwen3_5/default/lite.osworld.yaml.
+  extra_tools: ["response", "terminate"]

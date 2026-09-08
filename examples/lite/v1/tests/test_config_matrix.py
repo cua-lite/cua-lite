@@ -87,6 +87,11 @@ def _build_agent(row: ConfigRow) -> BaseAgent:
     if model_id in LOCAL_AGENTS:
         kwargs = {"processor": MagicMock(), "generate_fn": lambda *a, **k: None}
     agent_kwargs = dict(row.agent_kwargs)
+    # ``sampling_kwargs`` configures local serving/generate_fn, never the adapter.
+    # Both real consumers drop it before construction -- rollout at
+    # ``lite/infer/rollout.py`` and export at ``export_sft._adapter_kwargs_for_export``
+    # -- so a config carrying it is valid and this builder must mirror them.
+    agent_kwargs.pop("sampling_kwargs", None)
     env = SimpleNamespace(metadata=LiteCUAMetadata(dims=_DESKTOP_USE_DIMS))
     return make(model_id, env=env, agent_id=row.agent_id, **kwargs, **agent_kwargs)
 
