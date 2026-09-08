@@ -58,7 +58,7 @@ uv run python scripts/rollout.py \
   --concurrency 32 \
   --max-attempts 2 \
   --save-data true \
-  --save-video true \
+  --save-video false \
   --save-gif false \
   --config-path scripts/configs/gpt/recipes/collect/lite.scalecua.yaml \
   --log-root ".data/rollout/lite.scalecua/gpt5_5/$COMMIT"
@@ -72,7 +72,7 @@ uv run python scripts/rollout.py \
   --concurrency 32 \
   --max-attempts 2 \
   --save-data true \
-  --save-video true \
+  --save-video false \
   --save-gif false \
   --config-path scripts/configs/gpt/recipes/collect/lite.scalecua.yaml \
   --log-root ".data/rollout/lite.scalecua/gpt5_5/$COMMIT"

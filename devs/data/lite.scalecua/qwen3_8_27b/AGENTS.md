@@ -88,7 +88,7 @@ uv run python scripts/rollout.py \
   --concurrency 32 \
   --max-attempts 2 \
   --save-data true \
-  --save-video true \
+  --save-video false \
   --save-gif false \
   --config-path scripts/configs/qwen3_8/default/lite.osworld.yaml \
   --log-root ".data/rollout/lite.scalecua/qwen3_8_27b/$COMMIT"
@@ -103,7 +103,7 @@ uv run python scripts/rollout.py \
   --concurrency 32 \
   --max-attempts 2 \
   --save-data true \
-  --save-video true \
+  --save-video false \
   --save-gif false \
   --config-path scripts/configs/qwen3_8/default/lite.osworld.yaml \
   --log-root ".data/rollout/lite.scalecua/qwen3_8_27b/$COMMIT"
