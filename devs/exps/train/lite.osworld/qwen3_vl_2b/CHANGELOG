@@ -1,3 +1,0 @@
-## 658c25b  (2026-04-28)
-
-Initial standardized snapshot. Recipe written against this commit. Pre-standardization runs (e.g. captured `sft_noise_var_A` and `sft_noise_var_A_rl` in `.ckpts/20260426_0000/...`) are not catalogued here.

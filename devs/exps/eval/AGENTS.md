@@ -577,4 +577,4 @@ For an agent given **(this README) + `<env>` + (optional model subset)**:
 - [`docs/envs.md`](/docs/envs.md) — env architecture (direct vs server mode)
 - [`docs/slime.md`](/docs/slime.md) — Slime container build / launch / init
 - [`docs/eval.md`](/docs/eval.md) — rollout entry, per-env prereq tables
-- [`devs/exps/train/AGENTS.md`](/devs/exps/train/AGENTS.md) — sibling training campaign workflow
+- [`devs/exps/train/desktop/README.md`](/devs/exps/train/desktop/README.md) — sibling training campaign

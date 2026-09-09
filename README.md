@@ -208,19 +208,22 @@ Example: SFT Qwen3-VL-2B-Instruct on [🤗 Lite.ScaleCUA](https://huggingface.co
 # --- host ---  (see README.md#installation for host setup)
 export CUA_LITE_DATASETS_ROOT="$PWD/.data/huggingface"
 
-# 1. download Lite.ScaleCUA to the canonical layout (--out = <root>/cua-lite/<Name>)
+# 1. download Lite.ScaleCUA to the canonical layout (--out = <root>/cua-lite/<Name>).
+#    --allow-patterns picks ONE teacher shard; without it you pull every teacher plus
+#    the `rl` variant, which is a separate RL task pool, not SFT material.
 uv run python -m lite.data.hf.download Lite.ScaleCUA \
+  --allow-patterns "desktop/use/train/desktop.use.train.gpt5_5/*" \
   --out "${CUA_LITE_DATASETS_ROOT}/cua-lite/Lite.ScaleCUA"
 
 # 2. export a model-ready SFT parquet with the compact config — downsampled
 #    resolution + history_n=1 to fit training VRAM (--image-root = dir ABOVE cua-lite/).
-#    Keep successful rows, then downsample to 5000 (--filter applies first).
+#    Keep unflagged rows that succeeded, then downsample to 5000 (--filter runs first).
 uv run python -m lite.train.export.export_sft \
   --config scripts/configs/qwen3_vl/compact/lite.osworld.yaml \
   --model-id Qwen/Qwen3-VL-2B-Instruct \
   --data-paths "${CUA_LITE_DATASETS_ROOT}/cua-lite/Lite.ScaleCUA" \
   --image-root "${CUA_LITE_DATASETS_ROOT}" \
-  --filter "lambda m: (m.others.get('episode_return') or 0) > 0.5" \
+  --filter "lambda m: not m.others.get('exclude_reason') and (m.others.get('episode_return') or 0) > 0.5" \
   --sample 5000 --seed 42 \
   -o .data/sft/qwen3_vl/lite.scalecua/train.parquet
 

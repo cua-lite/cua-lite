@@ -50,6 +50,7 @@ gym = [
 
 data = [
     "datasets>=4.8.5",
+    "huggingface-hub>=1.17",  # lite/data/hf imports it; floor is for the `hf repos` CLI
     "jsonschema>=4.23",
     "numpy>=1.26",
     "pillow>=10.0",

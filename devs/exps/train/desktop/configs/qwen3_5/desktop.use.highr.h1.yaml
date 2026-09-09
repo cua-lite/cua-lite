@@ -1,0 +1,28 @@
+# Qwen3.5 desktop.use — native screenshot, ONE of history, Action-only.
+#
+# Spends the VRAM budget on detail instead of history — small targets, dense text,
+# anything a 1280x720 downsample smears. `h1` comes from `history_n: 1` (one turn kept,
+# so one image); the `h4` configs leave history_n at 50 and are capped by image_max: 4.
+#
+#   desktop.use.default.yaml            native 1920x1080  <=4 images  Action-only
+#   desktop.use.default.reasoning.yaml  native 1920x1080  <=4 images  <think>
+#   desktop.use.lowr.h4.yaml            1280x720          <=4 images  Action-only
+#   desktop.use.highr.h1.yaml           native 1920x1080    1 image   Action-only  <- this file
+#
+# No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row
+# from metadata.dims. system_prompt omitted -> the adapter's canonical USE_SYSTEM_PROMPT.
+
+agent_id: "qwen3_5"
+agent_kwargs:
+  sampling_kwargs:  # rollout.py only; export_sft drops it, RL sets sampling in the trainer
+    temperature: 0.0
+  # resolution omitted -> native 1920x1080; smart_resize rounds to 1920x1088.
+  protocol_kwargs:
+    history_n: 1  # one turn kept -> one screenshot; image_max/fold_size stay at 4/4
+
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  # Required, not cosmetic: without it the env rejects both as inactive extras and the
+  # model can never end an episode. Qwen's native `answer` lowers to `response`.
+  extra_tools: ["response", "terminate"]

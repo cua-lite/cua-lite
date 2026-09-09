@@ -1,3 +1,0 @@
-## 658c25b  (2026-04-28)
-
-Initial standardized snapshot. Recipe written against this commit. Pre-standardization runs (captured 8B → 2B distill in `.ckpts/20260425_1149/...`) are not catalogued here — see § Reference: captured 8B → 2B numbers in the recipe README.

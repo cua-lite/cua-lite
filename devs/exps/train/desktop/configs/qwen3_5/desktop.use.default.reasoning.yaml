@@ -1,0 +1,28 @@
+# Qwen3.5 desktop.use — native screenshot, native <think> reasoning.
+#
+# Not part of the campaign's 2x2 (that grid is Action-only). Run internalize_cot.py on
+# the data first: the teacher stores its Thought as inline_reasoning, and this config
+# needs it in reasoning_content for the chat template to render <think>.
+#
+#   desktop.use.default.yaml            native 1920x1080  <=4 images  Action-only
+#   desktop.use.default.reasoning.yaml  native 1920x1080  <=4 images  <think>  <- this file
+#   desktop.use.lowr.h4.yaml            1280x720          <=4 images  Action-only
+#   desktop.use.highr.h1.yaml           native 1920x1080    1 image   Action-only
+#
+# No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row
+# from metadata.dims. system_prompt omitted -> the adapter's canonical USE_SYSTEM_PROMPT.
+
+agent_id: "qwen3_5"
+agent_kwargs:
+  sampling_kwargs:  # rollout.py only; export_sft drops it, RL sets sampling in the trainer
+    temperature: 0.0
+  enable_thinking: true     # native <think> channel (no prompted Thought:/Action: format)
+  # resolution omitted -> native 1920x1080; smart_resize rounds to 1920x1088.
+  # protocol_kwargs omitted -> protocol defaults (history_n=50, image_max=4, fold_size=4).
+
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  # Required, not cosmetic: without it the env rejects both as inactive extras and the
+  # model can never end an episode. Qwen's native `answer` lowers to `response`.
+  extra_tools: ["response", "terminate"]

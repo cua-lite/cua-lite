@@ -607,6 +607,7 @@ _NON_GUI_VALID_ACTIONS = {
 _AGENT_CONFIG_ROOTS = (
     Path("scripts/configs"),
     Path("examples/lite/v1/configs"),
+    Path("devs/exps/train/desktop/configs"),
 )
 
 _TOOL_SURFACE_AGENT_KWARGS = {"extra_tools", "extra_tool_schemas", "valid_actions", "others"}
@@ -786,6 +787,22 @@ _EXPECTED_NAV_CONFIGS = {
     "scripts/configs/qwen3_8/default/browsergym.webarena/text_only.yaml",
 } | _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS
 
+#: The ``desktop.use`` teacher-comparison recipe, kept in two places: the public
+#: walkthrough under ``examples/`` and the campaign copy under ``devs/exps/train/``
+#: that must stand on its own. Every one declares ``extra_tools: [response,
+#: terminate]`` -- the sandbox accepts both unconditionally, so this is about the
+#: PROMPT: without them the rendered action enum omits them and the model is
+#: evaluated on a surface its SFT data did not have.
+_DESKTOP_USE_RECIPE_CONFIGS = {
+    f"examples/lite/v1/configs/qwen3_5/desktop.use.{_variant}.yaml"
+    for _variant in ("compact", "compact.reasoning", "default", "default.reasoning")
+} | {
+    # The campaign copy names its screenshot profiles by what they are (`lowr`/`highr`)
+    # and carries an extra one-image variant the public walkthrough does not.
+    f"devs/exps/train/desktop/configs/qwen3_5/desktop.use.{_variant}.yaml"
+    for _variant in ("lowr.h4", "highr.h1", "default", "default.reasoning")
+}
+
 _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/gpt/default/webgym.yaml",
 
@@ -848,7 +865,7 @@ _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/qwen3_8/default/mobilegym.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
 } | (_BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS | _MOBILE_ANSWER_FINISH_CONFIGS
-     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS)
+     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS | _DESKTOP_USE_RECIPE_CONFIGS)
 
 _EXPECTED_TERMINATE_CONFIGS = {
     "scripts/configs/gpt/default/online_mind2web.yaml",
@@ -921,7 +938,7 @@ _EXPECTED_TERMINATE_CONFIGS = {
     "scripts/configs/qwen3_8/default/mobilegym.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
 } | (_BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS | _MOBILE_ANSWER_FINISH_CONFIGS
-     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS)
+     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS | _DESKTOP_USE_RECIPE_CONFIGS)
 
 _REQUIRED_RESPONSE_EXTRA_TOOL_CONFIGS = {
     "scripts/configs/fara/default/webgym.yaml",
@@ -961,7 +978,8 @@ _TARGET_WEBHARBOR_ONLINE_CONFIGS = {
 def _tool_io_source_yamls() -> list[Path]:
     root = project_root()
     paths: list[Path] = []
-    for base in (root / "scripts" / "configs", root / "examples" / "lite" / "v1" / "configs"):
+    for rel_root in _AGENT_CONFIG_ROOTS:
+        base = root / rel_root
         if not base.exists():
             continue
         paths.extend(

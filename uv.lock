@@ -916,6 +916,7 @@ source = { editable = "." }
 [package.optional-dependencies]
 data = [
     { name = "datasets", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "huggingface-hub", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "jsonschema", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "pillow", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -955,6 +956,7 @@ requires-dist = [
     { name = "docker", marker = "extra == 'gym'", specifier = ">=7.0" },
     { name = "fastapi", marker = "extra == 'gym'", specifier = ">=0.110" },
     { name = "httpx", marker = "extra == 'gym'", specifier = ">=0.27" },
+    { name = "huggingface-hub", marker = "extra == 'data'", specifier = ">=1.17" },
     { name = "jsonschema", marker = "extra == 'data'", specifier = ">=4.23" },
     { name = "litellm", marker = "extra == 'quick-start'", specifier = ">=1.72" },
     { name = "numpy", marker = "extra == 'data'", specifier = ">=1.26" },
