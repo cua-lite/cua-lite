@@ -35,6 +35,7 @@ from lite.agents.models.qwen3_5.adapter import (
     _render_xml_tool_call,
 )
 from lite.agents.models.qwen3_5.protocol import Qwen3_5HistoryProtocol
+from lite.agents.models.qwen3_8 import agent as _qwen3_8_agent  # noqa: F401 — register agents
 from lite.agents.models.qwen3_8.action_space import (
     Qwen3_8DesktopActionSpace,
     Qwen3_8DesktopGroundingPointActionSpace,
@@ -379,3 +380,29 @@ def test_enable_thinking_defaults_off(adapter_cls):
 
 def test_enable_thinking_is_still_opt_in():
     assert Qwen3_8DesktopUseAdapter(enable_thinking=True).enable_thinking is True
+
+
+@pytest.mark.parametrize("effort", [None, "low", "medium", "xhigh"])
+def test_agent_forwards_reasoning_effort(effort):
+    from unittest.mock import Mock
+
+    from lite.agents.models import AgentRegistry
+
+    processor = Mock()
+    kwargs = {} if effort is None else {"reasoning_effort": effort}
+    agent = AgentRegistry.get(
+        "qwen3_8@desktop@use",
+        processor=processor,
+        generate_fn=_dummy_gen,
+        enable_thinking=True,
+        **kwargs,
+    )
+    messages = [{"role": "user", "content": []}]
+    agent.build_generation_prompt(messages)
+    processor.apply_chat_template.assert_called_once_with(
+        messages,
+        add_generation_prompt=True,
+        tokenize=False,
+        enable_thinking=True,
+        reasoning_effort=effort or "xhigh",
+    )
