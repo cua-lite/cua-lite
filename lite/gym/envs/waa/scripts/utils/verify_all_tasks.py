@@ -101,6 +101,7 @@ async def _run_attempt(
         variant=row["variant"],
         base_disk=str(base_disk),
         assets_dir=str(assets_dir),
+        extra_tools=["terminate"],
     )
     try:
         stage = "setup"
@@ -114,6 +115,8 @@ async def _run_attempt(
             env.step([make_tool_call("terminate", {"status": "success"})]),
             timeout=evaluate_timeout,
         )
+        if not result.terminated or result.reward is None or not 0.0 <= result.reward <= 1.0:
+            raise RuntimeError(f"WAA evaluation did not finish with a valid reward: {result}")
         return {
             "ok": True,
             "task_id": row["task_id"],

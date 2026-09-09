@@ -9,6 +9,12 @@ if [[ ! -c /dev/kvm || ! -r /dev/kvm || ! -w /dev/kvm ]]; then
   echo "WindowsAgentArena runner requires readable and writable /dev/kvm" >&2
   exit 69
 fi
+# Create the disposable overlay here so each VM needs only one container boot.
+if [[ ! -e "$disk_path" ]]; then
+  backing_disk=/images/base.qcow2
+  [[ -f /images/ready.qcow2 ]] && backing_disk=/images/ready.qcow2
+  qemu-img create -f qcow2 -F qcow2 -b "$backing_disk" "$disk_path"
+fi
 if [[ ! -s "$disk_path" ]]; then
   echo "WindowsAgentArena runner requires a non-empty disk at $disk_path" >&2
   exit 64
@@ -27,7 +33,19 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-/run/entry.sh &
+# Keep snapshot restore from stalling in synchronous huge-page compaction on
+# fragmented hosts. This setting follows only the QEMU launcher and its children.
+python - <<'PY' &
+import ctypes
+import os
+
+libc = ctypes.CDLL(None, use_errno=True)
+libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+if libc.prctl(41, 1, 0, 0, 0) != 0:  # PR_SET_THP_DISABLE
+    error = ctypes.get_errno()
+    raise OSError(error, os.strerror(error))
+os.execl("/run/entry.sh", "/run/entry.sh")
+PY
 qemu_pid=$!
 
 if [[ -n "${WAA_INCOMING_STATE:-}" ]]; then

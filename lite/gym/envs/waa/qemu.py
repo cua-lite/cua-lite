@@ -21,9 +21,11 @@ from pathlib import Path
 import httpx
 
 from lite.gym.errors import CapacityExhausted
+from lite.gym.remote.admission import docker_create_slot_async
+from lite.gym.utils.backend.docker import _rm_argv
+from lite.gym.utils.backend.ports import allocate_ports
 from lite.gym.utils.config.identity import EnvIdentity
 from lite.gym.utils.config.naming import container_name_prefix, format_container_name
-from lite.gym.utils.backend.docker import _rm_argv
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +59,6 @@ async def _run(
             f"command failed ({proc.returncode}): {' '.join(args)}\n{detail[-4000:]}"
         )
     return proc.returncode or 0, out, err
-
-
-async def _host_port(container_name: str, container_port: int) -> int:
-    _, stdout, _ = await _run("docker", "port", container_name, f"{container_port}/tcp", timeout=15)
-    endpoint = stdout.strip().splitlines()[0]
-    return int(endpoint.rsplit(":", 1)[1])
 
 
 def reap_runtime_slots(
@@ -207,69 +203,54 @@ class QemuInstance:
             # ready-state disk (itself backed by the base) and the VM is restored
             # from the saved RAM state instead of cold-booting; otherwise it is
             # backed directly by the base disk and cold-boots.
-            backing = "/images/ready.qcow2" if use_snapshot else "/images/base.qcow2"
-            create_mounts = [
-                "--mount", f"type=bind,src={cfg.base_disk},dst=/images/base.qcow2,readonly",
-                "--mount", f"type=bind,src={storage_dir},dst=/storage",
-            ]
             if use_snapshot:
                 for dev in sorted((snap / "device").iterdir()):
                     shutil.copy2(dev, storage_dir / dev.name)
                 (storage_dir / ".waa-restore").touch()
-                create_mounts += ["--mount", ready_disk_mount]
-            await _run(
-                "docker", "run", "--rm", "--pull=never", "--entrypoint", "qemu-img",
-                *create_mounts, cfg.runner_image,
-                "create", "-f", "qcow2", "-F", "qcow2", "-b", backing, "/storage/data.qcow2",
-                timeout=120,
-            )
-            overlay = storage_dir / "data.qcow2"
-            if not overlay.is_file() or overlay.stat().st_size == 0:
-                raise RuntimeError(f"qemu-img did not create overlay disk: {overlay}")
-
-            run_args = [
-                "docker", "run", "-d", "--pull=never", "--name", self.name,
-                "--device=/dev/kvm",
-                # dockur must set up a TAP+bridge so the guest is reachable at its
-                # static IP (GUEST_IP:5000 server, :9222 CDP). Its configureNAT path
-                # needs BOTH /dev/net/tun and net.ipv4.ip_forward=1; without either it
-                # falls back to usermode/SLIRP networking, under which GUEST_IP is
-                # unroutable from this container and the bridge can never reach the
-                # guest (reset would hang until ready_timeout, then warming-retry).
-                "--device=/dev/net/tun",
-                "--cap-add", "NET_ADMIN",
-                "--sysctl", "net.ipv4.ip_forward=1",
-                f"--shm-size={cfg.shm_size}",
-                "--mount", f"type=bind,src={cfg.base_disk},dst=/images/base.qcow2,readonly",
-                "--mount", f"type=bind,src={storage_dir},dst=/storage",
-                "--mount", f"type=bind,src={cfg.assets_dir},dst=/opt/waa-assets,readonly",
-                "--publish", f"{cfg.bind_address}:0:{BRIDGE_PORT}",
-                "--publish", f"{cfg.bind_address}:0:{NOVNC_PORT}",
-                "--env", f"RAM_SIZE={cfg.memory_gb}G",
-                "--env", f"CPU_CORES={cfg.vcpus}",
-                "--env", "CPU_MODEL=host",
-                "--env", "HV=N",
-                "--env", f"VM_NET_IP={GUEST_IP}",
-                "--env", f"WAA_GUEST_IP={GUEST_IP}",
-                "--env", f"WAA_GUEST_READY_TIMEOUT_S={int(cfg.ready_timeout_s)}",
-                "--env", f"HOST_PORTS={BRIDGE_PORT}",
-            ]
-            if use_snapshot:
-                run_args += [
-                    "--mount", ready_disk_mount,
-                    "--mount", ready_state_mount,
-                    # Keep QMP (bridge screendumps) and add `-incoming defer`; the
-                    # runner entrypoint feeds it the saved state via migrate_incoming.
-                    "--env", "ARGUMENTS=-qmp tcp:0.0.0.0:7200,server,nowait -incoming defer",
-                    "--env", "WAA_INCOMING_STATE=/snapshot/ready.state",
+            # The runner creates the overlay from these read-only backing mounts.
+            async with docker_create_slot_async():
+                # Reserve outside Linux's ephemeral range: rootless Docker's random
+                # publication can collide with host outbound connections.
+                bridge_port, novnc_port = allocate_ports(n=2, range_start=25000, range_end=26000)
+                run_args = [
+                    "docker", "run", "-d", "--pull=never", "--name", self.name,
+                    "--device=/dev/kvm",
+                    # dockur must set up a TAP+bridge so the guest is reachable at its
+                    # static IP (GUEST_IP:5000 server, :9222 CDP). Its configureNAT path
+                    # needs BOTH /dev/net/tun and net.ipv4.ip_forward=1; without either it
+                    # falls back to usermode/SLIRP networking, under which GUEST_IP is
+                    # unroutable from this container and the bridge can never reach the
+                    # guest (reset would hang until ready_timeout, then warming-retry).
+                    "--device=/dev/net/tun",
+                    "--cap-add", "NET_ADMIN",
+                    "--sysctl", "net.ipv4.ip_forward=1",
+                    f"--shm-size={cfg.shm_size}",
+                    "--mount", f"type=bind,src={cfg.base_disk},dst=/images/base.qcow2,readonly",
+                    "--mount", f"type=bind,src={storage_dir},dst=/storage",
+                    "--mount", f"type=bind,src={cfg.assets_dir},dst=/opt/waa-assets,readonly",
+                    "--publish", f"{cfg.bind_address}:{bridge_port}:{BRIDGE_PORT}",
+                    "--publish", f"{cfg.bind_address}:{novnc_port}:{NOVNC_PORT}",
+                    "--env", f"RAM_SIZE={cfg.memory_gb}G",
+                    "--env", f"CPU_CORES={cfg.vcpus}",
+                    "--env", "CPU_MODEL=host",
+                    "--env", "HV=N",
+                    "--env", f"VM_NET_IP={GUEST_IP}",
+                    "--env", f"WAA_GUEST_IP={GUEST_IP}",
+                    "--env", f"WAA_GUEST_READY_TIMEOUT_S={int(cfg.ready_timeout_s)}",
+                    "--env", f"HOST_PORTS={BRIDGE_PORT}",
                 ]
-            run_args.append(cfg.runner_image)
-            await _run(*run_args, timeout=120)
+                if use_snapshot:
+                    run_args += [
+                        "--mount", ready_disk_mount,
+                        "--mount", ready_state_mount,
+                        # Keep QMP (bridge screendumps) and add `-incoming defer`; the
+                        # runner entrypoint feeds it the saved state via migrate_incoming.
+                        "--env", "ARGUMENTS=-qmp tcp:0.0.0.0:7200,server,nowait -incoming defer",
+                        "--env", "WAA_INCOMING_STATE=/snapshot/ready.state",
+                    ]
+                run_args.append(cfg.runner_image)
+                await _run(*run_args, timeout=120)
 
-            bridge_port, novnc_port = await asyncio.gather(
-                _host_port(self.name, BRIDGE_PORT),
-                _host_port(self.name, NOVNC_PORT),
-            )
             client_host = "127.0.0.1" if cfg.bind_address == "0.0.0.0" else cfg.bind_address
             self.bridge_url = f"http://{client_host}:{bridge_port}"
             self.novnc_url = f"http://{client_host}:{novnc_port}"
@@ -297,7 +278,7 @@ class QemuInstance:
                     "{{.State.Status}}",
                     self.name,
                     check=False,
-                    timeout=10,
+                    timeout=60,
                 )
                 if code != 0 or state.strip() not in {"created", "running"}:
                     _, logs, log_err = await _run(
