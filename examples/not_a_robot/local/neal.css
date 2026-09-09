@@ -1,0 +1,67 @@
+/* Game-only geometry follows the supplied official-embed screenshots.
+ * Branding vectors and animation curves are authored approximations.
+ */
+body.neal-mode { margin: 0; background: white; color: #111; font: 16px/1.3 Arial, sans-serif; }
+.neal-mode main { width: auto; max-width: none; margin: 0; padding: 0; }
+.neal-mode main > :not(.neal-game):not(#boot-error) { display: none !important; }
+.neal-mode #boot-error { max-width: 640px; padding: 18px; }
+.neal-game { box-sizing: border-box; width: 460px; padding: 6px; border: 1px solid #ddd; background: white; }
+.neal-game button { color: #111; border: 0; border-radius: 0; font: 16px/1.3 Arial, sans-serif; padding: 0; background: white; }
+.neal-game button:focus-visible, .neal-game input:focus-visible { outline: 2px solid #315dc7; outline-offset: -2px; }
+.neal-game button:disabled { opacity: 1; cursor: default; }
+.neal-heading { min-height: 84px; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 12px 16px; background: #638dd0; color: white; }
+.neal-heading > div { font-size: 16px; font-weight: 600; }
+.neal-heading > strong { display: block; font-size: 25px; font-weight: 700; line-height: 1.18; }
+.neal-grid { display: grid; aspect-ratio: 1; gap: 4px; width: 100%; margin-top: 4px; }
+.neal-game .neal-tile { position: relative; min-width: 0; min-height: 0; width: 100%; height: 100%; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.neal-tile-face { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; background-position: center; background-size: cover; transition: transform 160ms ease; }
+.neal-tile[aria-pressed="true"] .neal-tile-face { transform: scale(.75); }
+.neal-tile[aria-pressed="true"]::after { content: "✓"; position: absolute; top: 4px; left: 4px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: white; background: #6398d7; font-size: 21px; line-height: 1; font-weight: 400; }
+.neal-footer { display: flex; align-items: center; justify-content: space-between; height: 50px; margin-top: 6px; padding-top: 6px; border-top: 1px solid #ddd; }
+.neal-game .neal-submit { min-width: 84px; height: 40px; padding: 0 18px; background: #638dd0; color: white; font-size: 16px; }
+.neal-game .neal-submit:disabled { background: #d3d3d3; }
+.neal-game[data-status="success"] .neal-submit:disabled { background: #638dd0; }
+.neal-game .neal-refresh, .neal-game .neal-audio { display: grid; place-items: center; width: 38px; height: 38px; background: transparent; }
+.neal-refresh svg, .neal-audio svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.neal-letters { gap: 4px; }
+.neal-letters .neal-tile-face { background: #f4f4f4; color: black; font-size: 16px; font-weight: 600; }
+.neal-letters .neal-tile[aria-pressed="true"] .neal-tile-face { background: #638dd0; color: white; transform: scale(.65); }
+.neal-letters .neal-tile[aria-pressed="true"]::after { width: 15px; height: 15px; top: 0; left: 0; font-size: 13px; }
+.neal-rotation-grid { overflow: hidden; }
+.neal-rotation-grid .neal-tile { overflow: hidden; }
+.neal-rotation-grid .neal-tile-face { transition: transform 160ms ease; }
+.neal-tic-grid .neal-tile-face { background: #f3f3f3; }
+.neal-mark-o::before { content: ""; width: 76px; height: 76px; border: 4px solid #df3b23; border-radius: 50%; box-sizing: border-box; }
+.neal-mark-x::before, .neal-mark-x::after { content: ""; position: absolute; width: 84px; height: 5px; background: black; transform: rotate(45deg); }
+.neal-mark-x::after { transform: rotate(-45deg); }
+.neal-recursive-board { position: relative; aspect-ratio: 1; width: 100%; margin-top: 4px; background-size: 100% 100%; }
+.neal-game .neal-recursive-leaf { position: absolute; border: 1px solid rgba(255,255,255,.85); background: transparent; }
+.neal-game .neal-recursive-leaf[aria-pressed="true"] { background: rgba(89,137,209,.63); }
+.neal-game.neal-text-card { width: 465px; padding: 14px 17px 20px; background: #f9f9f9; border: 1px solid #c9c9c9; border-radius: 2px; box-shadow: 0 2px 5px #0000000b; }
+.neal-text-card label { display: block; margin-bottom: 6px; color: #444; font-size: 16px; }
+.neal-text-picture { position: relative; width: 100%; height: 162px; overflow: hidden; border: 1px solid #d5d5d5; background: #faf9f2; }
+.neal-text-picture canvas { display: block; width: 100%; height: 160px; }
+.neal-text-picture .neal-refresh { position: absolute; bottom: 0; right: 0; height: 28px; }
+.neal-text-picture .neal-audio { position: absolute; bottom: 0; left: 0; height: 28px; }
+.neal-input-row { display: flex; gap: 8px; margin-top: 6px; }
+.neal-input-row input { min-width: 0; width: 0; flex: 1 1 auto; height: 43px; padding: 9px 10px; color: #111; font: 16px Arial, sans-serif; border: 1px solid #ddd; border-radius: 0; }
+.neal-input-row .neal-submit { width: 100px; height: 43px; padding: 0 12px; border-radius: 2px; background: #6387ec; font-weight: 600; }
+.neal-game[data-status="success"] .neal-input-row .neal-submit { background: #4963cb; }
+.neal-text-picture.neal-plate-picture { height: auto; aspect-ratio: 424 / 280; border: 0; }
+.neal-plate-crop { position: absolute; inset: 0; overflow: hidden; }
+.neal-plate-crop img { position: absolute; display: block; width: 298.3490566%; max-width: none; height: auto; left: -7.0754717%; top: -62.8571429%; user-select: none; }
+.neal-plate-picture .neal-refresh { color: white; }
+.neal-plate-picture .neal-refresh svg { visibility: hidden; }
+.neal-game.neal-checkbox-card { display: flex; align-items: center; justify-content: space-between; width: 316px; height: 76px; padding: 0 16px 0 14px; border: 1px solid #ddd; border-radius: 3px; background: #fafafa; box-shadow: 0 1px 4px #00000016; }
+.neal-checkbox-card .neal-checkbox-target { display: flex; align-items: center; gap: 14px; background: transparent; white-space: nowrap; font-size: 16px; }
+.neal-checkbox-mark { position: relative; display: block; width: 28px; height: 28px; border: 2px solid #c6c6c6; border-radius: 2px; background: white; }
+.neal-checkbox-mark.loading { border: 3px solid #e0e0e0; border-top-color: #6396cf; border-radius: 50%; background: transparent; animation: neal-spinner 700ms linear infinite; }
+.neal-checkbox-mark.checked { border: 0; background: transparent; }
+.neal-checkbox-mark.checked::after { content: ""; position: absolute; left: 8px; top: -1px; width: 11px; height: 25px; border-right: 5px solid #249b5d; border-bottom: 5px solid #249b5d; transform: rotate(40deg); }
+.neal-recaptcha-mark { width: 57px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #555; font: 10px Arial, sans-serif; }
+.neal-recaptcha-mark svg { display: block; width: 33px; height: 33px; }
+.neal-mole-grid .neal-tile-face { position: relative; }
+.neal-mole { position: absolute; display: none; width: 50%; height: 50%; bottom: 26%; left: 25%; background-size: 200% 100%; background-position: left center; background-repeat: no-repeat; pointer-events: none; user-select: none; }
+.mole-visible .neal-mole, .neal-tile[aria-pressed="true"] .neal-mole { display: block; }
+.neal-mole-grid .neal-tile[aria-pressed="true"] .neal-mole { background-position: right center; }
+@keyframes neal-spinner { to { transform: rotate(360deg); } }

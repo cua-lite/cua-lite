@@ -1,0 +1,4 @@
+# User-supplied private reference artwork; import with reference_assets.py.
+/local/reference_assets/
+# Model attempts and screenshots belong outside source control.
+/artifacts/
