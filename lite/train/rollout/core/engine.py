@@ -964,11 +964,13 @@ async def _eval_rollout(
 
         n_trajs_expected = len(tasks)
 
-        # Collect results with inline retry: when a task finishes as
-        # "errored" (all turns FAILED / empty tokens — env crash or
-        # a11y failure), immediately re-queue it at the back of the pending
-        # set instead of waiting for a separate retry round. This avoids
-        # wasting an extra batch of concurrency slots.
+        # Collect results with inline retry: when a task produces no
+        # token-carrying turn at all (env crash, abort, or a trajectory that
+        # segmented to nothing), immediately re-queue it at the back of the
+        # pending set instead of waiting for a separate retry round. This avoids
+        # wasting an extra batch of concurrency slots. A model-side parse failure
+        # is NOT errored — it carries tokens and is scored at whatever the env
+        # awarded, see below.
         max_eval_retries = getattr(args, "max_eval_retries", 3)
         retry_counts: dict[int, int] = {}   # index → retries so far
         data = []
@@ -1002,16 +1004,14 @@ async def _eval_rollout(
                     pbar.update(1)
                     continue
                 idx = samples[0].index
-                valid_turns = [
-                    s for s in samples
-                    if s.tokens and s.status != Sample.Status.FAILED
-                ]
+                valid_turns = [s for s in samples if s.tokens]
                 # Only re-queue errored trajectories whose error is retryable.
                 # is_retryable was evaluated at catch time (the exception is gone
                 # here) and cached on the empty sample's metadata; a non-retryable
                 # error (e.g. a bot-blocked site) re-runs identically, so retrying
-                # only burns rollouts. Default True covers samples not built via
-                # the exception path (no-turns / FAILED-but-no-exception).
+                # only burns rollouts. The True default is still reachable: slime's
+                # abort short-circuit returns the original prompt Sample without
+                # entering generate(), so it carries no cached verdict.
                 retryable = samples[0].metadata.get("lite_error_retryable", True)
                 if (not valid_turns and retryable
                         and retry_counts.get(idx, 0) < max_eval_retries):
@@ -1058,9 +1058,17 @@ async def _eval_rollout(
         # or cancellation outside ``generate()``'s normal Exception path.
         n_trajs_missing = max(0, n_trajs_expected - len(rollouts_per_traj))
 
-        # FAILED-status turns may carry partial valid output per slime's
-        # ``Sample.Status`` docstring — fine for train (loss_mask handles it)
-        # but not trustworthy as a task-success signal for eval.
+        # FAILED-status turns are KEPT here, matching the train path. Under
+        # slime's generic ``Sample.Status`` a FAILED turn may be partial output.
+        # Among the TOKEN-CARRYING samples that reach this loop the only producer
+        # is the parse-failure final (``agent/utils/final.py``) — the model could
+        # not drive the tool surface, which is a task failure, not an env error.
+        # (``_empty_sample`` / ``dummy_sample`` also set FAILED but carry no
+        # tokens, so ``s.tokens`` already excludes them.) Excluding parse failures
+        # would drop them from the eval denominator and bias every reported return
+        # upward. Caveat: ``examples/grounding``'s adapter also writes FAILED and
+        # fabricates ``reward=0.0`` without stepping the env, so for that producer
+        # the 0 is structural, not measured.
         episode_returns: list[float] = []
         truncated_per_rollout: list[bool] = []
         # Prompt id per rollout: ``index // n`` recovers the prompt because eval
@@ -1075,14 +1083,12 @@ async def _eval_rollout(
             # ``if r else -1`` mirrors the empty-group guard in the sort above; a
             # (degenerate) empty rollout lands in a sentinel bucket, never IndexErrors.
             prompt_ids.append((r[0].index // n_eval) if r else -1)
-            valid_turns = [
-                s for s in r
-                if s.tokens and s.status != Sample.Status.FAILED
-            ]
+            valid_turns = [s for s in r if s.tokens]
             if not valid_turns:
-                # errored (env crashed / all turns FAILED). Keep a dense 0.0 at this
-                # index — slime's compute_pass_rate reshapes the returned rewards list
-                # positionally — but mark it invalid so OUR stats exclude it.
+                # errored: no token-carrying turn at all (env crash or abort).
+                # Keep a dense 0.0 at this index — slime's compute_pass_rate reshapes
+                # the returned rewards list positionally — but mark it invalid so OUR
+                # stats exclude it.
                 episode_returns.append(0.0)
                 truncated_per_rollout.append(False)
                 is_valid.append(False)
@@ -1246,8 +1252,9 @@ def _filter_errored_rollouts(
     N dummies (loss_mask=[0]) so slime's pipeline still gets a batch for a
     no-op gradient step.
 
-    Train path only. Eval has index-ordering and FAILED-status requirements
-    that make a shared helper awkward — see the inline loop in ``_eval_rollout``.
+    Train path only. Eval applies the same ``s.tokens`` predicate but has
+    index-ordering and dense-reward requirements that make a shared helper
+    awkward — see the inline loop in ``_eval_rollout``.
 
     Returns (valid_rollouts, n_errored). ``n_errored`` is always the
     true count of dropped rollouts (not diluted by dummy injection).

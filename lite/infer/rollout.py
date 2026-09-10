@@ -43,7 +43,7 @@ from typing import Any, Callable, cast
 
 import lite.gym as gym
 from lite.agents.core.adapter import tool_surface_agent_kwarg_names
-from lite.core.messages.final import PARSE_FAILURE_FINAL_REASON, STOP_REASON_INFO_KEY
+from lite.core.messages.final import STOP_REASON_INFO_KEY
 from lite.core.utils.filters import parse_filter
 from lite.gym import finalize_env_kwargs, routing_server_url
 from lite.utils.config import deep_merge, load_config
@@ -549,7 +549,7 @@ def rebuild_results(
                     terminated=data.get("terminated", False),
                     truncated=data.get("truncated", False),
                     stop_reason=data.get(STOP_REASON_INFO_KEY),
-                    error=_summary_error(data),
+                    error=data.get("error"),
                     env_id=spec.env_id,
                 ))
             else:
@@ -558,23 +558,6 @@ def rebuild_results(
                     env_id=spec.env_id,
                 ))
     return results
-
-
-def _summary_error(data: dict[str, Any]) -> str | None:
-    """Return the terminal error represented by one per-sample summary.
-
-    Agent-side unpairable model-output failures are resolved terminal samples:
-    they persist a summary (so resume must not retry) and carry a durable
-    stop_reason instead of an exception. Treat them as invalid results for
-    rollout stats without fabricating role:tool feedback or re-running them.
-    """
-    error = data.get("error")
-    if error is not None:
-        return str(error)
-    stop_reason = data.get(STOP_REASON_INFO_KEY)
-    if stop_reason == PARSE_FAILURE_FINAL_REASON:
-        return f"terminal model_output_error: {stop_reason}"
-    return None
 
 
 # =============================================================================

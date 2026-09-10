@@ -24,6 +24,8 @@ ZERO_COLLECTION_EDGE_CASES = {
     "pytest.importorskip for Slime-only rollout integration coverage",
     Path("tests/train/rollout/core/test_env_failure.py"): "module-level "
     "pytest.importorskip for Slime-only rollout failure coverage",
+    Path("tests/train/rollout/core/test_eval_rollout_parse_failure.py"): "module-level "
+    "pytest.importorskip for Slime-only eval keep/retry coverage",
     Path("tests/train/rollout/core/test_lazy_dp_split.py"): "module-level "
     "pytest.importorskip for Slime-only lazy-DP coverage",
     Path("tests/train/rollout/core/test_lazy_multimodal_format.py"): "module-level "
