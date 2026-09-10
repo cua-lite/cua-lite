@@ -1547,16 +1547,25 @@ async def test_action_failure_continues():
 
 
 @pytest.mark.asyncio
-async def test_screenshot_failure_returns_none():
-    """Screenshot failure should return None, not crash."""
+async def test_screenshot_failure_raises_retryable_infra_error():
+    """A capture failure is the env owing an observation and not delivering it.
+
+    It must surface as ``TrueInfraFailure`` (retryable) so the trajectory is
+    void and re-run, NOT be papered over by re-serving the previous frame. The
+    stale frame made the model act on a page it was no longer looking at, which
+    read downstream as a repetitive-action loop and scored 0 as a MODEL failure.
+    """
+    from lite.gym.errors import TrueInfraFailure, is_retryable
+
     env = _make_env()
     env._client = _make_mock_client()
     env._client.screenshot.side_effect = Exception("screenshot failed")
-    await env.reset()
-
-    # Reset screenshot should be None due to failure
-    # (but reset still succeeds)
-    await env.close()
+    try:
+        with pytest.raises(TrueInfraFailure) as excinfo:
+            await env.reset()
+        assert is_retryable(excinfo.value)
+    finally:
+        await env.close()
 
 
 @pytest.mark.asyncio

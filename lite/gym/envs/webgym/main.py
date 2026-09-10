@@ -56,7 +56,12 @@ from lite.core.tools.calls import (
 from lite.core.tools.extra_tools import LiteBrowserNavToolSet, LiteFinishToolSet
 from lite.core.tools.schemas import BaseTools, tool_schema_name
 from lite.gym.base import LiteBaseEnv
-from lite.gym.errors import CapacityExhausted, EnvBlocked, EnvDepsMissingError
+from lite.gym.errors import (
+    CapacityExhausted,
+    EnvBlocked,
+    EnvDepsMissingError,
+    TrueInfraFailure,
+)
 from lite.gym.registry import invalidate_services, register, registry
 from lite.gym.remote.reaper import SingletonContainerServices
 from lite.gym.services import register_services
@@ -1724,7 +1729,11 @@ class WebGymEnv(LiteBaseEnv):
                     if attempt < _BLANK_SCREENSHOT_MAX_RETRIES - 1:
                         await asyncio.sleep(_BLANK_SCREENSHOT_WAIT)
                         continue
-                    return await asyncio.to_thread(self._fallback_to_previous_screenshot)
+                    raise TrueInfraFailure(
+                        f"webgym: screenshot API returned non-PNG data "
+                        f"({len(png_bytes)} bytes) after "
+                        f"{_BLANK_SCREENSHOT_MAX_RETRIES} attempts"
+                    )
 
                 # Screenshot file size validation (#8)
                 if len(png_bytes) <= _MIN_SCREENSHOT_SIZE:
@@ -1733,7 +1742,10 @@ class WebGymEnv(LiteBaseEnv):
                     if attempt < _BLANK_SCREENSHOT_MAX_RETRIES - 1:
                         await asyncio.sleep(_BLANK_SCREENSHOT_WAIT)
                         continue
-                    return await asyncio.to_thread(self._fallback_to_previous_screenshot)
+                    raise TrueInfraFailure(
+                        f"webgym: screenshot truncated ({len(png_bytes)} bytes) after "
+                        f"{_BLANK_SCREENSHOT_MAX_RETRIES} attempts"
+                    )
 
                 # Blank screenshot detection (#1)
                 try:
@@ -1756,29 +1768,51 @@ class WebGymEnv(LiteBaseEnv):
                     if attempt < _BLANK_SCREENSHOT_MAX_RETRIES - 1:
                         await asyncio.sleep(_BLANK_SCREENSHOT_WAIT)
                         continue
-                    return await asyncio.to_thread(self._fallback_to_previous_screenshot)
+                    raise TrueInfraFailure(
+                        f"webgym: screenshot PNG undecodable after "
+                        f"{_BLANK_SCREENSHOT_MAX_RETRIES} attempts"
+                    )
 
                 self._last_frame = png_bytes
                 return png_bytes
 
+            except TrueInfraFailure:
+                raise
             except Exception as e:
                 logger.warning("Screenshot failed (attempt %d/%d): %s",
                                attempt + 1, _BLANK_SCREENSHOT_MAX_RETRIES, e)
                 if attempt < _BLANK_SCREENSHOT_MAX_RETRIES - 1:
                     await asyncio.sleep(_BLANK_SCREENSHOT_WAIT)
                     continue
-                return await asyncio.to_thread(self._fallback_to_previous_screenshot)
+                raise TrueInfraFailure(
+                    f"webgym: screenshot capture failed after "
+                    f"{_BLANK_SCREENSHOT_MAX_RETRIES} attempts: {e}"
+                ) from e
 
-        return await asyncio.to_thread(self._fallback_to_previous_screenshot)
+        raise TrueInfraFailure(
+            f"webgym: screenshot capture exhausted "
+            f"{_BLANK_SCREENSHOT_MAX_RETRIES} attempts without a frame"
+        )
 
     def _fallback_to_previous_screenshot(self) -> bytes:
-        """Return the last captured frame as fallback, setting the flag (#17).
+        """Re-serve the last frame for a page that legitimately rendered blank.
 
-        The returned frame is a repeat of ``_last_frame`` by construction, which
-        is why ``_is_fallback_screenshot`` exists: change detection must not read
-        an env capture failure as an ineffective action. If nothing has been
-        captured yet (first call during reset), generates a blank placeholder so
-        the episode can still start.
+        ONE caller: the all-white detection above, after its retries. That is a
+        property of the SITE, not of the env — the capture succeeded, the page
+        really is blank — so the episode continues and the model is told so
+        (see the ``_is_fallback_screenshot`` branch in ``step``, which explains
+        the blank page and suggests navigating elsewhere).
+
+        Capture FAILURES do not come here: a non-PNG body, a truncated frame, an
+        undecodable PNG, or a raised exception are all ``TrueInfraFailure`` —
+        the env owed an observation and did not produce one, so the trajectory
+        is void and retryable rather than a model failure scored 0. Re-serving a
+        stale frame there made the model act on a page it was no longer looking
+        at, which read downstream as a repetitive-action loop.
+
+        ``_is_fallback_screenshot`` also suppresses change detection: the last
+        two frames are identical by construction here, and that is not evidence
+        of an ineffective action.
         """
         self._is_fallback_screenshot = True
         if self._last_frame is not None:
