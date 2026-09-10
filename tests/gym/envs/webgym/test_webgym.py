@@ -1392,12 +1392,12 @@ async def test_fallback_counter_resets_on_real_screenshot():
 
 
 @pytest.mark.asyncio
-async def test_fallback_screenshot_reports_capture_failure_not_ineffective_action():
+async def test_blank_page_fallback_is_not_reported_as_an_ineffective_action():
     """Two identical consecutive frames mean different things, and the model-visible
     text must say which one happened.
 
-    A fallback re-appends the previous frame, so the frames are identical BY
-    CONSTRUCTION and change detection has no evidence: the step must be described
+    A blank-page fallback re-appends the previous frame, so the frames are identical
+    BY CONSTRUCTION and change detection has no evidence: the step must be described
     as an env capture failure. A real capture that happens to match the previous
     frame IS evidence, and only that step may be described as an ineffective
     action. Both steps below end with ``_screenshots[-2] == _screenshots[-1]``.
@@ -1422,7 +1422,10 @@ async def test_fallback_screenshot_reports_capture_failure_not_ineffective_actio
     )
     fallback_text = fallback.results[0].text or ""
     assert env._screenshots[-2] == env._screenshots[-1]
-    assert "could not capture a new screenshot" in fallback_text
+    assert "rendered blank" in fallback_text
+    # NOT the old capture-failure wording: a capture failure now raises
+    # TrueInfraFailure and never reaches this branch.
+    assert "could not capture" not in fallback_text
     assert "not effective" not in fallback_text
     assert "did not change" not in fallback_text
     # The capture-failure prose is env feedback keyed to the call it answers, not
@@ -1544,6 +1547,46 @@ async def test_action_failure_continues():
     # Should still return a screenshot even though the action failed
     assert r.results[0].images
     await env.close()
+
+
+@pytest.mark.asyncio
+async def test_all_white_page_falls_back_instead_of_raising():
+    """The one capture outcome that must NOT raise.
+
+    An all-white PNG means the capture SUCCEEDED and the site rendered blank —
+    a property of the page, not of the env. The episode continues on the previous
+    frame so the model can route around it. This pins the split that
+    ``test_screenshot_failure_raises_retryable_infra_error`` pins from the other
+    side; without it, "finishing the job" by converting the last fallback call
+    site would go green.
+    """
+    import io as _io
+
+    from PIL import Image
+
+    from lite.gym.errors import TrueInfraFailure
+
+    buf = _io.BytesIO()
+    Image.new("RGB", (1280, 720), (255, 255, 255)).save(buf, format="PNG")
+    white = buf.getvalue()
+
+    env = _make_env()
+    env._client = _make_mock_client()
+    await env.reset()
+    real = env._last_frame
+    assert real is not None and real != white
+
+    env._client.screenshot.side_effect = None
+    env._client.screenshot.return_value = white
+    try:
+        got = await env._take_screenshot()          # must not raise
+        assert got == real, "all-white page must re-serve the previous frame"
+        assert env._is_fallback_screenshot is True
+        assert env._last_frame == real, "a blank render must not become _last_frame"
+    except TrueInfraFailure:
+        raise AssertionError("an all-white page is the site's render, not an env fault")
+    finally:
+        await env.close()
 
 
 @pytest.mark.asyncio

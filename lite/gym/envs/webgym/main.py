@@ -1351,23 +1351,22 @@ class WebGymEnv(LiteBaseEnv):
         else:
             page_meta = {"title": "", "url": ""}
 
-        # L2 fail-fast on a dead pool: count CONSECUTIVE steps that
-        # could only fall back to a stale/blank screenshot. One is a transient
-        # blip (graceful degradation is right); N in a row means the env hasn't
-        # produced a real screenshot for N steps → the pool is effectively
-        # unreachable and every further step just burns a teacher turn on a
-        # trajectory that will score 0 while count/throughput stay deceptively
-        # normal. Truncate LOUDLY so the outage surfaces. A real screenshot resets
-        # the counter, so a recovering blip never trips this.
+        # Fail-fast on a site that keeps rendering blank: count CONSECUTIVE steps
+        # whose capture succeeded but returned an all-white page. One is a
+        # transient render race; N in a row means the site is not going to paint
+        # for this agent, and every further step burns a teacher turn on a
+        # trajectory that will score 0. Truncate so the budget is not wasted. A
+        # real frame resets the counter. (A dead POOL no longer reaches here —
+        # capture failures raise TrueInfraFailure in ``_take_screenshot``.)
         if self._is_fallback_screenshot:
             self._consecutive_fallback_steps += 1
             if (_POOL_UNREACHABLE_FALLBACK_STEPS > 0
                     and self._consecutive_fallback_steps >= _POOL_UNREACHABLE_FALLBACK_STEPS
                     and not truncated and not terminated):
                 logger.error(
-                    "webgym: %d consecutive fallback screenshots — OmniBoxes pool "
-                    "appears UNREACHABLE; truncating trajectory to stop burning "
-                    "teacher budget on a dead pool (master=%s)",
+                    "webgym: %d consecutive all-white page renders — the site is not "
+                    "painting for this agent; truncating trajectory to stop burning "
+                    "teacher budget (master=%s)",
                     self._consecutive_fallback_steps, self._master_url,
                 )
                 truncated = True
@@ -1398,10 +1397,11 @@ class WebGymEnv(LiteBaseEnv):
         # Generate observation text (reference async_webgym.py:1521-1581)
         obs_text = None
 
-        # Fallback screenshot: the env could not capture this step's page and
-        # re-appended the previous frame, so the last two frames are identical by
-        # construction. Change detection has no evidence here and must not run —
-        # an env capture failure is never reported as an ineffective action.
+        # Blank-page fallback: the capture SUCCEEDED but the page rendered all
+        # white, so the previous frame was re-appended and the last two frames are
+        # identical by construction. Change detection has no evidence here and must
+        # not run. Capture FAILURES never reach this branch — they raise
+        # TrueInfraFailure in ``_take_screenshot`` and void the trajectory.
         if self._is_fallback_screenshot:
             if last_action_is_navigate and last_navigate_url:
                 obs_text = (
@@ -1412,10 +1412,11 @@ class WebGymEnv(LiteBaseEnv):
                 )
             else:
                 obs_text = (
-                    "The environment could not capture a new screenshot after the action above, "
-                    "so the image shown is the previous page. This is an environment capture "
-                    "failure and says nothing about whether the action took effect. "
-                    f"The URL of the webpage after executing the action: {url_display}"
+                    "The page rendered blank after the action above, so the image shown is the "
+                    "previous page. The action may still have taken effect — the blank render "
+                    "says nothing either way. Consider navigating elsewhere or trying a "
+                    f"different approach. The URL of the webpage after executing the action: "
+                    f"{url_display}"
                 )
         elif len(self._screenshots) >= 2:
             images_identical = self._screenshots[-2] == self._screenshots[-1]
@@ -1700,11 +1701,17 @@ class WebGymEnv(LiteBaseEnv):
     # -----------------------------------------------------------------------
 
     async def _take_screenshot(self) -> bytes:
-        """Take a screenshot and return raw PNG bytes.
+        """Capture the current page as PNG bytes, or void the trajectory.
 
-        Includes blank detection (#1), file size validation (#8), and retry logic.
-        Falls back to the previous frame on persistent blank after a navigate
-        action.
+        Raises ``TrueInfraFailure`` (retryable) when the env owed an observation
+        and could not deliver one: a non-PNG body, a truncated frame, an
+        undecodable PNG, or a raised exception, each after
+        ``blank_screenshot_max_retries`` attempts. Those are env faults, not model
+        faults, so the trajectory is void and re-run rather than scored 0.
+
+        The ONE non-raising failure is an all-white page that captured fine: the
+        site's own render, so the previous frame is re-served and the model is
+        told (see ``_fallback_to_previous_screenshot``).
 
         Records the frame as :attr:`_last_frame` but NOT in
         :attr:`_screenshots`: a step captures one frame per action and only its
