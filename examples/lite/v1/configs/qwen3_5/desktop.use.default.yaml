@@ -35,8 +35,10 @@ env_kwargs:
   max_steps: 30
   loop_detect: 5
   # Qwen native `answer` lowers to `response`; imperative tasks still need `terminate`.
-  # The sandbox accepts both unconditionally (LiteFinishToolSet), so this is about the
-  # PROMPT: without it the rendered action enum omits them and the model is evaluated
-  # on a surface its SFT data did not have. Sync with
+  # Required, not cosmetic: an undeclared finish tool is classified "inactive" and NOOPed
+  # (`standalone_tool_call_feedback_with_reason`, lite/gym/utils/feedback/ingress.py, applied
+  # in lite/gym/sandbox/base.py), and the rendered
+  # action enum omits it -- so the model both cannot end an episode and is evaluated on a
+  # surface its SFT data did not have. Sync with
   # scripts/configs/qwen3_5/default/lite.osworld.yaml.
   extra_tools: ["response", "terminate"]

@@ -26,14 +26,16 @@
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/androidworld/run.sh Qwen/Qwen3-VL-8B-Instruct
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/androidworld/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/androidworld/run.sh Qwen/Qwen3.5-27B
+#   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/androidworld/run.sh Qwen/Qwen3.5-27B
 #
-# tp_size is inferred from the GPU count in CUDA_VISIBLE_DEVICES.
+# tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
+# GPU count; serve_sglang.py derives dp_size = visible // tp_size, so the GPUs you expose
+# set the REPLICA count. This script never passes --engine-kwargs, so tp is unchangeable here.
 # Pre-req: AVD installed via lite/gym/envs/androidworld/scripts/install.sh.
 #
 # Known OOM / step_timeout cases (see devs/exps/eval/AGENTS.md "Known Qwen3.5 mobile failures"):
 #   - Qwen/Qwen3.5-{4,9}B at tp=1: sglang dies SIGKILL ~tens of minutes in due to
-#     mamba state + KV cache peak under android's history_n=100. **Pass 2 GPUs**
+#     mamba state + KV cache peak under android's long history (history_n=50, image_max=4). **Pass 2 GPUs**
 #     (`CUDA_VISIBLE_DEVICES=<g1>,<g2>`) so sglang launches as dp_size=2.
 #   - Qwen/Qwen3.5-2B at tp=1: usually fine, but susceptible to startup-OOM if
 #     a co-located tenant briefly grabs ~6 GiB on the same GPU. Re-run resumes.
@@ -43,7 +45,7 @@
 #     behavior uniform across the matrix.
 #   - --env-kwargs step_timeout=180s overrides the framework default 120s
 #     (`lite/gym/registry.py` _WRAPPER_KWARG_DEFAULTS) because androidworld
-#     does not pin an env-wide step_timeout. Qwen3.5 mobile (history_n=100)
+#     does not pin an env-wide step_timeout. Qwen3.5 mobile (history_n=50, image_max=4)
 #     under host contention can exceed 120s/step; we align with osworld's 180s.
 
 set -euo pipefail

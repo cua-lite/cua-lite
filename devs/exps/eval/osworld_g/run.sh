@@ -26,9 +26,11 @@
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/osworld_g/run.sh Qwen/Qwen3-VL-8B-Instruct
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/osworld_g/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/osworld_g/run.sh Qwen/Qwen3.5-27B
+#   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/osworld_g/run.sh Qwen/Qwen3.5-27B
 #
-# tp_size is inferred from the GPU count in CUDA_VISIBLE_DEVICES.
+# tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
+# GPU count; serve_sglang.py derives dp_size = visible // tp_size, so the GPUs you expose
+# set the REPLICA count. This script never passes --engine-kwargs, so tp is unchangeable here.
 # Pre-req: `uv run python lite/gym/envs/osworld_g/scripts/utils/download_tasks.py` to
 # clone the upstream OSWorld-G repo into ./data/OSWorld-G/ (one-time).
 

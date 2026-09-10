@@ -19,7 +19,11 @@ dataset-level.
 
 The handoff between the teacher runbook and this one is exactly:
 
-    .data/rollout/webgym/gpt5_5/$COMMIT/{d1..d7,popular}_clean
+    .data/rollout/webgym/gpt5_5/$COMMIT/{d1..d7,popular}_clean.think
+
+The `.think` suffix is not optional here: `gpt5_5` is this dataset's only teacher, its
+`## Internalize Reasoning` step runs after the cleaning pass, and the stage command below
+reads the `.think` roots. The bare `_clean` roots still carry `inline_reasoning`.
 
 This doc is the converged, scale-ready pipeline. Exploration rollouts that produced it live in
 `.logs/rollout/webgym_explore/` (transient); the real collection writes to `.data/` (curated).
@@ -205,52 +209,28 @@ predicate of its own.
 ### 3. Stage, Upload Transport, And Download
 
 > **Upload is a declarative full sync, not an append.** It plans the whole repo
-> from the LOCAL staging dir and deletes everything else: `orphans = current -
-> planned_paths - {.gitattributes}` are committed as deletions, and the rendered
-> README (which defines the HF configs) is rebuilt from local stats alone.
-> Staging only some cleaned roots and uploading would therefore DELETE the
-> published shards of every root left out. There is no flag that disables the
-> sweep, and `--skip-existing` does not protect anything (it only skips
-> re-uploading files this run already plans). **Every stage must list every
-> cleaned log root.**
+> from the LOCAL staging dir and deletes everything else, so staging only some
+> cleaned roots and uploading DELETES the published shards of every root left
+> out. Adding a teacher (or any config) to an already-published repo therefore
+> has one shared procedure — read what the repo actually holds, then stage all
+> of it in one call:
+> [Add A Config To A Published Dataset](/devs/data/AGENTS.md#add-a-config-to-a-published-dataset).
 >
-> `--dry-run` does NOT report the orphan set — the whole sweep, including its
-> logging, sits behind `if not dry_run`. A dry run only prints the paths it would
-> push. The real pre-flight is to diff those planned paths against
-> `HfApi().list_repo_files(repo_id=..., repo_type="dataset")` yourself.
-
-To ADD trajectories to an already-published dataset, every stage must still list
-EVERYTHING already published — the sweep above deletes whatever this stage
-does not plan. Which means two cases, and only one needs `unstage`:
-
-**You still have the published rows' annotated log roots** (the usual case —
-under `.data/rollout/webgym/gpt5_5/$COMMIT/`). Nothing to reconstruct: run the single
-stage below listing every root, and upload. Skip the rest of this block.
-
-**Those roots are gone** (a different machine, or the tree was cleaned).
-Rebuild them from the published repo first. `unstage` writes a rollout LOG-ROOT (not a staging layout), and it must be run **once per
-published config** into its own directory — `stage` maps log-roots to config names 1:1, and one call
-that pours several configs into one directory cannot be relabelled afterwards. WebGym stages without
-`--config-names`, so the repo holds a SINGLE derived cohort config and one `unstage` call reads all
-of it. `stage` also refuses a non-empty output dir (and with `--overwrite` deletes it), so there is
-no "append into the same directory" path:
-
-```bash
-# 1. pull the published repo, then unstage it back into a rollout log-root
-uv run python -m lite.data.hf.download WebGym --org "$HF_ORG" \
-  --out "${READBACK_ROOT}/cua-lite/WebGym"
-uv run python -m lite.data.hf.unstage \
-  --dataset "${READBACK_ROOT}/cua-lite/WebGym" --splits train \
-  --log-root ".data/rollout/webgym/gpt5_5/$COMMIT/published_clean"
-```
-
-Then run the stage below with `published_clean/train` substituted for the
-per-tier `*_clean` roots it replaces (`stage` walks a root with
-`rglob("trajectory.parquet")`, so the reconstruction enters as one root), plus
-every newly cleaned root.
-
-Provenance note: after an unstage→re-stage cycle the card's `## Notes` names the RECONSTRUCTED
-log-roots, not the original rollout roots.
+> This dataset MOVED to that label. It used to stage without `--config-names`, so the
+> repo published the derived cohort names below; the rename re-pathed every shard, which
+> is why the switch was a full re-stage + re-upload rather than a card edit:
+>
+> | was | now (published) |
+> |---|---|
+> | `browser.use` (the derived cohort; single-platform, so no `browser` row) | `browser.use.gpt5_5` |
+>
+> Re-running the command below is now idempotent — the label already matches what the
+> repo holds, so the orphan sweep finds nothing.
+>
+> WebGym's wrinkle: it broadcasts ONE `--config-name` across every tier root, so
+> the repo holds a single config per teacher and one `unstage` rebuilds it whole
+> — the reconstruction then enters `stage` as one root in place of the per-tier
+> `*_clean.think` list.
 
 ```bash
 # --- host ---
@@ -265,13 +245,21 @@ COMMIT=a2cad60b   # same pinned batch id as §1 (the log-root version)
 #   this is the row-content validation gate.
 #   --log-roots takes many roots → ONE
 #   dataset, so growing the corpus = append more cleaned roots here (see Scale to 5k).
+#   The roots are the `.think` siblings the teacher runbook produced (reasoning canonicalized
+#   into `reasoning_content` before staging) — see /devs/data/webgym/gpt5_5/AGENTS.md.
+#   --config-name broadcasts ONE label across every root, so all tiers still pool into a
+#   single config, now carrying its teacher token the way every other dataset's configs do.
+#   A second teacher would stage its own roots under `browser.use.<teacher>`.
 uv run python -m lite.data.hf.stage \
-  --log-roots .data/rollout/webgym/gpt5_5/$COMMIT/d1_clean .data/rollout/webgym/gpt5_5/$COMMIT/d2_clean \
-              .data/rollout/webgym/gpt5_5/$COMMIT/d3_clean .data/rollout/webgym/gpt5_5/$COMMIT/d4_clean \
-              .data/rollout/webgym/gpt5_5/$COMMIT/d5_clean .data/rollout/webgym/gpt5_5/$COMMIT/d6_clean \
-              .data/rollout/webgym/gpt5_5/$COMMIT/d7_clean .data/rollout/webgym/gpt5_5/$COMMIT/popular_clean \
+  --log-roots .data/rollout/webgym/gpt5_5/$COMMIT/d1_clean.think .data/rollout/webgym/gpt5_5/$COMMIT/d2_clean.think \
+              .data/rollout/webgym/gpt5_5/$COMMIT/d3_clean.think .data/rollout/webgym/gpt5_5/$COMMIT/d4_clean.think \
+              .data/rollout/webgym/gpt5_5/$COMMIT/d5_clean.think .data/rollout/webgym/gpt5_5/$COMMIT/d6_clean.think \
+              .data/rollout/webgym/gpt5_5/$COMMIT/d7_clean.think .data/rollout/webgym/gpt5_5/$COMMIT/popular_clean.think \
+  --config-name browser.use.gpt5_5 \
   --name WebGym \
-  --repo-dir devs/data/webgym
+  --repo-dir devs/data/webgym \
+  --overwrite   # the default out dir is $CUA_LITE_DATASETS_ROOT/cua-lite/WebGym;
+                # stage refuses a non-empty one, so a re-stage needs this
 
 # step 4: upload to a private smoke repo. Upload is transport only: it packages,
 #   pushes, and tags the staged tree; it does not replace stage validation.
@@ -303,6 +291,16 @@ uv run python -m lite.train.export.export_sft \
   -o .data/sft/qwen3_5/webgym-smoke/train.parquet
 ```
 
+The command above is the THINKING-OFF recipe: `webgym.yaml` sets no
+`enable_thinking`, the adapter default is off, and `sft_tokenize.py` then strips
+`reasoning_content` from every message — byte-identical to exporting from a root that
+never carried any. That is a real choice here, not an oversight: this dataset's rows DO
+carry reasoning after `## Internalize Reasoning`, but the thinking-on configs written so
+far are `desktop.use`-only. The `browser.use` twins land in
+[`/devs/exps/train/desktop/configs/qwen3_5/`](/devs/exps/train/desktop/configs/qwen3_5/)
+when they are written; point `--config` at one of those to train this dataset's
+reasoning channel.
+
 Then distill + eval per the **Consumer** flow in
 [/docs/examples/rollout_to_hf.md](/docs/examples/rollout_to_hf.md#consumer--train-from-the-hub)
 (`download → export_sft → run_sft`, then base-vs-SFT on the held-out webgym eval split).
@@ -315,12 +313,13 @@ Then distill + eval per the **Consumer** flow in
   coverage over diversity).
 - **Paths:** curated collection under `.data/rollout/webgym/gpt5_5/<commit>/` — one dir per rollout
   BATCH, named by a cua-lite commit pinned once at batch start (= the HF tag at upload; see §1).
-  Transient exploration under `.logs/rollout/webgym_explore/`. Keep `<commit>/d<d>_clean` until staged.
+  Transient exploration under `.logs/rollout/webgym_explore/`. Keep `<commit>/d<d>_clean` and its `.think` sibling until staged.
 
 ## Scale to 5k — additive
 
 The run writes per-tier `.data/rollout/webgym/gpt5_5/<commit>/d<d>` dirs; the published dataset is
-`stage --log-roots <all <commit>/d<d>_clean dirs>` (many roots → one dataset). To grow the corpus
+`stage --log-roots <all <commit>/d<d>_clean.think dirs> --config-name browser.use.gpt5_5`
+(many roots → one dataset). To grow the corpus
 WITHIN a batch, collect more tasks into the same `<commit>/` dirs and re-stage; a new recipe ⇒ pin a
 new `<commit>/` at the next batch start + a new HF tag. **Dedup is collection-side, not staging-side**:
 `stage` does NOT dedup — it keeps every trajectory row (so e.g. the tier↔popular overlap lands as

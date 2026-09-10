@@ -3,19 +3,25 @@
 This directory owns Lite.OSWorld teacher-data collection and the shared desktop
 trajectory filter used by Lite.OSWorld-family teacher-data workflows.
 
-Lite.OSWorld publishes trajectories from TWO teachers into one HF repo, each as
+Lite.OSWorld publishes trajectories from THREE teachers into one HF repo, each as
 its own set of configs. Per-teacher collection and annotation live in their own
 runbooks; everything below the annotated log roots is dataset-level and covers
-both at once.
+all of them at once.
 
 | Teacher | Runbook | Model |
 |---|---|---|
 | `gpt5_5` | [`gpt5_5/AGENTS.md`](/devs/data/lite.osworld/gpt5_5/AGENTS.md) | `gpt-5.5` (API) |
 | `qwen3_8_27b` | [`qwen3_8_27b/AGENTS.md`](/devs/data/lite.osworld/qwen3_8_27b/AGENTS.md) | `Qwen/Qwen3.8-27B` (local, sglang) |
+| `qwen3_5_27b` | [`qwen3_5_27b/AGENTS.md`](/devs/data/lite.osworld/qwen3_5_27b/AGENTS.md) | `Qwen/Qwen3.5-27B` (local, sglang, **thinking on**) |
 
 The handoff between a teacher runbook and this one is exactly:
 
     .data/rollout/lite.osworld/<teacher>/$COMMIT/train.{synth,perturb}_annotated
+    .data/rollout/lite.osworld/gpt5_5/$COMMIT/train.{synth,perturb}_annotated.think
+
+`gpt5_5` hands over the `.think` sibling: its Internalize Reasoning step runs after
+`filter.py`, and the stage command below reads that root, not the plain `_annotated`
+one. The other teachers have no `.think` root at all; their `_annotated` root is the handoff.
 
 Lite.CUAGym and Lite.ScaleCUA have their own workflow documentation in
 `devs/data/lite.cuagym/AGENTS.md` and `devs/data/lite.scalecua/AGENTS.md`.
@@ -34,8 +40,10 @@ exclusions, but every collect command still carries the same filter.
 
 | Split | Registered rows | Runnable rows | HF configs |
 |---|---:|---:|---|
-| `train.synth` | 1,722 | 1,704 | `desktop.use.synth.gpt5_5`, `desktop.use.synth.qwen3_8_27b` |
-| `train.perturb` | 707 | 707 | `desktop.use.perturb.gpt5_5`, `desktop.use.perturb.qwen3_8_27b` |
+| `train.synth` | 1,722 | 1,704 | `desktop.use.synth.gpt5_5`, `desktop.use.synth.qwen3_8_27b`, `desktop.use.synth.qwen3_5_27b` |
+| `train.perturb` | 707 | 707 | `desktop.use.perturb.gpt5_5`, `desktop.use.perturb.qwen3_8_27b`, `desktop.use.perturb.qwen3_5_27b` |
+
+`qwen3_5_27b` joins each row once that teacher is collected and staged.
 
 Every collect command must include:
 
@@ -81,7 +89,15 @@ It tags, in `exclude_reason`:
 - `incomplete` — `terminated != true`;
 - `dependency_install` — apt/pip/conda/snap/flatpak installs;
 - `complex_shell` — a non-teachable terminal *operation* (see below);
-- `footgun:loop` / `footgun:undo_storm` / `footgun:no_submit` — ≥3 identical consecutive actions / ≥4 Ctrl+Z / no submit action;
+- `footgun:loop` / `footgun:undo_storm` — ≥3 identical consecutive actions / ≥4 Ctrl+Z, gated by
+  `--drop-loops` / `--drop-undo-storm` (both passed by the canonical command below);
+- `footgun:no_submit` — no submit action, gated by `--drop-no-submit`, which the canonical
+  command does NOT pass, so this tag never appears in the published rows;
+- `reward_vision_disagree` — SOFT tag, emitted UNCONDITIONALLY (no `--drop` flag gates it):
+  the scalar checker reward and the multi-frame vision verdict disagree. It never overwrites
+  `episode_return`, and stage publishes the row either way — but the export filter this runbook
+  uses (`not m.others.get('exclude_reason')`) drops it, so a tagged row reaches the Hub and not
+  the training set.
 
 Reward is deliberately **not** a tag: `episode_return` is already in
 `metadata.others.episode_return`, so a consumer thresholds it directly (`episode_return > 0.5`).
@@ -147,85 +163,57 @@ freshness label required by env-server. Collection should use env-server mode;
 the per-teacher commands assume a 32-ish rollout batch against that server.
 
 Each teacher needs its own credentials or serving step — an API key for
-`gpt5_5`, an sglang server for `qwen3_8_27b`. Those live in the teacher
+`gpt5_5`, and an sglang server for each of `qwen3_8_27b` / `qwen3_5_27b`. Those live in the teacher
 runbooks.
 
 ### 2. Collect And Annotate (per teacher)
 
-Run [`gpt5_5/AGENTS.md`](/devs/data/lite.osworld/gpt5_5/AGENTS.md) and
-[`qwen3_8_27b/AGENTS.md`](/devs/data/lite.osworld/qwen3_8_27b/AGENTS.md). Both
+Run [`gpt5_5/AGENTS.md`](/devs/data/lite.osworld/gpt5_5/AGENTS.md),
+[`qwen3_8_27b/AGENTS.md`](/devs/data/lite.osworld/qwen3_8_27b/AGENTS.md) and
+[`qwen3_5_27b/AGENTS.md`](/devs/data/lite.osworld/qwen3_5_27b/AGENTS.md). All
 end with annotated log roots under
 `.data/rollout/lite.osworld/<teacher>/$COMMIT/`.
 
-Both teachers run the SAME `filter.py` with the SAME flags. That is deliberate:
+Every teacher runs the SAME `filter.py` with the SAME flags. That is deliberate:
 it makes the published subsets comparable, so a measured quality difference is a
 property of the teacher rather than of the annotation pass.
 
 ### 3. Stage, Upload Transport, And Download
 
 > **Upload is a declarative full sync, not an append.** It plans the whole repo
-> from the LOCAL staging dir and deletes everything else: `orphans = current -
-> planned_paths - {.gitattributes}` are committed as deletions, and the rendered
-> README (which defines the HF configs) is rebuilt from local stats alone.
-> Staging one teacher and uploading would therefore DELETE the other teacher's
-> published shards and drop its configs from the card. There is no flag that
-> disables the sweep, and `--skip-existing` does not protect anything (it only
-> skips re-uploading files this run already plans). **Every stage must list every
-> teacher.**
->
-> `--dry-run` does NOT report the orphan set — the whole sweep, including its
-> logging, sits behind `if not dry_run`. A dry run only prints the paths it would
-> push. The real pre-flight is to diff those planned paths against
-> `HfApi().list_repo_files(repo_id=..., repo_type="dataset")` yourself.
-
-To ADD a teacher to an already-published dataset, every stage must still list
-EVERYTHING already published — the sweep above deletes whatever this stage
-does not plan. Which means two cases, and only one needs `unstage`:
-
-**You still have the other teacher's annotated log roots** (the usual case —
-they are under `.data/rollout/lite.osworld/gpt5_5/$COMMIT/`). Nothing to
-reconstruct: run the single stage below, listing every teacher's roots, and
-upload. Skip the rest of this block.
-
-**Those roots are gone** (a different machine, or the collection tree was
-cleaned). Rebuild them from the published repo first. `unstage` writes a rollout
-LOG-ROOT, not a staging layout, and it must run **once per config** into its own
-directory — `stage` maps log roots to config names 1:1, so one call that pours
-several configs into one directory cannot be relabelled afterwards. `stage` also
-refuses a non-empty output dir (and with `--overwrite` deletes it), so there is
-no "append into the same directory" path:
-
-```bash
-# 1. pull the published repo, then unstage ONE config per log-root
-uv run python -m lite.data.hf.download Lite.OSWorld --org "$HF_ORG" \
-  --out "${READBACK_ROOT}/cua-lite/Lite.OSWorld"
-for C in synth perturb; do
-  uv run python -m lite.data.hf.unstage \
-    --dataset "${READBACK_ROOT}/cua-lite/Lite.OSWorld" \
-    --config-names "desktop.use.$C.gpt5_5" --splits "train.$C" \
-    --log-root ".data/rollout/lite.osworld/gpt5_5-published/$COMMIT"
-done
-```
-
-Then run the stage below with the reconstructed roots substituted for the
-missing teacher's — `.../gpt5_5-published/$COMMIT/train.$C` in place of
-`.../gpt5_5/$COMMIT/train.${C}_annotated` — keeping the SAME config labels. It
-still lists all four; only the rebuilt teacher's paths change.
-
-Provenance note: after an unstage→re-stage cycle the card's `## Notes` names the
-RECONSTRUCTED log-roots, not the original rollout roots.
+> from the LOCAL staging dir and deletes everything else, so staging one teacher
+> and uploading DELETES the other's published shards. Adding a teacher (or any
+> config) to an already-published repo therefore has one shared procedure —
+> read what the repo actually holds, then stage all of it in one call:
+> [Add A Config To A Published Dataset](/devs/data/AGENTS.md#add-a-config-to-a-published-dataset).
 
 ```bash
 export CUA_LITE_DATASETS_ROOT="$PWD/.data/huggingface"
 READBACK_ROOT="$PWD/.data/huggingface-readback"
 
+# The gpt5_5 roots below are the `.think` siblings its teacher runbook produced: reasoning
+# canonicalized into `reasoning_content` before staging, so the PUBLISHED rows carry one
+# reasoning shape. `qwen3_8_27b` runs thinking off and has none to move, so its roots are
+# used as-is, and `qwen3_5_27b` needs none either — it is sampled with thinking ON, so its
+# native <think> is already in `reasoning_content` at collection time. Only gpt5_5 has a
+# step between filter and stage. See /devs/data/lite.osworld/gpt5_5/AGENTS.md.
+# DELETE the qwen3_5_27b lines below until that teacher is actually collected — they are
+# LIVE as written, and a shell comment cannot be used here (a `#` after a `\` continuation
+# swallows the rest of the command). Once it IS published they are MANDATORY again, and
+# NOTHING WILL TELL YOU IF YOU FORGET: stage rglobs each
+# root and only errors when ALL of them are empty, so a missing one contributes zero rows
+# and stage still exits 0 (verified) — then upload sweeps and deletes that teacher's
+# published shards. Re-read the blockquote above before every re-stage.
 uv run python -m lite.data.hf.stage \
-  --log-roots ".data/rollout/lite.osworld/gpt5_5/$COMMIT/train.synth_annotated" \
-              ".data/rollout/lite.osworld/gpt5_5/$COMMIT/train.perturb_annotated" \
+  --log-roots ".data/rollout/lite.osworld/gpt5_5/$COMMIT/train.synth_annotated.think" \
+              ".data/rollout/lite.osworld/gpt5_5/$COMMIT/train.perturb_annotated.think" \
               ".data/rollout/lite.osworld/qwen3_8_27b/$COMMIT/train.synth_annotated" \
               ".data/rollout/lite.osworld/qwen3_8_27b/$COMMIT/train.perturb_annotated" \
+              ".data/rollout/lite.osworld/qwen3_5_27b/$COMMIT/train.synth_annotated" \
+              ".data/rollout/lite.osworld/qwen3_5_27b/$COMMIT/train.perturb_annotated" \
   --config-names desktop.use.synth.gpt5_5       desktop.use.perturb.gpt5_5 \
                  desktop.use.synth.qwen3_8_27b  desktop.use.perturb.qwen3_8_27b \
+                 desktop.use.synth.qwen3_5_27b  desktop.use.perturb.qwen3_5_27b \
   --name Lite.OSWorld \
   --repo-dir devs/data/lite.osworld \
   --overwrite   # the default out dir is $CUA_LITE_DATASETS_ROOT/cua-lite/Lite.OSWorld;
@@ -255,20 +243,41 @@ release org only after the private upload/readback/export smoke is approved.
 
 ### 4. Export SFT Parquet
 
-The two teachers publish DIFFERENT kinds of row, and a consumer that mixes them
+The three teachers publish DIFFERENT kinds of row, and a consumer that mixes them
 should know which it is training on:
 
 | Teacher | Rows carry | Reasoning |
 |---|---|---|
 | `gpt5_5` | `inline_reasoning` + `action_description` + `tool_calls` | prompted `Thought:` line |
 | `qwen3_8_27b` | `action_description` + `tool_calls` | none — runs with thinking off, per its runbook |
+| `qwen3_5_27b` | `reasoning_content` + `action_description` + `tool_calls` | native `<think>`, written straight to the canonical field |
 
-Only `gpt5_5` needs `examples/lite/v1/internalize_cot.py`, which moves
-`inline_reasoning` parts into `reasoning_content` (what the chat template renders
-as `<think>`). Run it before exporting under a thinking-enabled config. The
-`qwen3_8_27b` configs have no reasoning to internalize, so exporting them under a
-thinking-enabled config would train an empty `<think>` block — pair them with a
-config whose `enable_thinking` matches the rollout that produced them.
+The table is what each teacher COLLECTS. `gpt5_5`'s last step before staging
+([Internalize Reasoning](/devs/data/lite.osworld/gpt5_5/AGENTS.md#internalize-reasoning))
+moves its prompted `Thought:` out of the `inline_reasoning` content part and into
+the `reasoning_content` FIELD — the same one a teacher sampled with
+`enable_thinking` writes natively. So the PUBLISHED rows carry one vocabulary and
+consumers run no extra step.
+
+`qwen3_8_27b` has no reasoning to internalize (it runs thinking off and writes
+prose into `action_description`), so a thinking-enabled config on those rows
+would train an empty `<think>` block — pair them with a thinking-off config.
+
+`qwen3_5_27b` needs no internalize pass either, for the opposite reason: it is
+sampled with `enable_thinking: true`, so the adapter parses its native `<think>`
+straight into `reasoning_content` at collection time. Three teachers, three
+collection recipes, one published vocabulary — only `gpt5_5` has a step between
+filter and stage.
+
+One published root serves both recipes for a reasoning teacher: a thinking-on
+config renders the reasoning, and a thinking-off one strips `reasoning_content`
+at the model boundary (`lite/train/export/sft_tokenize.py`), which is
+byte-identical to exporting from a root that never carried any. Nothing under
+`scripts/configs/*/default/` sets `enable_thinking: true` for these envs, so the
+command below is the thinking-off recipe; the thinking-on twins live with the
+campaign that trains them
+([`/devs/exps/train/desktop/configs/qwen3_5/`](/devs/exps/train/desktop/configs/qwen3_5/),
+[`/examples/lite/v1/configs/qwen3_5/`](/examples/lite/v1/configs/qwen3_5/)).
 
 ```bash
 uv run python -m lite.train.export.export_sft \

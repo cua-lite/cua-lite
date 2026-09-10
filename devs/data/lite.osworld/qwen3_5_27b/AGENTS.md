@@ -1,13 +1,13 @@
-# Lite.OSWorld — Collect With `qwen3_8_27b`
+# Lite.OSWorld — Collect With `qwen3_5_27b`
 
-Teacher runbook for the `Qwen/Qwen3.8-27B` rows of Lite.OSWorld. Dataset-level
+Teacher runbook for the `Qwen/Qwen3.5-27B` rows of Lite.OSWorld. Dataset-level
 setup, staging, upload, and export live in
 [`../AGENTS.md`](/devs/data/lite.osworld/AGENTS.md); run its §1 first.
 
 This runbook ends at the annotated log roots. They are the only thing the
 dataset runbook consumes:
 
-    .data/rollout/lite.osworld/qwen3_8_27b/$COMMIT/train.{synth,perturb}_annotated
+    .data/rollout/lite.osworld/qwen3_5_27b/$COMMIT/train.{synth,perturb}_annotated
 
 ## Serve The Model
 
@@ -27,7 +27,7 @@ and watch the env-server / Docker error rates rather than trusting the number.
 # Pick FREE devices; the COUNT must be a multiple of tp_size (2 here).
 # --port 0 picks a free port and prints PORT=<actual> on the first line.
 CUDA_VISIBLE_DEVICES=<free devices> uv run python scripts/serve_sglang.py \
-  --model-id Qwen/Qwen3.8-27B --host 127.0.0.1 --port 0
+  --model-id Qwen/Qwen3.5-27B --host 127.0.0.1 --port 0
 ```
 
 Export the address the launcher printed before collecting:
@@ -42,17 +42,30 @@ launcher defaults to `0.0.0.0`.
 
 ## Reasoning Channel
 
-Thinking stays OFF: run `scripts/configs/qwen3_8/default/lite.osworld.yaml`
-as-is, with no `agent_kwargs` override. That is the upstream harness default
-(`QwenAgent(enable_thinking=False)` in
-`${CUA_LITE_REFERENCES_ROOT}/OSWorld/mm_agents/qwen/main.py`), and it is what a
-matched A/B on this env measured as the better collection setting — turning it on
-bought no success-rate improvement and raised the malformed-output rate.
+Thinking is ON, and it is the only `agent_kwargs` override this runbook makes:
 
-So the rows this teacher publishes are ACTION trajectories: `action_description`
-+ `tool_calls`, no `reasoning_content`. Action-only rows are a different kind of
-data from the two reasoning teachers', which is why each teacher is its own config
-rather than one pooled set.
+```
+--agent-kwargs '{"enable_thinking": true}'
+```
+
+The adapter defaults to thinking OFF (`enable_thinking: bool = False`,
+[/lite/agents/models/qwen3_vl/adapter.py](/lite/agents/models/qwen3_vl/adapter.py),
+inherited by the qwen3_5 adapters), so without the override this teacher would
+collect the same Action-only rows `qwen3_8_27b` does.
+
+With it on, the model's native `<think>...</think>` is parsed straight into the
+canonical `reasoning_content` FIELD (`lite/agents/models/qwen3_5/adapter.py`), so
+**this teacher needs no `internalize_cot.py` pass** — its published rows are
+already in the one vocabulary. That is the whole difference from `gpt5_5`, which
+is PROMPTED for a `Thought:` line and lands it in an `inline_reasoning` content
+part that must be moved before staging.
+
+Keep the override on the command line rather than forking a yaml: the rollout
+config stays the shared, unmodified one, and `metadata.others.command` records
+the full argv (`_cli_command()`, `lite/infer/rollout.py`), so the override reads
+straight off the row. A forked yaml's setting is not on the row — recovering it
+means taking the row's `config_path` + `commit` back to the checkout and reading
+the file.
 
 ## Task Set
 
@@ -85,7 +98,8 @@ A non-empty diff means one side is short; re-run that side's collect command
 ```bash
 for SUB in synth perturb; do
   uv run python scripts/rollout.py \
-    --model-id Qwen/Qwen3.8-27B \
+    --model-id Qwen/Qwen3.5-27B \
+    --agent-kwargs '{"enable_thinking": true}' \
     --sglang-server-url "$SGLANG_URL" \
     --env-id lite.osworld \
     --splits "train.$SUB" \
@@ -95,24 +109,25 @@ for SUB in synth perturb; do
     --save-video false \
     --save-gif false \
     --filter "lambda m: not m.others.get('exclude_reason')" \
-    --config-path scripts/configs/qwen3_8/default/lite.osworld.yaml \
-    --log-root ".data/rollout/lite.osworld/qwen3_8_27b/$COMMIT"
+    --config-path scripts/configs/qwen3_5/default/lite.osworld.yaml \
+    --log-root ".data/rollout/lite.osworld/qwen3_5_27b/$COMMIT"
 done
 ```
 
-Keep the config unmodified: then the yaml plus the row's `command` is the whole recipe.
-Part of this dataset's published rows are the counterexample — see
-[Step Timeout Under I/O Contention](#step-timeout-under-io-contention) for the override
-they were collected with, and why it belongs on the command line. A CLI override is
-still recorded — `rollout.py` writes the full argv into each run's
-provenance `command` (`_cli_command()` prefixes the interpreter, then
-`shlex.join(sys.argv)`) — but the yaml is the one place a reader finds the recipe
-without digging through per-run metadata. (Export does not read this config at all —
-`export_sft --config` takes the STUDENT's rollout config, so that training prompts
-match what the student will see at inference.)
+**Check the token budget on the first batch.** The rollout default is
+`max_new_tokens: 2048` (`lite/infer/serving.py`), and the ~514-token ceiling measured for
+`qwen3_8_27b` does NOT carry over: with thinking on the reply carries the whole `<think>` body
+ahead of the action, a different and much longer distribution. A truncated reply is not silent
+— `lite/agents/core/agent/base.py` maps a `finish_reason` of `length` / `max_tokens` /
+`context_length_exceeded` to a truncated step — so check the first batch before collecting the
+rest. To raise it, extend the SAME `--agent-kwargs` object; it is one flag, so a second one
+would drop `enable_thinking` and silently collect Action-only rows:
 
-The rollout default of `max_new_tokens: 2048` is ample here: the longest reply
-across 962 recorded turns was ~514 tokens, and none were cut off.
+```
+--agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"max_new_tokens": 4096}}'
+```
+
+Record whatever you settle on here, and drop this paragraph once it is measured.
 
 This covers all 2,429 registered train tasks (1,722 synth + 707 perturb); the
 `--filter` runs the 2,411 runnable (1,704 synth + 707 perturb), skipping the
@@ -120,38 +135,16 @@ This covers all 2,429 registered train tasks (1,722 synth + 707 perturb); the
 
 Collect each source into its OWN subfolder (`train.synth` / `train.perturb` are
 registered sub-splits): stage maps log-roots 1:1 to config names, so the
-`desktop.use.synth.qwen3_8_27b` / `desktop.use.perturb.qwen3_8_27b` separation
+`desktop.use.synth.qwen3_5_27b` / `desktop.use.perturb.qwen3_5_27b` separation
 depends on keeping them apart here.
-
-## Step Timeout Under I/O Contention
-
-The effective ceiling is 120s: this env pins `step_timeout: 120.0` in its own
-`make_kwargs` (`lite/gym/envs/lite/<env>/configs/default.yaml`), which is also what
-`_WRAPPER_KWARG_DEFAULTS` in `lite/gym/registry.py` would give. The rollout config above
-does not touch it. That is right for a quiet host. It is not right when a co-tenant saturates the array the
-env containers live on: on 2026-09-06 `/srv` sat at 87-93% util, `docker exec`
-stalled 75-326s, and every stall past 120s killed the whole episode rather than the
-step -- stuck-step rate went 0.78% -> 8.5%. Raising the ceiling past the longest
-observed stall fixed it (0.4%, and throughput 15 -> 360 traj/h):
-
-```
---env-kwargs '{"step_timeout": 400}'
-```
-
-Pass it on the command line when `iostat` says the array is contended; do NOT bake
-it into the shared yaml, and do not fork the yaml into a scratch directory. Part of
-this dataset's published `qwen3_8_27b` rows were collected through such a fork, so
-their `metadata.others.config_path` names a path that no longer exists -- the
-override above is the only surviving record of what it changed. A CLI override
-lands in `metadata.others.command` instead, which travels with the row.
 
 ## Annotate And Review
 
 ```bash
 for SUB in synth perturb; do
   uv run python devs/data/lite.osworld/filter.py \
-    --log-root ".data/rollout/lite.osworld/qwen3_8_27b/$COMMIT/train.$SUB" \
-    --out ".data/rollout/lite.osworld/qwen3_8_27b/$COMMIT/train.${SUB}_annotated" \
+    --log-root ".data/rollout/lite.osworld/qwen3_5_27b/$COMMIT/train.$SUB" \
+    --out ".data/rollout/lite.osworld/qwen3_5_27b/$COMMIT/train.${SUB}_annotated" \
     --drop-loops --drop-undo-storm
 done
 ```

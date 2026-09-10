@@ -1,13 +1,21 @@
 # Qwen3.5 desktop.use — native screenshot, native <think> reasoning.
 #
-# Not part of the campaign's 2x2 (that grid is Action-only). Run internalize_cot.py on
-# the data first: the teacher stores its Thought as inline_reasoning, and this config
-# needs it in reasoning_content for the chat template to render <think>.
+# The reasoning twin of the native-resolution reference. Not a campaign cell -- the
+# campaign runs the lowr.h4 / highr.h1 profiles -- so this pair is the one to reach for
+# when measuring <think> against an unmodified screenshot surface. Pairs with
+# desktop.use.default.yaml, which it differs from by enable_thinking alone.
 #
-#   desktop.use.default.yaml            native 1920x1080  <=4 images  Action-only
-#   desktop.use.default.reasoning.yaml  native 1920x1080  <=4 images  <think>  <- this file
-#   desktop.use.lowr.h4.yaml            1280x720          <=4 images  Action-only
-#   desktop.use.highr.h1.yaml           native 1920x1080    1 image   Action-only
+# Reasoning teachers only. gpt5_5's published rows carry the Thought in
+# reasoning_content (devs/data/internalize_cot.py runs before staging);
+# qwen3_5_27b's carry the native <think> straight from collection. qwen3_8_27b
+# rows have none, so this config would train an empty <think> block on them.
+#
+#   desktop.use.default.yaml             native 1920x1080  <=4 images  Action-only
+#   desktop.use.default.reasoning.yaml   native 1920x1080  <=4 images  <think>      <- this file
+#   desktop.use.lowr.h4.yaml             1280x720          <=4 images  Action-only
+#   desktop.use.lowr.h4.reasoning.yaml   1280x720          <=4 images  <think>
+#   desktop.use.highr.h1.yaml            native 1920x1080    1 image   Action-only
+#   desktop.use.highr.h1.reasoning.yaml  native 1920x1080    1 image   <think>
 #
 # No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row
 # from metadata.dims. system_prompt omitted -> the adapter's canonical USE_SYSTEM_PROMPT.

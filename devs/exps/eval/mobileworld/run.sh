@@ -30,10 +30,13 @@
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/mobileworld/run.sh Qwen/Qwen3-VL-8B-Instruct
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/mobileworld/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/mobileworld/run.sh Qwen/Qwen3.5-27B
+#   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/mobileworld/run.sh Qwen/Qwen3.5-27B
 #   ./devs/exps/eval/mobileworld/run.sh gpt-5.5       # API model, no GPU
 #
-# tp_size is inferred from the GPU count in CUDA_VISIBLE_DEVICES (local HF models only).
+# tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
+# GPU count; serve_sglang.py derives dp_size = visible // tp_size (local HF models only),
+# so the GPUs you expose set the REPLICA count. This script never passes --engine-kwargs,
+# so tp is unchangeable here.
 # Pre-reqs (env-server host):
 #   - /dev/kvm rw-accessible (kvm group or setfacl).
 #   - cua-lite/mobileworld docker image built via

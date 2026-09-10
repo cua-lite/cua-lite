@@ -790,17 +790,25 @@ _EXPECTED_NAV_CONFIGS = {
 #: The ``desktop.use`` teacher-comparison recipe, kept in two places: the public
 #: walkthrough under ``examples/`` and the campaign copy under ``devs/exps/train/``
 #: that must stand on its own. Every one declares ``extra_tools: [response,
-#: terminate]`` -- the sandbox accepts both unconditionally, so this is about the
-#: PROMPT: without them the rendered action enum omits them and the model is
-#: evaluated on a surface its SFT data did not have.
+#: terminate]`` -- required, not cosmetic: an undeclared finish tool is classified
+#: "inactive" and NOOPed (``standalone_tool_call_feedback_with_reason``,
+#: ``lite/gym/utils/feedback/ingress.py``, applied in ``lite/gym/sandbox/base.py``),
+#: and the rendered action enum omits it -- so the model both cannot end an episode
+#: and is evaluated on a surface its SFT data did not have.
 _DESKTOP_USE_RECIPE_CONFIGS = {
     f"examples/lite/v1/configs/qwen3_5/desktop.use.{_variant}.yaml"
     for _variant in ("compact", "compact.reasoning", "default", "default.reasoning")
 } | {
     # The campaign copy names its screenshot profiles by what they are (`lowr`/`highr`)
-    # and carries an extra one-image variant the public walkthrough does not.
+    # and carries an extra one-image variant the public walkthrough does not. Every
+    # profile has a `.reasoning` twin (`enable_thinking` alone), and the twin must
+    # declare the same extra_tools: it is trained and scored on the same surface.
     f"devs/exps/train/desktop/configs/qwen3_5/desktop.use.{_variant}.yaml"
-    for _variant in ("lowr.h4", "highr.h1", "default", "default.reasoning")
+    for _variant in (
+        "default", "default.reasoning",
+        "lowr.h4", "lowr.h4.reasoning",
+        "highr.h1", "highr.h1.reasoning",
+    )
 }
 
 _EXPECTED_RESPONSE_CONFIGS = {

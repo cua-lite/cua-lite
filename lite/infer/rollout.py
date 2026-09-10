@@ -897,12 +897,14 @@ def build_provenance(model_id: str, agent_id: str, config_path: str | None) -> d
     """Per-row run provenance stored in ``metadata.others`` of every
     trajectory.parquet row (see ``TrajectoryLogger``).
 
-    These keys share the ``others`` access shape with domain/run extras because
-    they are slicing dimensions (``m.others["agent_id"] == ...`` in a mixed
-    multi-agent dataset; ``commit`` doubles as the batch id under the
-    pinned-COMMIT collection discipline, see devs/data/*/AGENTS.md). Durable
-    identity/outcome fields such as ``env_id`` and ``episode_return`` live on
-    top-level metadata instead.
+    These keys live in ``others`` because they are slicing dimensions
+    (``m.others["agent_id"] == ...`` in a mixed multi-agent dataset; ``commit``
+    doubles as the batch id under the pinned-COMMIT collection discipline, see
+    devs/data/*/AGENTS.md). So do the identity/outcome fields ``env_id``,
+    ``task_id``, ``episode_return``, ``terminated`` and ``truncated``
+    (``ROLLOUT_METADATA_OTHER_KEYS``, :mod:`lite.agents.core.agent.logger`):
+    :class:`~lite.core.metadata.LiteBaseMetadata` has no top-level slot for
+    either group -- only ``dims``, ``extra_tool_schemas`` and ``others``.
 
     The log-root-level ``run_info.txt`` records the same facts per
     *invocation* — a root that accumulates resumes (each possibly at a

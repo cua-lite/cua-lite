@@ -1,7 +1,7 @@
 # Qwen3.5 vision+coord rollout eval on cua-lite browsergym.visualwebarena (stratified sample).
 #
 # Sampling: greedy decode (temperature 0.0), no native thinking channel
-# (eval-matrix default; the factory pins enable_thinking=False for Qwen3.5).
+# (eval-matrix default; the Qwen3.5 adapters default enable_thinking=False).
 #
 # Protocol: `Qwen3_5HistoryProtocol` (history_n=50, image_max=4, fold_size=4),
 # byte-faithful to `${CUA_LITE_REFERENCES_ROOT}/OSWorld/scripts/python/run_multienv_qwen35vl.py`.

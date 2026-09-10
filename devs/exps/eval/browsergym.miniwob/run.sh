@@ -39,11 +39,14 @@
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Instruct
 #   CUDA_VISIBLE_DEVICES=0       EVAL_MODE=text_only EVAL_RUN_ID=run_0_textonly EVAL_ENABLE_THINKING=false ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Thinking
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3.5-27B
+#   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3.5-27B
 #   ./devs/exps/eval/browsergym.miniwob/run.sh gpt-5.5              # API model, no GPU
 #   ./devs/exps/eval/browsergym.miniwob/run.sh claude-opus-4-6      # API model, no GPU
 #
-# tp_size is inferred from the GPU count in CUDA_VISIBLE_DEVICES (local HF models only).
+# tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
+# GPU count; serve_sglang.py derives dp_size = visible // tp_size (local HF models only),
+# so the GPUs you expose set the REPLICA count. This script never passes --engine-kwargs,
+# so tp is unchangeable here.
 
 set -euo pipefail
 

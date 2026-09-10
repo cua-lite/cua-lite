@@ -1,7 +1,8 @@
 # Qwen3.5 desktop.use — 1280x720 screenshot, NATIVE <think> reasoning.
 #
-# The config examples/lite/v1/README.md runs end to end: SFT export, RL rollout, and
-# eval of the trained checkpoint.
+# The reasoning twin of desktop.use.compact.yaml, which it differs from by
+# enable_thinking alone. examples/lite/v1/README.md trains it as the third cell
+# (`gpt5_5.reasoning`) of its Export / Train / Eval blocks.
 #
 # One config for the WHOLE desktop.use family (Lite.OSWorld / Lite.ScaleCUA /
 # Lite.CUAGym / Lite.CUAWorld). They share the same qwen3_5 desktop.use adapter, so a
@@ -18,9 +19,9 @@
 # Reasoning uses Qwen3.5's NATIVE <think>...</think> channel (enable_thinking: true) —
 # NOT a prompted "Thought:" system prompt. system_prompt is omitted, so the adapter
 # falls back to its canonical USE_SYSTEM_PROMPT (Action-only, no Thought: line).
-# The teacher stores its Thought as an inline_reasoning content part, so run
-# examples/lite/v1/internalize_cot.py on the dataset FIRST to move it into the
-# reasoning_content field — the chat template then renders it as <think>.
+# The published gpt5_5 rows already carry the Thought in reasoning_content
+# (devs/data/internalize_cot.py runs before staging), and the chat template renders
+# that as <think>. qwen3_8_27b rows carry none: this config would train an empty block.
 #
 # NO env_id: export_sft never reads it (adapter is picked per-row from the data's
 # metadata.dims + this agent_id → qwen3_5@desktop@use). For RL/rollout
@@ -41,8 +42,10 @@ env_kwargs:
   max_steps: 30
   loop_detect: 5
   # Qwen native `answer` lowers to `response`; imperative tasks still need `terminate`.
-  # The sandbox accepts both unconditionally (LiteFinishToolSet), so this is about the
-  # PROMPT: without it the rendered action enum omits them and the model is evaluated
-  # on a surface its SFT data did not have. Sync with
+  # Required, not cosmetic: an undeclared finish tool is classified "inactive" and NOOPed
+  # (`standalone_tool_call_feedback_with_reason`, lite/gym/utils/feedback/ingress.py, applied
+  # in lite/gym/sandbox/base.py), and the rendered
+  # action enum omits it -- so the model both cannot end an episode and is evaluated on a
+  # surface its SFT data did not have. Sync with
   # scripts/configs/qwen3_5/default/lite.osworld.yaml.
   extra_tools: ["response", "terminate"]

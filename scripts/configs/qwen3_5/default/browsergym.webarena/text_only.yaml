@@ -1,7 +1,7 @@
 # Qwen3.5 text+bid rollout on cua-lite browsergym.webarena.
 #
 # Sampling: greedy decode (temperature 0.0), no native thinking channel
-# (eval-matrix default; the factory pins enable_thinking=False for Qwen3.5).
+# (eval-matrix default; the Qwen3.5 adapters default enable_thinking=False).
 # max_new_tokens unset → the 2048 default (lite/infer/serving.py), sufficient
 # for non-thinking bid/answer turns.
 # Sister of `scripts/configs/qwen3_vl/default/browsergym.webarena/text_only.yaml`.

@@ -6,10 +6,13 @@ in [`../AGENTS.md`](/devs/data/webgym/AGENTS.md); run its
 [§1 Install And Configure](/devs/data/webgym/AGENTS.md#1-install-and-configure)
 first — it builds the image, starts the env-server, and pins `$COMMIT`.
 
-This runbook ends at the cleaned log roots. They are the only thing the dataset
-runbook consumes:
+This runbook ends at the INTERNALIZED clean log roots. They are the only thing the
+dataset runbook consumes:
 
-    .data/rollout/webgym/gpt5_5/$COMMIT/{d1..d7,popular}_clean
+    .data/rollout/webgym/gpt5_5/$COMMIT/{d1..d7,popular}_clean.think
+
+The bare `_clean` roots are an intermediate: they still carry `inline_reasoning`, and
+`## Internalize Reasoning` below turns them into the `.think` siblings that stage reads.
 
 ## Prompt Design
 
@@ -138,6 +141,39 @@ whole batch, before handing the cleaned roots to the dataset runbook:
 uv run python devs/data/webgym/quality_check.py .data/rollout/webgym/gpt5_5/$COMMIT/d7
 uv run python devs/data/webgym/quality_check.py .data/rollout/webgym/gpt5_5/$COMMIT   # all tiers
 ```
+
+## Internalize Reasoning
+
+The last step before staging. This teacher is PROMPTED for a `Thought:` line — see
+`inline_reasoning_instruction` in
+[the collect recipe](/scripts/configs/gpt/recipes/collect/webgym.yaml) — which the
+`gpt.teacher` agent parses into an `inline_reasoning` CONTENT PART.
+[`/devs/data/internalize_cot.py`](/devs/data/internalize_cot.py) moves it into the
+`reasoning_content` FIELD, the same one a teacher sampled with `enable_thinking` writes
+natively. Same fact, one shape, so the PUBLISHED rows do not make every consumer ask which
+config produced them.
+
+```bash
+# ROOT, not D: `D` is the difficulty tier set above and is still needed if you loop back.
+for ROOT in .data/rollout/webgym/gpt5_5/$COMMIT/*_clean; do
+  uv run python devs/data/internalize_cot.py --in "$ROOT" --out "$ROOT.think"
+done
+```
+
+Run it on a root rebuilt by `unstage` too
+([Add A Config To A Published Dataset](/devs/data/AGENTS.md#add-a-config-to-a-published-dataset)),
+without checking first. Rows published BEFORE this step existed still carry
+`inline_reasoning`, and re-staging one of those beside a `.think` root would put two
+reasoning shapes in one repo — silently, since nothing downstream rejects either. The pass
+is idempotent in CONTENT: on already-canonical rows it finds no `inline_reasoning` and
+reports `0 assistant turns`. It is not idempotent in PLACEMENT — a non-empty `--out`
+raises `FileExistsError` rather than merging a stale tree into a fresh one, so re-running
+over a surviving `.think` root needs `--overwrite`.
+
+The `.think` roots hold parquet only: image refs are rewritten to absolute, so the copy is
+small and stages the same image bytes. It also pops `raw_response`, whose saved provider
+payload no longer matches the mutated message.
+[The dataset runbook](/devs/data/webgym/AGENTS.md) stages THESE roots.
 
 ## Cost / time
 

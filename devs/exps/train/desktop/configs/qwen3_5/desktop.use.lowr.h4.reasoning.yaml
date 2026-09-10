@@ -1,9 +1,17 @@
-# Qwen3.5 desktop.use — native screenshot, Action-only. The unmodified baseline.
+# Qwen3.5 desktop.use — 1280x720 screenshot, native <think> reasoning.
 #
-#   desktop.use.default.yaml             native 1920x1080  <=4 images  Action-only  <- this file
+# The reasoning arm of the campaign's low-res profile. Pairs with
+# desktop.use.lowr.h4.yaml, which it differs from by enable_thinking alone.
+#
+# Reasoning teachers only. gpt5_5's published rows carry the Thought in
+# reasoning_content (devs/data/internalize_cot.py runs before staging);
+# qwen3_5_27b's carry the native <think> straight from collection. qwen3_8_27b
+# rows have none, so this config would train an empty <think> block on them.
+#
+#   desktop.use.default.yaml             native 1920x1080  <=4 images  Action-only
 #   desktop.use.default.reasoning.yaml   native 1920x1080  <=4 images  <think>
 #   desktop.use.lowr.h4.yaml             1280x720          <=4 images  Action-only
-#   desktop.use.lowr.h4.reasoning.yaml   1280x720          <=4 images  <think>
+#   desktop.use.lowr.h4.reasoning.yaml   1280x720          <=4 images  <think>      <- this file
 #   desktop.use.highr.h1.yaml            native 1920x1080    1 image   Action-only
 #   desktop.use.highr.h1.reasoning.yaml  native 1920x1080    1 image   <think>
 #
@@ -14,7 +22,8 @@ agent_id: "qwen3_5"
 agent_kwargs:
   sampling_kwargs:  # rollout.py only; export_sft drops it, RL sets sampling in the trainer
     temperature: 0.0
-  # resolution omitted -> native 1920x1080; smart_resize rounds to 1920x1088.
+  enable_thinking: true     # native <think> channel (no prompted Thought:/Action: format)
+  resolution: [1280, 720]  # smart_resize rounds to x32 -> the model sees 1280x704
   # protocol_kwargs omitted -> protocol defaults (history_n=50, image_max=4, fold_size=4).
 
 env_kwargs:

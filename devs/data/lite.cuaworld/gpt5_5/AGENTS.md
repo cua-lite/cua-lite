@@ -1,13 +1,16 @@
 # Lite.CUAWorld — Collect With `gpt5_5`
 
-Teacher runbook for the `gpt-5.5` half of Lite.CUAWorld. Dataset-level setup,
+Teacher runbook for the `gpt-5.5` rows of Lite.CUAWorld. Dataset-level setup,
 staging, upload, and export live in
 [`../AGENTS.md`](/devs/data/lite.cuaworld/AGENTS.md); run its §1 first.
 
-This runbook ends at the annotated log roots. They are the only thing the
-dataset runbook consumes:
+This runbook ends at the INTERNALIZED annotated log roots. They are the only thing
+the dataset runbook consumes:
 
-    .data/rollout/lite.cuaworld/gpt5_5/$COMMIT/<software>/train_annotated
+    .data/rollout/lite.cuaworld/gpt5_5/$COMMIT/<software>/train_annotated.think
+
+The bare `_annotated` roots are an intermediate: they still carry `inline_reasoning`, and
+`## Internalize Reasoning` below turns them into the `.think` siblings that stage reads.
 
 ## Prompt Design
 
@@ -87,11 +90,45 @@ for SW in <softwares>; do
 done
 ```
 
-Both teachers run the SAME filter with the SAME flags. That is what makes the
-two published subsets comparable: a quality difference between them is then a
+Every teacher runs the SAME filter with the SAME flags. That is what makes the
+published subsets comparable: a quality difference between them is then a
 property of the teacher, not of the annotation pass.
 
 Review the `exclude_reason` tag counts and sample each tag class + clean/terminal trajectories
 before publishing. `devs/data/lite.cuaworld/analyze.py --log-root <root>` reports per-software yield,
 failure breakdown, WAIT-patterns, and programmatic-vs-VLM yield (watch for an implausibly-high VLM
 yield = garbage passing).
+
+## Internalize Reasoning
+
+The last `gpt5_5` step before staging, and a `gpt5_5`-only one. This teacher is PROMPTED for a
+`Thought:` line — see `inline_reasoning_instruction` in
+[the collect recipe](/scripts/configs/gpt/recipes/collect/lite.cuaworld.yaml) — which the
+`gpt.teacher` agent parses into an `inline_reasoning` CONTENT PART;
+[`/devs/data/internalize_cot.py`](/devs/data/internalize_cot.py) moves it into the
+`reasoning_content` FIELD — the same one a teacher sampled with `enable_thinking` writes
+natively. Same fact, one shape, so the PUBLISHED rows do not make every consumer ask which
+config produced them. The other two teachers skip this step for opposite reasons: `qwen3_8_27b` runs
+thinking off and has nothing to move; `qwen3_5_27b` runs thinking ON and its native
+`<think>` is already parsed into `reasoning_content` at collection time.
+
+```bash
+for D in .data/rollout/lite.cuaworld/gpt5_5/$COMMIT/*/train_annotated; do
+  uv run python devs/data/internalize_cot.py --in "$D" --out "$D.think"
+done
+```
+
+Run it on a root rebuilt by `unstage` too
+([Add A Config To A Published Dataset](/devs/data/AGENTS.md#add-a-config-to-a-published-dataset)),
+without checking first. Rows published BEFORE this step existed still carry
+`inline_reasoning`, and re-staging one of those beside a `.think` root would put two
+reasoning shapes in one repo — silently, since nothing downstream rejects either. The pass
+is idempotent in CONTENT: on already-canonical rows it finds no `inline_reasoning` and
+reports `0 assistant turns`. It is not idempotent in PLACEMENT — a non-empty `--out`
+raises `FileExistsError` rather than merging a stale tree into a fresh one, so re-running
+over a surviving `.think` root needs `--overwrite`.
+
+The `.think` roots hold parquet only: image refs are rewritten to absolute, so the copy is
+small and stages the same image bytes. It also pops `raw_response`, whose saved provider
+payload no longer matches the mutated message.
+[The dataset runbook](/devs/data/lite.cuaworld/AGENTS.md) stages THESE roots for `gpt5_5`.

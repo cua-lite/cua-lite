@@ -1,7 +1,7 @@
 """Trajectory analyzer for the cuaworld GPT collection (pre-exploration).
 
-Forked from devs/data/lite.osworld/analyze.py. Reports the signals we use to design the
-collection plan, with two CUAWorld-specific additions:
+Reports the signals we use to design the collection plan. Two of them are
+CUAWorld-specific:
 
   * WAIT-PATTERN breakdown — how often the teacher emits a standalone ``wait`` turn vs a
     trailing/among-others ``wait``. Informational only: cuaworld reuses the shared
@@ -199,7 +199,7 @@ def analyze(log_root: Path) -> None:
 
     print("\nturns: min/median/max =",
           (min(turns_all), sorted(turns_all)[len(turns_all)//2], max(turns_all)),
-          " | hit max(40):", sum(1 for t in turns_all if t >= 40))
+          " | hit max(30):", sum(1 for t in turns_all if t >= 30))
 
     print("\nper-software success (sorted by count):")
     for sw, v in sorted(by_sw.items(), key=lambda kv: -len(kv[1])):

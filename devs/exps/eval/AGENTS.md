@@ -169,13 +169,13 @@ For browsergym config comparisons inside one report, keep `EVAL_RUN_ID` fixed an
 | `meituan/EvoCUA-8B-20260105` | ✅ | ✅ |
 | `Tongyi-MAI/MAI-UI-{2,8}B` | ✅ | ✅ |
 
-Default `tp_size` is 1 except `Qwen3-VL-32B` (tp=2) and `Qwen3.5-27B` (tp=4). `Qwen/Qwen3-VL-*-Thinking` uses the same default-mode command as `Instruct`; browsergym runners keep thinking disabled unless `EVAL_ENABLE_THINKING=true` is set. For MiniWoB/WebArena `text_only.yaml` and VisualWebArena `mixed.yaml` thinking-on runs, the runners append the fixed override `--agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"max_new_tokens": 4096}}'`. Use one explicit `EVAL_RUN_ID` for a paired comparison report; explicitly set `EVAL_ENABLE_THINKING=false` / `true` to get separate `think_off` / `think_on` artifact dirs under that same run. Do not compute `EVAL_RUN_ID` from a shell template. On OOM, double — see [OOM escalation](#oom-escalation).
+Across the rosters above, `tp_size` is 1 except `Qwen3-VL-32B` and `Qwen3.5-27B` (tp=2), pinned in `lite/agents/factory.py`. `Qwen/Qwen3-VL-*-Thinking` uses the same default-mode command as `Instruct`; browsergym runners keep thinking disabled unless `EVAL_ENABLE_THINKING=true` is set. For MiniWoB/WebArena `text_only.yaml` and VisualWebArena `mixed.yaml` thinking-on runs, the runners append the fixed override `--agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"max_new_tokens": 4096}}'`. Use one explicit `EVAL_RUN_ID` for a paired comparison report; explicitly set `EVAL_ENABLE_THINKING=false` / `true` to get separate `think_off` / `think_on` artifact dirs under that same run. Do not compute `EVAL_RUN_ID` from a shell template. On a launch-time OOM see [OOM escalation](#oom-escalation) — exposing more GPUs does NOT help.
 
 **Task counts per env** (used to determine "fully finished" in the snapshot):
 
 | Env | Tasks | Notes |
 |---|---|---|
-| `lite.osworld` | 332 | of 369; 37 dropped by the `exclude_reason` filter |
+| `lite.osworld` | 328 | of 369; 41 dropped by the `exclude_reason` filter |
 | `osworld` | 325 | of 369; 44 dropped by the `exclude_reason` filter |
 | `androidlab` | 138 | no filter |
 | `androidworld` | 116 | no filter |
@@ -200,10 +200,10 @@ CUDA_VISIBLE_DEVICES=<gpus> ./devs/exps/eval/<env>/run.sh <model-id>
 # illustrative — substitute your own GPUs
 CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/lite.osworld/run.sh Qwen/Qwen3-VL-8B-Instruct       # tp=1
 CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/osworld/run.sh Qwen/Qwen3-VL-32B-Instruct           # tp=2
-CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/androidworld/run.sh Qwen/Qwen3.5-27B               # tp=4
+CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/androidworld/run.sh Qwen/Qwen3.5-27B                # tp=2
 ```
 
-`run.sh` resolves `<commit-ts>_<commit>` and `<run_id>` itself, looks up the rollout-config YAML by model family, sets `HF_HUB_OFFLINE=1`, and routes `--log-root` to `.exps/eval/<env>/<commit-ts>_<commit>/<run_id>/<slug>/`. Browsergym runners append `__<EVAL_CONFIG_ID>` to `<slug>` when set. tp_size is inferred from the GPU count in `CUDA_VISIBLE_DEVICES` (1, 2, or 4).
+`run.sh` resolves `<commit-ts>_<commit>` and `<run_id>` itself, looks up the rollout-config YAML by model family, sets `HF_HUB_OFFLINE=1`, and routes `--log-root` to `.exps/eval/<env>/<commit-ts>_<commit>/<run_id>/<slug>/`. Browsergym runners append `__<EVAL_CONFIG_ID>` to `<slug>` when set. `tp_size` comes from the model's `LOCAL_AGENTS` entry (`lite/agents/factory.py`), NOT from the GPU count; `scripts/serve_sglang.py:151` derives `dp_size = visible // tp_size`, so the GPUs you expose set the REPLICA count and cannot change tensor parallelism.
 
 Pre-req — cache model weights locally if missing:
 
@@ -229,16 +229,16 @@ If no allowed range was given, **ask the user** before launching anything — do
 
 - **One watchdog per GPU at the start.** Releasing GPU `k` only kills its own watchdog; the others keep holding. This is the only pattern that's gap-free under per-GPU release.
 - **Job needs a strict subset of the allowed range**: kill only that subset's watchdogs, run the job, re-launch their watchdogs the instant the job exits.
-- **Job needs the whole allowed range** (e.g. tp=4 on a 4-GPU reservation): release all, run, re-hold the moment the job exits — minimize the gap.
+- **Job needs the whole allowed range** (e.g. a tp=2 model filling a 2-GPU reservation): release all, run, re-hold the moment the job exits — minimize the gap.
 
 ### Watchdog launcher
 
-One invocation per GPU (substitute the GPU id):
-
-```bash
-CUDA_VISIBLE_DEVICES=0 nohup .venv/bin/python .claude/skills/watchdog/watchdog.py \
-  > /tmp/gpu_watchdog_0.log 2>&1 &
-```
+Use the `watchdog` skill — `/watchdog hold <gpu_spec>` — one server + one load driver per GPU.
+There is no `watchdog.py`: the skill deliberately holds a card with a REAL SGLang serving job
+sized to fill its VRAM plus a client that keeps utilization near-full, so a held card reads as an
+ordinary serving process rather than a recognizable squatter. See
+[`.claude/skills/watchdog/SKILL.md`](/.claude/skills/watchdog/SKILL.md) for the gpu_spec form and
+the release path; do not hand-roll a launcher here.
 
 After every campaign — including aborts, errors, or stop-and-debug pauses — **the allowed range must end up fully held**. Don't leave it un-held overnight or while you context-switch.
 
@@ -246,35 +246,50 @@ After every campaign — including aborts, errors, or stop-and-debug pauses — 
 
 ## OOM escalation
 
-If sglang OOMs on launch, **double `tp_size` and the GPU count** until it fits or you hit `tp=4` (the cap on a 4-GPU host):
+If sglang OOMs **at launch**, exposing more GPUs will not help: `tp_size` is pinned per model in
+`lite/agents/factory.py` and the launcher spends extra GPUs on `dp_size` (more replicas), and each
+replica reserves the same weights + KV pool on its own GPU. To change tp, edit that entry — or add
+`--engine-kwargs '{"tp_size": N}'` to the `scripts/rollout.py` line, which `lite/infer/cli.py`
+forwards through `start_server` to `serve_sglang.py`. No `run.sh` passes it and none forwards
+`"$@"`, so you copy the runner's command rather than invoke the runner — and unset
+`SGLANG_SERVER_URL` first: with a server URL set, `lite/infer/serving.py` attaches to that server
+and drops `--engine-kwargs` silently.
 
-```
-tp=1 → tp=2: CUDA_VISIBLE_DEVICES=0,1     ./<env>/run.sh ...
-tp=2 → tp=4: CUDA_VISIBLE_DEVICES=0,1,2,3 ./<env>/run.sh ...
-```
+An OOM that lands minutes INTO a run is a different failure: it tracks what each replica is actually
+holding, so halving the requests per replica with dp=2 can help — both android runners tell you to
+pass 2 GPUs for `{4,9}B`. It is not a cure-all: see
+[Known Qwen3.5 mobile failures](#known-qwen35-mobile-failures-and-fixes-wired-into-runsh), where
+4B/androidworld OOM'd at dp=2 and dp=4 anyway.
 
-Still OOM at tp=4? Levers: lower `--concurrency` (default 16 → 4), lower `--rollout-max-response-len` in the YAML, or trim `history_n` / `image_max` via `--agent-kwargs '{"protocol_kwargs": {"history_n": 50, "image_max": 10}}'`.
+The levers that actually work from a runner:
 
-**Qwen3.5 family** uses `history_n=100, image_max=20` → prompts balloon to tens of thousands of tokens. The 9B often needs tp=2 on long-task envs; 27B is already tp=4.
+- lower `--concurrency` (default 16, `lite/infer/rollout.py`);
+- lower the reply budget with `--agent-kwargs '{"sampling_kwargs": {"max_new_tokens": N}}'`
+  (default 2048, `lite/infer/serving.py`) — note `--rollout-max-response-len` is a SLIME training
+  flag (`scripts/train/run_*.sh`) and does nothing here;
+- trim the prompt with `--agent-kwargs '{"protocol_kwargs": {"image_max": 2}}'`. The qwen3_5
+  protocol defaults are `history_n=50, image_max=4, fold_size=4`
+  (`lite/agents/models/qwen3_5/protocol.py`), so `image_max: 10` would RAISE it, not trim, and
+  `history_n: 50` is already the default.
 
-**Qwen3.5 is hybrid mamba+attention.** sglang's radix cache only applies to attention layers, so each turn's mamba SSM state is recomputed from scratch — Qwen3.5 on `osworld` typically runs 2–3× slower than equivalent-size Qwen3-VL even when GPU memory fits comfortably. Don't read this as "stuck"; check sample-summary mtime to confirm forward progress (see [GPU reservation discipline](#gpu-reservation-discipline) below).
+**Qwen3.5 is hybrid mamba+attention.** sglang's radix cache only applies to attention layers, so each turn's mamba SSM state is recomputed from scratch — Qwen3.5 on `osworld` typically runs 2–3× slower than equivalent-size Qwen3-VL even when GPU memory fits comfortably. Don't read this as "stuck"; check sample-summary mtime to confirm forward progress (see [GPU reservation discipline](#gpu-reservation-discipline) above).
 
 ### Known Qwen3.5 mobile failures (and fixes wired into `run.sh`)
 
 Two failure modes confirmed at `2026-04-28T21-31_785df232`:
 
-1. **sglang OOM at tp=1 on androidworld** for `{4,9}B` (mamba state + KV peak under `history_n=100` exceeds `mem_fraction_static=0.79`). For 4B/androidworld specifically, even tp=2/4 OOM'd via fragmentation — `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is the silver bullet.
+1. **sglang OOM on one GPU on androidworld** for `{4,9}B` (mamba state + KV peak under a long history exceeds `mem_fraction_static=0.79`). For 4B/androidworld specifically, even 2–4 GPUs (dp=2/4 — tp is unreachable, 4B has no `_tp()` entry) still OOM'd via fragmentation, and `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is the silver bullet.
 2. **`EnvTimeoutError: step() timed out`** on androidworld/androidlab. The framework default is 120s (`lite/gym/registry.py` `_WRAPPER_KWARG_DEFAULTS["step_timeout"]`); env-wide `make_kwargs` can override it (`lite.osworld`=120s, `osworld`=180s, android = no step override). Qwen3.5 mobile inference under contention can exceed the framework default.
 
 Fixes baked into `devs/exps/eval/<env>/run.sh`:
 - Long-step runners set explicit timeout overrides where needed (usually
   `--env-kwargs '{"step_timeout": 180}'`; `mobileworld` uses `240`, and envs
   with env-wide `make_kwargs` may rely on their config instead).
-- androidworld: `--concurrency 4`. 4B retries also need `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (set in `run_one.sh`-style wrappers).
+- androidworld: `--concurrency 4`. 4B retries also need `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`, which no eval `run.sh` sets — export it in the shell that launches the runner.
 - androidlab: `--concurrency 8`. 4B/9B should launch with 2 GPUs (sglang dp=2).
 - 27B (any env): tp=2 pinned in `lite/agents/factory.py`.
 
-If still OOM at tp=4: lower `mem_fraction_static` to 0.65 (needs sglang flag passthrough — not currently exposed in run.sh).
+Still OOM after those levers: lower `mem_fraction_static` to 0.65 — `serve_sglang.py` forwards any leftover `engine_kwargs` key as an sglang flag, so `--engine-kwargs '{"mem_fraction_static": 0.65}'` on the `scripts/rollout.py` line reaches it; no `run.sh` passes it.
 
 ### Known docker timeouts — androidlab under high host load
 
@@ -308,7 +323,7 @@ Survey before / after each run, and every 10-15 min during long ones — both la
 ```bash
 # Client-side (where `./run.sh` was invoked):
 echo "=== gpu ==="; nvidia-smi --query-gpu=index,memory.used,memory.free,utilization.gpu --format=csv,noheader
-echo "=== orphan rollout python ==="; ps -eo pid,etime,cmd | grep -E 'rollout/local\.py' | grep -v grep || echo "none"
+echo "=== orphan rollout python ==="; ps -eo pid,etime,cmd | grep -E 'scripts/rollout\.py' | grep -v grep || echo "none"
 
 # Env-server-side (works from anywhere with the URL+TOKEN — no SSH to the env host needed):
 echo "=== live env sessions ==="; \
@@ -531,9 +546,9 @@ For an agent given **(this README) + `<env>` + (optional model subset)**:
 
    The contract: same `(commit, run_id, model)` → same `--log-root` → resume; for browsergym config variants, `EVAL_CONFIG_ID` is part of the slug and must also match. Re-launch the **identical** `run.sh` line until `num_valid == num_tasks`. With `EVAL_RUN_ID` left unset, auto-resume points at the same `run_<N>` every restart (see [Run id contract](#run-id-contract-eval_run_id)) — only export `EVAL_RUN_ID` when you intend to start a *fresh* campaign.
 
-   - Pick the right number of GPUs from the allowed range (1 / 2 / 4 per the model's tp).
+   - Expose a multiple of the model's pinned `tp_size` (`lite/agents/factory.py`); extra groups become replicas.
    - Release watchdog on those GPUs only; launch via `./<env>/run.sh <model-id>`; re-hold immediately when it exits.
-   - On OOM, double tp_size (and GPU count) and retry — auto-resume keeps the same `run_<N>` so completed tasks are still skipped.
+   - On OOM use the levers in [OOM escalation](#oom-escalation) (concurrency, `max_new_tokens`, `image_max`); at LAUNCH, adding GPUs raises `dp_size`, not tensor parallelism, so it cannot fix it — mid-run is the case where dp=2 can. Auto-resume keeps the same `run_<N>`, so completed tasks are still skipped.
    - **For runs > 1h, poll every 15-25 min** — distinguish "still working" from "stuck" via the sanity checks in [GPU reservation discipline → Reading utilization](#reading-utilization).
    - **Graceful-exit deadlock recipe** (common — esp. Qwen3.5/Qwen3-VL near end-of-run):
      1. Diagnose: sglang stdout shows `Gracefully exiting... Remaining number of requests N` looping; GPU memory dropped from 70+ GB to a few GB.
@@ -541,7 +556,7 @@ For an agent given **(this README) + `<env>` + (optional model subset)**:
      3. The rollout python often still hangs even after sglang dies — `kill -KILL <rollout_pid>` it explicitly.
      4. Verify: `nvidia-smi` shows the slot's GPU back to 0 MiB; no orphan `sglang::scheduler` / `sglang::detokenizer` processes left (`pgrep -f sglang`).
      5. Re-run the same `run.sh` line — completed task summaries on disk are skipped, only the unfinished tasks re-execute.
-   - **External-SIGKILL recipe** (`subprocess.CalledProcessError: ... died with <Signals.SIGKILL: 9>`): usually Linux OOM killer or another tenant's `pkill` on the host. Re-check [Reading utilization point 3](#reading-utilization) for resource pressure first; if `available` RAM was low or load was high, lower `--concurrency` (32 → 16 → 8) before re-launching. **Don't `/watchdog hold` between for-loop / mop-up retries** — the watchdog will saturate VRAM and OOM the next attempt's sglang at startup; hold only after the entire eval round exits.
+   - **External-SIGKILL recipe** (`subprocess.CalledProcessError: ... died with <Signals.SIGKILL: 9>`): usually Linux OOM killer or another tenant's `pkill` on the host. Re-check [Reading utilization point 3](#reading-utilization) for resource pressure first; if `available` RAM was low or load was high, lower `--concurrency` (default 16 → 8 → 4) before re-launching. **Don't `/watchdog hold` between for-loop / mop-up retries** — the watchdog will saturate VRAM and OOM the next attempt's sglang at startup; hold only after the entire eval round exits.
    - After each model, run a leak survey; cleanup if non-empty.
    - **When the model finishes** (cleanly or terminal failure): append its row to `Results` (with the `<nf>/<nt>`, MER, `⚠️` marker if partial), refresh `Last updated`, commit. Don't wait for the campaign to finish — every model boundary is a commit point.
 

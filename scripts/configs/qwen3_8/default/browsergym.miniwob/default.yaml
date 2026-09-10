@@ -1,8 +1,8 @@
 # Qwen3.8 vision+coord rollout eval on cua-lite browsergym.miniwob (full 125 tasks).
 #
 # Sampling: greedy decode (temperature 0.0), no native thinking channel — the
-# eval-matrix default (the factory pins enable_thinking=False for every Qwen3.8
-# checkpoint; see lite/agents/factory.py).
+# eval-matrix default (the qwen3_vl adapter defaults enable_thinking=False and every
+# Qwen3.8 adapter inherits it; see lite/agents/models/qwen3_vl/adapter.py).
 #
 # Protocol: `Qwen3_5HistoryProtocol` rolling-window + image-fold (history_n=50,
 # image_max=4, fold_size=4), byte-faithful to

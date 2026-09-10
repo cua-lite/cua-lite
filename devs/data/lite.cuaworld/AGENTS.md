@@ -10,19 +10,25 @@ screenshot, coordinate-action, and terminal substrate as Lite.OSWorld, so it
 remain separate. Env content lives in the HF materials dataset `cua-lite/lite.cuaworld-assets`
 (pinned by `data/assets.lock.yaml`); this repo is engine + pipeline only.
 
-Lite.CUAWorld publishes trajectories from TWO teachers into one HF repo, each as
+Lite.CUAWorld publishes trajectories from THREE teachers into one HF repo, each as
 its own set of configs. Per-teacher collection and annotation live in their own
 runbooks; everything below the annotated log roots is dataset-level and covers
-both at once.
+all of them at once.
 
 | Teacher | Runbook | Model |
 |---|---|---|
 | `gpt5_5` | [`gpt5_5/AGENTS.md`](/devs/data/lite.cuaworld/gpt5_5/AGENTS.md) | `gpt-5.5` (API) |
 | `qwen3_8_27b` | [`qwen3_8_27b/AGENTS.md`](/devs/data/lite.cuaworld/qwen3_8_27b/AGENTS.md) | `Qwen/Qwen3.8-27B` (local, sglang) |
+| `qwen3_5_27b` | [`qwen3_5_27b/AGENTS.md`](/devs/data/lite.cuaworld/qwen3_5_27b/AGENTS.md) | `Qwen/Qwen3.5-27B` (local, sglang, **thinking on**) |
 
 The handoff between a teacher runbook and this one is exactly:
 
     .data/rollout/lite.cuaworld/<teacher>/$COMMIT/<software>/train_annotated
+    .data/rollout/lite.cuaworld/gpt5_5/$COMMIT/<software>/train_annotated.think
+
+`gpt5_5` hands over the `.think` sibling: its Internalize Reasoning step runs after
+`filter.py`, and the stage command below reads that root, not the plain `_annotated`
+one. The other teachers have no `.think` root at all; their `_annotated` root is the handoff.
 
 ## Collection Targets
 
@@ -36,7 +42,7 @@ over the 40 softwares:
 
 | split | registered | live after task excludes | HF config |
 |---|---:|---:|---|
-| `train` | 2,419 | 1,745 | `desktop.use.<software>.gpt5_5`, `desktop.use.<software>.qwen3_8_27b` (one config per software per teacher) |
+| `train` | 2,419 | 1,745 | `desktop.use.<software>.<teacher>` — one config per software per teacher |
 | `eval` (CUAWorld-Test) | 626 | 440 | held-out reference, **not** SFT |
 | `long_horizon` (CUAWorld-Long) | 38 | 18 | held-out reference, **not** SFT |
 
@@ -93,8 +99,11 @@ It tags, in `exclude_reason`:
 - `footgun:no_submit` — no explicit final submit tool (`terminate`/`response`),
   only when `--drop-no-submit` is passed; this is separate from the default
   content-only final turn policy (normalized to one plain `text` part, not preserved as emitted);
-- `oob_coordinate` — a coordinate outside normalized `[0, 1000]`;
-- `reward_vision_disagree` — scalar reward and multi-frame visual judgement disagree.
+- `reward_vision_disagree` — SOFT tag, emitted UNCONDITIONALLY (no `--drop` flag gates it):
+  the scalar checker reward and the multi-frame vision verdict disagree. It never overwrites
+  `episode_return`, and stage publishes the row either way — but the export filter this runbook
+  uses (`not m.others.get('exclude_reason')`) drops it, so a tagged row reaches the Hub and not
+  the training set.
 
 Reward is **not** a tag (`episode_return` is in `metadata.others.episode_return` for the consumer to threshold).
 On every kept trajectory it strips `screenshot` and `wait` (keeps a bare
@@ -151,7 +160,8 @@ export CUA_LITE_ENV_SERVER_URL=http://${HOST_IP}:<PORT>
 
 The `OPENAI_*` route above is required for the VLM judge whichever teacher you
 collect with. Beyond that, each teacher needs its own credentials or serving
-step — an API key for `gpt5_5`, an sglang server for `qwen3_8_27b`. Those live
+step — an API key for `gpt5_5`, and an sglang server for each of
+`qwen3_8_27b` / `qwen3_5_27b`. Those live
 in the teacher runbooks.
 
 Before scaling collection, run the same one-task smoke command shown in the
@@ -167,76 +177,54 @@ uv run python scripts/rollout.py --model-id gpt-5.5 \
 
 ### 2. Collect And Annotate (per teacher)
 
-Run [`gpt5_5/AGENTS.md`](/devs/data/lite.cuaworld/gpt5_5/AGENTS.md) and
-[`qwen3_8_27b/AGENTS.md`](/devs/data/lite.cuaworld/qwen3_8_27b/AGENTS.md). Both
+Run [`gpt5_5/AGENTS.md`](/devs/data/lite.cuaworld/gpt5_5/AGENTS.md),
+[`qwen3_8_27b/AGENTS.md`](/devs/data/lite.cuaworld/qwen3_8_27b/AGENTS.md) and
+[`qwen3_5_27b/AGENTS.md`](/devs/data/lite.cuaworld/qwen3_5_27b/AGENTS.md). All
 loop the 38 rolloutable softwares on `train`, one log-root subfolder per
 software, and end with annotated log roots under
-`.data/rollout/lite.cuaworld/<teacher>/$COMMIT/<software>/train_annotated`.
+`.data/rollout/lite.cuaworld/<teacher>/$COMMIT/<software>/train_annotated` —
+`.../gpt5_5/$COMMIT/<software>/train_annotated.think` for `gpt5_5`, which internalizes
+after filtering.
 
-Both teachers run the SAME `filter.py` with the SAME flags. That is deliberate:
+Every teacher runs the SAME `filter.py` with the SAME flags. That is deliberate:
 it makes the published subsets comparable, so a measured quality difference is a
 property of the teacher rather than of the annotation pass.
 
 ### 3. Stage, Upload Transport, And Download
 
 > **Upload is a declarative full sync, not an append.** It plans the whole repo
-> from the LOCAL staging dir and deletes everything else: `orphans = current -
-> planned_paths - {.gitattributes}` are committed as deletions, and the rendered
-> README (which defines the HF configs) is rebuilt from local stats alone.
-> Staging one teacher and uploading would therefore DELETE the other teacher's
-> published shards and drop its configs from the card — and the same is true of
-> any software left out of the staged set. There is no flag that disables the
-> sweep, and `--skip-existing` does not protect anything (it only skips
-> re-uploading files this run already plans). **Every stage must list every
-> teacher and every published software.**
+> from the LOCAL staging dir and deletes everything else, so staging one teacher
+> and uploading DELETES the other's published shards. Adding a teacher (or any
+> config) to an already-published repo therefore has one shared procedure —
+> read what the repo actually holds, then stage all of it in one call:
+> [Add A Config To A Published Dataset](/devs/data/AGENTS.md#add-a-config-to-a-published-dataset).
 >
-> `--dry-run` does NOT report the orphan set — the whole sweep, including its
-> logging, sits behind `if not dry_run`. A dry run only prints the paths it would
-> push. The real pre-flight is to diff those planned paths against
-> `HfApi().list_repo_files(repo_id=..., repo_type="dataset")` yourself.
-
-To ADD a teacher or a software to an already-published dataset, every stage must still list
-EVERYTHING already published — the sweep above deletes whatever this stage
-does not plan. Which means two cases, and only one needs `unstage`:
-
-**You still have the published rows' annotated log roots** (the usual case —
-under `.data/rollout/lite.cuaworld/<teacher>/$COMMIT/`). Nothing to reconstruct: run the single
-stage below listing every root, and upload. Skip the rest of this block.
-
-**Those roots are gone** (a different machine, or the tree was cleaned).
-Rebuild them from the published repo first. `unstage` writes a rollout LOG-ROOT
-(not a staging layout), and it must be run **once per config** into its own
-directory — `stage` maps log-roots to config names 1:1, and one call that pours
-several configs into one directory cannot be relabelled afterwards. `stage` also
-refuses a non-empty output dir (and with `--overwrite` deletes it), so there is
-no "append into the same directory" path:
-
-```bash
-# 1. pull the published repo, then unstage ONE config per log-root
-uv run python -m lite.data.hf.download Lite.CUAWorld --org "$HF_ORG" \
-  --out "${READBACK_ROOT}/cua-lite/Lite.CUAWorld"
-for SW in <the softwares already published for this teacher>; do
-  uv run python -m lite.data.hf.unstage \
-    --dataset "${READBACK_ROOT}/cua-lite/Lite.CUAWorld" \
-    --config-names "desktop.use.$SW.gpt5_5" --splits train \
-    --log-root ".data/rollout/lite.cuaworld/gpt5_5-published/$SW"
-done
-# unstage writes <log-root>/train/..., so each reconstruction enters stage below
-# as ".data/rollout/lite.cuaworld/gpt5_5-published/$SW/train".
-# 2. then run ONE stage listing old + new roots, and ONE upload (below)
-```
-
-Provenance note: after an unstage→re-stage cycle the card's `## Notes` names the
-RECONSTRUCTED log-roots, not the original rollout roots.
+> Lite.CUAWorld's wrinkle: the stage below globs its log-roots, one config per
+> software. Rebuilt roots do not match that glob, so the flags that procedure
+> prints REPLACE the glob rather than joining it.
 
 ```bash
 export CUA_LITE_DATASETS_ROOT="$PWD/.data/huggingface"
 READBACK_ROOT="$PWD/.data/huggingface-readback"
 
+# The gpt5_5 roots below are the `.think` siblings its teacher runbook produced: reasoning
+# canonicalized into `reasoning_content` before staging, so the PUBLISHED rows carry one
+# reasoning shape. `qwen3_8_27b` runs thinking off and has none to move, so its roots are
+# used as-is, and `qwen3_5_27b` needs none either — it is sampled with thinking ON, so its
+# native <think> is already in `reasoning_content` at collection time. Only gpt5_5 has a
+# step between filter and stage. See /devs/data/lite.cuaworld/gpt5_5/AGENTS.md.
+# DELETE the qwen3_5_27b lines below until that teacher is actually collected — they are
+# LIVE as written, and a shell comment cannot be used here (a `#` after a `\` continuation
+# swallows the rest of the command). Once it IS published they are MANDATORY again, and
+# NOTHING WILL TELL YOU IF YOU FORGET: stage rglobs each
+# root and only errors when ALL of them are empty, so a missing one contributes zero rows
+# and stage still exits 0 (verified) — then upload sweeps and deletes that teacher's
+# published shards. Re-read the blockquote above before every re-stage.
 uv run python -m lite.data.hf.stage \
-  --log-roots .data/rollout/lite.cuaworld/gpt5_5/$COMMIT/*/train_annotated \
+  --log-roots .data/rollout/lite.cuaworld/gpt5_5/$COMMIT/*/train_annotated.think \
               .data/rollout/lite.cuaworld/qwen3_8_27b/$COMMIT/*/train_annotated \
-  --config-names <one desktop.use.<software>.gpt5_5 per gpt5_5 log-root, then one desktop.use.<software>.qwen3_8_27b per qwen3_8_27b log-root, same order> \
+              .data/rollout/lite.cuaworld/qwen3_5_27b/$COMMIT/*/train_annotated \
+  --config-names <one desktop.use.<software>.<teacher> per log-root, teacher block by teacher block, in the SAME order as the globs above> \
   --name Lite.CUAWorld \
   --repo-dir devs/data/lite.cuaworld \
   --overwrite   # the default out dir is $CUA_LITE_DATASETS_ROOT/cua-lite/Lite.CUAWorld;
@@ -252,7 +240,7 @@ uv run python -m lite.data.hf.download Lite.CUAWorld \
   --out "${READBACK_ROOT}/cua-lite/Lite.CUAWorld"
 ```
 
-The two `--log-roots` globs expand in sorted order, so build the
+The `--log-roots` globs expand in sorted order, one per teacher, so build the
 `--config-names` list in that same order, one teacher block after the other: the
 software token in each label must be the `$SW` subfolder of the log-root at the
 same position, and the teacher token must be the teacher directory of that same
@@ -269,20 +257,41 @@ smokes only; row content was already gated by `stage`.
 
 ### 4. Export SFT Parquet
 
-The two teachers publish DIFFERENT kinds of row, and a consumer that mixes them
+The three teachers publish DIFFERENT kinds of row, and a consumer that mixes them
 should know which it is training on:
 
 | Teacher | Rows carry | Reasoning |
 |---|---|---|
 | `gpt5_5` | `inline_reasoning` + `action_description` + `tool_calls` | prompted `Thought:` line |
 | `qwen3_8_27b` | `action_description` + `tool_calls` | none — runs with thinking off, per its runbook |
+| `qwen3_5_27b` | `reasoning_content` + `action_description` + `tool_calls` | native `<think>`, written straight to the canonical field |
 
-Only `gpt5_5` needs `examples/lite/v1/internalize_cot.py`, which moves
-`inline_reasoning` parts into `reasoning_content` (what the chat template renders
-as `<think>`). Run it before exporting under a thinking-enabled config. The
-`qwen3_8_27b` configs have no reasoning to internalize, so exporting them under a
-thinking-enabled config would train an empty `<think>` block — pair them with a
-config whose `enable_thinking` matches the rollout that produced them.
+The table is what each teacher COLLECTS. `gpt5_5`'s last step before staging
+([Internalize Reasoning](/devs/data/lite.cuaworld/gpt5_5/AGENTS.md#internalize-reasoning))
+moves its prompted `Thought:` out of the `inline_reasoning` content part and into
+the `reasoning_content` FIELD — the same one a teacher sampled with
+`enable_thinking` writes natively. So the PUBLISHED rows carry one vocabulary and
+consumers run no extra step.
+
+`qwen3_8_27b` has no reasoning to internalize (it runs thinking off and writes
+prose into `action_description`), so a thinking-enabled config on those rows
+would train an empty `<think>` block — pair them with a thinking-off config.
+
+`qwen3_5_27b` needs no internalize pass either, for the opposite reason: it is
+sampled with `enable_thinking: true`, so the adapter parses its native `<think>`
+straight into `reasoning_content` at collection time. Three teachers, three
+collection recipes, one published vocabulary — only `gpt5_5` has a step between
+filter and stage.
+
+One published root serves both recipes for a reasoning teacher: a thinking-on
+config renders the reasoning, and a thinking-off one strips `reasoning_content`
+at the model boundary (`lite/train/export/sft_tokenize.py`), which is
+byte-identical to exporting from a root that never carried any. Nothing under
+`scripts/configs/*/default/` sets `enable_thinking: true` for these envs, so the
+command below is the thinking-off recipe; the thinking-on twins live with the
+campaign that trains them
+([`/devs/exps/train/desktop/configs/qwen3_5/`](/devs/exps/train/desktop/configs/qwen3_5/),
+[`/examples/lite/v1/configs/qwen3_5/`](/examples/lite/v1/configs/qwen3_5/)).
 
 ```bash
 uv run python -m lite.train.export.export_sft \
@@ -311,11 +320,13 @@ Keep fail-fast on; use `--no-strict` only for an identified, recorded corrupt so
 Desktop is slow (~2–3 min/task). On a shared host, a 40-wide run spins up to 40 desktop containers
 at once — **run a resource watchdog** and throttle `--concurrency` down if free RAM drops (each
 container is memory-heavy; the host is co-tenant with other jobs). Keep total live rollout
-concurrency across CUAGym/CUAWorld at 48 or lower; when both are active, budget them explicitly
-(for example 24 + 24) instead of letting one campaign monopolize the host. The same ceiling covers
-both teachers: two CUAWorld collections running at once share it, they do not each get their own.
+concurrency across CUAGym/CUAWorld at 48 or lower; when several are active, budget them explicitly
+instead of letting one campaign monopolize the host. The ceiling is host-wide and covers every
+teacher: three CUAWorld collections at the start-from-24 default would be 72, so run them in
+sequence or divide the 48 among the ones you actually start.
 `blender3d` needs `gpus=1` (the
 only GPU env); `gmat`'s upstream download is dead (rescue the retagged image). After **stage**
-captures a batch, delete its raw `$SW/<split>` and `$SW/<split>_annotated` roots. Clean up only your
+captures a batch, delete its raw `$SW/<split>`, `$SW/<split>_annotated` and (for `gpt5_5`)
+`$SW/<split>_annotated.think` roots. Clean up only your
 own env-server containers (named by your port) afterward. Task/verifier defects:
 [/devs/envs/lite.cuaworld/UPSTREAM_ISSUES.md](/devs/envs/lite.cuaworld/UPSTREAM_ISSUES.md).
