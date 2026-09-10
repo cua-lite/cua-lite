@@ -21,7 +21,7 @@ agent_kwargs:
 # Pass max_steps to override.
 env_id: "webgym"
 env_kwargs:
-  instruction_template: "{instruction}\n\nInitial website: {website}\n\nWhen you have found the answer, submit it to finish the task."
+  instruction_template: "{instruction}\n\nInitial website: {website}\n\nWhen you have found the answer, submit it with the response action. If you genuinely cannot find it, say so plainly rather than guessing."
   # WebGym extra_tools: webgym is a Playwright env whose screenshot has
   # NO browser chrome (no address bar / tabs), so cross-page tasks are only
   # solvable with nav tools. Opened so the student's surface matches the gpt
