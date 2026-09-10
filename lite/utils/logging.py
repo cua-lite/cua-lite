@@ -26,5 +26,5 @@ def setup_logging() -> None:
     """
     logging.basicConfig(
         level=os.environ.get("LOG_LEVEL", "INFO"),
-        format="%(levelname)s %(name)s: %(message)s",
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )

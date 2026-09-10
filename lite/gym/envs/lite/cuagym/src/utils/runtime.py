@@ -96,6 +96,10 @@ async def validate_post_setup_runtime(
         raise RuntimeError("post-reset GNOME desktop health check returned DOWN")
 
 
+# Attempts wmctrl gets to return one consistent window listing (see window_ids).
+_LIST_ATTEMPTS = 3
+
+
 async def window_ids(computer: Any) -> set[str]:
     """Return current X11 window IDs without depending on shell window names."""
     # Every other X-touching command here names DISPLAY explicitly; this one used to
@@ -106,18 +110,27 @@ async def window_ids(computer: Any) -> set[str]:
     # connection returned an EMPTY SET -- indistinguishable from "no windows yet".
     # Every caller reads that as a missing window, which is a hard `no_task_window`
     # setup failure for the browser and document branches.
-    result = await computer.interface.run_command("DISPLAY=:0 wmctrl -l")
-    if getattr(result, "returncode", 0) != 0:
-        raise CuaGymTaskError(
-            f"lite.cuagym cannot list windows: {(result.stderr or '').strip()[-200:]}",
-            phase="setup",
-            kind="command_failed",
-        )
-    return {
-        line.split(None, 1)[0]
-        for line in (result.stdout or "").splitlines()
-        if line.strip()
-    }
+    #
+    # One listing is not atomic, though: wmctrl reads _NET_CLIENT_LIST and then
+    # asks each window it names for properties, so a window that closes between
+    # those two steps fails the whole call with BadWindow. That is a snapshot of a
+    # moving desktop, not a broken connection, so take the snapshot again and let
+    # the last attempt's stderr speak for whatever is actually wrong.
+    for attempt in range(_LIST_ATTEMPTS):
+        result = await computer.interface.run_command("DISPLAY=:0 wmctrl -l")
+        if getattr(result, "returncode", 0) == 0:
+            return {
+                line.split(None, 1)[0]
+                for line in (result.stdout or "").splitlines()
+                if line.strip()
+            }
+        if attempt + 1 < _LIST_ATTEMPTS:
+            await asyncio.sleep(0.3)
+    raise CuaGymTaskError(
+        f"lite.cuagym cannot list windows: {(result.stderr or '').strip()[-200:]}",
+        phase="setup",
+        kind="command_failed",
+    )
 
 
 async def wait_for_new_window(

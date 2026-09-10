@@ -695,6 +695,66 @@ async def test_display_readiness_uses_explicit_rollout_timeouts():
 
     assert calls[0][1]["timeout"] == 180
     assert calls[1][1]["timeout"] == 30
+    # Third leg: setup's baseline window snapshot needs the WM to have published
+    # its client list, which gnome-ready does not promise.
+    assert calls[2][1]["timeout"] == 40
+    assert "wmctrl -l" in calls[2][0]
+
+
+@pytest.mark.asyncio
+async def test_bridge_display_fails_loudly_when_no_client_list_appears():
+    class Interface:
+        async def run_command(self, command, **kwargs):
+            rc = 1 if "wmctrl -l" in command else 0
+            return SimpleNamespace(stdout="", stderr="Cannot open display.", returncode=rc)
+
+    with pytest.raises(RuntimeError, match="published no client list"):
+        await display.bridge_display(SimpleNamespace(interface=Interface()))
+
+
+@pytest.mark.asyncio
+async def test_window_ids_retries_a_listing_that_lost_a_window_mid_enumeration():
+    # wmctrl reads _NET_CLIENT_LIST and then queries each window it names, so a
+    # window closing between those steps fails the whole call. That is a moving
+    # desktop, not a broken connection, so the snapshot is simply retaken.
+    results = [
+        SimpleNamespace(stdout="", stderr="BadWindow (invalid Window parameter)", returncode=1),
+        SimpleNamespace(stdout="0x01c00003 -1 host one\n", stderr="", returncode=0),
+    ]
+    calls = []
+
+    class Interface:
+        async def run_command(self, command):
+            calls.append(command)
+            return results.pop(0)
+
+    ids = await runtime.window_ids(SimpleNamespace(interface=Interface()))
+
+    assert ids == {"0x01c00003"}
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_window_ids_raises_with_the_last_error_once_the_budget_is_spent():
+    # Distinct stderr per attempt: the contract is that the LAST one is reported,
+    # and identical text cannot tell that apart from reporting the first. The
+    # attempt count is a LITERAL -- comparing it against `_LIST_ATTEMPTS` would
+    # compare the loop against the constant it reads and pin nothing.
+    stderrs = ["first attempt", "second attempt", "Cannot open display."]
+    calls = []
+
+    class Interface:
+        async def run_command(self, command):
+            calls.append(command)
+            return SimpleNamespace(
+                stdout="", stderr=stderrs[len(calls) - 1], returncode=1,
+            )
+
+    with pytest.raises(CuaGymTaskError, match="Cannot open display.") as excinfo:
+        await runtime.window_ids(SimpleNamespace(interface=Interface()))
+
+    assert "first attempt" not in str(excinfo.value)
+    assert len(calls) == 3
 
 
 def test_bundle_refresh_keeps_old_task_until_archive_is_complete(tmp_path):

@@ -23,7 +23,7 @@ A port-scoped ``docker ps`` catches strict and passthrough containers uniformly
 without relying on token-hash sentinels.
 
 The low-level docker-ps / docker-rm primitives (``_docker_ps_*``, ``_try_orphan_rm``,
-``_prune_quarantine``) + their tuning constants live at module scope below — they
+``_quarantine``, ``_prune_quarantine``) + their tuning constants live at module scope below — they
 were a separate ``docker_drift`` module, folded in here as its only consumer.
 
 WHY THIS LIVES UNDER ``remote/`` even though env modules import it directly.
@@ -230,12 +230,31 @@ def _docker_ps_running_or_none(
     return {ln.strip() for ln in r.stdout.splitlines() if ln.strip()}
 
 
-def _try_orphan_rm(name: str, rm_timeout: float) -> bool:
-    """``docker rm -f`` with per-name exponential backoff on timeout.
+def _quarantine(name: str, now: float, prev_tier: int, why: str) -> bool:
+    """Back this name off to the next tier and report it as NOT reaped.
 
-    Returns ``True`` if the container was successfully removed (or already gone —
-    ``check=False`` makes that race-safe). Returns ``False`` if quarantined OR if
-    rm timed out (quarantine bumped to the next backoff tier).
+    Both docker failures land here — the rm timed out, or the daemon refused it —
+    because they carry the same fact: the container is still there and retrying it
+    at full cadence only spends a reap slot the next orphan could have used.
+    """
+    tier = min(prev_tier + 1, len(_RM_QUARANTINE_BACKOFF_S) - 1)
+    delay = _RM_QUARANTINE_BACKOFF_S[tier]
+    _RM_QUARANTINE[name] = (now + delay, tier)
+    logger.warning(
+        "container reap: docker rm -f %s: %s; quarantined for %.0fs (tier %d)",
+        name, why, delay, tier,
+    )
+    return False
+
+
+def _try_orphan_rm(name: str, rm_timeout: float) -> bool:
+    """``docker rm -f`` with per-name exponential backoff on failure.
+
+    Returns ``True`` only when docker says the name is gone: ``rc == 0`` covers
+    both "removed" and "no such container", which is what makes the call
+    race-safe. Returns ``False`` while quarantined, and quarantines the name when
+    the rm times out or the daemon refuses it — a refused rm leaves the container
+    running, so counting it as reaped would overstate every ``orphans=N`` line.
     """
     now = time.time()
     next_retry, prev_tier = _RM_QUARANTINE.get(name, (0.0, -1))
@@ -243,22 +262,18 @@ def _try_orphan_rm(name: str, rm_timeout: float) -> bool:
         return False                       # under quarantine
     try:
         # NOT docker_rm_f: that helper swallows TimeoutExpired, which would
-        # collapse the 3-state handling here (timed-out → escalate quarantine
+        # collapse the 3-state handling here (failed → escalate quarantine
         # vs already-gone → clear quarantine). Only the argv is shared.
-        subprocess.run(
+        r = subprocess.run(
             _rm_argv(name),
-            check=False, capture_output=True, timeout=rm_timeout,
+            check=False, capture_output=True, text=True, timeout=rm_timeout,
         )
     except subprocess.TimeoutExpired:
-        next_tier = min(prev_tier + 1, len(_RM_QUARANTINE_BACKOFF_S) - 1)
-        delay = _RM_QUARANTINE_BACKOFF_S[next_tier]
-        _RM_QUARANTINE[name] = (now + delay, next_tier)
-        logger.warning(
-            "container reap: docker rm -f timed out for %s; "
-            "quarantined for %.0fs (tier %d)", name, delay, next_tier,
-        )
-        return False
-    # Clean exit (or container already gone) → clear any stale quarantine.
+        return _quarantine(name, now, prev_tier, f"timed out after {rm_timeout:.0f}s")
+    if r.returncode != 0:
+        stderr = (r.stderr or "").strip() or "<none>"
+        return _quarantine(name, now, prev_tier, f"REFUSED by the daemon: {stderr}")
+    # Gone (removed, or never there) → clear any stale quarantine.
     _RM_QUARANTINE.pop(name, None)
     return True
 
