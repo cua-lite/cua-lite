@@ -116,7 +116,6 @@ import pandas as pd
 from lite.core.tools import make_tool_call
 from lite.core.tools.action_space import (
     LITE_ACTION_BATCH_TOOL_NAMES,
-    LITE_VALID_ACTION_NAMES,
     action_coordinate_arguments_out_of_range,
     is_lite_action_name_or_action_batch_tool_name,
 )
@@ -151,6 +150,7 @@ from devs.data.utils import (  # noqa: E402  (needs _REPO_ROOT on sys.path)
     _with_args,
     carry_content_without_observation_images,
     compact_row_images,
+    has_invalid_action_batch,
     rebase_images_for_output,
 )
 
@@ -412,41 +412,6 @@ def has_oob_coordinate(messages: list[dict]) -> bool:
         for _, args in _iter_action_items(m):
             if action_coordinate_arguments_out_of_range(args):
                 return True
-    return False
-
-
-def has_invalid_action_batch(messages: list[dict]) -> bool:
-    """True if an action-batch child names an action that does not exist.
-
-    The model sometimes invents an action name (``terminal``, ``select_all``) or lets
-    raw wire text land in it (``<parameter=action>\nkey``). The batch tool itself is
-    schema-free, so ``has_undeclared_tool_call`` cannot see inside it, and staging
-    rejects the row -- ``computer.actions cannot contain terminal``.
-
-    Only the NAME is checked. Validating the child ARGUMENTS here would make this a
-    second row validator against a contract the filter has not applied yet: it runs
-    before normalisation, so an argument shape this pass is about to fix would be
-    read as publish-invalid and the row deleted instead of repaired.
-    """
-    for m in messages:
-        if not isinstance(m, dict) or m.get("role") != "assistant":
-            continue
-        for tc in m.get("tool_calls") or []:
-            fn = tc.get("function") or {}
-            if fn.get("name") not in LITE_ACTION_BATCH_TOOL_NAMES:
-                continue
-            args = fn.get("arguments") or {}
-            if isinstance(args, str):
-                try:
-                    args = json.loads(args)
-                except (TypeError, ValueError):
-                    return True
-            for act in (args.get("actions") or []) if isinstance(args, dict) else []:
-                if not isinstance(act, dict):
-                    return True
-                name = act.get("action")
-                if not isinstance(name, str) or name not in LITE_VALID_ACTION_NAMES:
-                    return True
     return False
 
 

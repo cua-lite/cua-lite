@@ -1,0 +1,54 @@
+# Qwen3.5 browser.use — image_max 4, native <think> reasoning.
+#
+# Pairs with browser.use.i4.yaml, which it differs from by enable_thinking alone.
+#
+# Reasoning teachers only. gpt5_5's published rows carry the Thought in reasoning_content
+# (devs/data/internalize_cot.py runs before staging); qwen3_5_27b's carry the native <think>
+# straight from collection. qwen3_8_27b rows have none, so this config would train an empty
+# <think> block on them, which is why it has no reasoning arm in this campaign.
+#
+#                                  img  text hist  mode
+#                                       (turns kept)
+#   browser.use.i4.yaml            1-4  all turns  Action
+#   browser.use.i4.reasoning.yaml  1-4  all turns  <think>   <- this file
+#   browser.use.i1.yaml              1  all turns  Action
+#   browser.use.i1.reasoning.yaml    1  all turns  <think>
+##
+# No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row from
+# metadata.dims (webgym rows are ('browser','use')). system_prompt omitted -> the adapter's
+# canonical USE_SYSTEM_PROMPT.
+
+agent_id: "qwen3_5"
+agent_kwargs:
+  sampling_kwargs:  # rollout.py only; export_sft drops it, RL sets sampling in the trainer
+    temperature: 0.0
+  enable_thinking: true     # native <think> channel. The `Action:` line still comes from the
+                            # pinned USE_SYSTEM_PROMPT, and inline `Thought:` is off in BOTH
+                            # arms (adapter enable_inline_reasoning=False).
+  # resolution omitted -> webgym's own viewport, 1280x720; smart_resize rounds to 1280x704
+  # (880 vision tokens).
+  protocol_kwargs:
+    # Pinned, not inherited: the `i4` in the filename IS image_max, so a change to the
+    # protocol default must not silently rename this profile. history_n omitted -> 100.
+    # fold_size must track image_max: below it, adjacent steps stop being prefix-
+    # compatible and build_segment_samples can no longer pack them: at fold_size 1 that is
+    # 1.43 steps/segment and 2.8x the image encodings (1.6x at 2, 1.2x at 3).
+    image_max: 4
+    fold_size: 4
+
+env_kwargs:
+  # max_steps omitted on purpose: webgym sets it per difficulty and per split
+  #   train: easy(1-3) 15, medium(4-6) 25, hard(7+) 35
+  #   eval:  easy(1-3) 30, medium(4-6) 50, hard(7+) 70
+  # Passing one here would flatten that and silently change the eval budget.
+  loop_detect: 5
+  # webgym is a Playwright env whose screenshot has NO browser chrome (no address bar, no
+  # tabs), so cross-page tasks are unreachable without nav tools. `response` is how an
+  # episode ends -- without it the env rejects it as an inactive extra and the model can
+  # never answer. This is the surface the SFT data was collected under
+  # (scripts/configs/qwen3_5/default/webgym.yaml); export_sft replays it from saved metadata,
+  # so changing it here trains on a surface the data does not have.
+  extra_tools: ["goto", "back", "response"]
+  # Collected with this line appended to every task instruction. Kept verbatim: the judge
+  # scores the `response` text, and a model never told to submit one scores 0 by default.
+  instruction_template: "{instruction}\n\nInitial website: {website}\n\nWhen you have found the answer, submit it with the response action. If you genuinely cannot find it, say so plainly rather than guessing."

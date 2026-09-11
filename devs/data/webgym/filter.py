@@ -134,6 +134,7 @@ from devs.data.utils import (  # noqa: E402  (needs _REPO_ROOT on sys.path)
     _with_args,
     carry_content_without_observation_images,
     compact_row_images,
+    has_invalid_action_batch,
     rebase_images_for_output,
 )
 
@@ -499,10 +500,11 @@ def _process_file(
     drop_unsubmitted: bool = False, drop_illposed: bool = False,
     collapse_reasoning: bool = True,
 ) -> tuple[int, int, int, int, int, int, int, bool]:
-    # (stripped, dropped, footgun, failed, oob, reasoning_collapsed,
+    # (stripped, dropped, footgun, failed, oob, invalid_action, reasoning_collapsed,
     #  content_only_finals_normalized, wrote)
     """Returns (n_stripped, n_turns_dropped, n_footgun_trajs_dropped, n_failed_dropped,
-    n_oob_dropped, n_reasoning_collapsed, n_content_only_finals_normalized, wrote_file).
+    n_oob_dropped, n_invalid_action_dropped, n_reasoning_collapsed,
+    n_content_only_finals_normalized, wrote_file).
 
     Trajectories that fail the success filter (``--drop-failed``: ``episode_return < 1.0``), carry
     an out-of-[0,1000] coordinate (always dropped, see ``has_oob_coordinate``), or are flagged by
@@ -513,6 +515,7 @@ def _process_file(
                         or drop_captcha or drop_unsubmitted or drop_illposed)
     df = pd.read_parquet(src)
     total_stripped = total_dropped = total_footgun = total_failed = total_oob = total_collapse = 0
+    total_invalid_action = 0
     total_final = 0
     keep_idx: list[int] = []
     new_messages = []
@@ -522,6 +525,15 @@ def _process_file(
             total_failed += 1
             continue
         msgs = coerce_messages(row["messages"])
+        # MUST run before every pass that walks the batch (has_oob_coordinate and
+        # everything after it go through _iter_action_items, whose _action_name_args
+        # RAISES on a child name outside the tool's action set). One such row would
+        # otherwise abort the whole log-root and take every clean sibling with it.
+        # Observed here as `mouse_wheel`/`mousewheel` where the action space says
+        # `scroll`; the env rejected those steps at collection time anyway.
+        if has_invalid_action_batch(msgs):
+            total_invalid_action += 1
+            continue
         # Always drop a trajectory with an out-of-[0,1000] coordinate (corruption /
         # edge over-prediction) — the rollout analog of preproc's has_oob_coordinate.
         if has_oob_coordinate(msgs):
@@ -552,7 +564,7 @@ def _process_file(
         total_dropped += nd
     if not keep_idx:
         return (total_stripped, total_dropped, total_footgun, total_failed, total_oob,
-            total_collapse, total_final, False)
+            total_invalid_action, total_collapse, total_final, False)
     out = df.iloc[keep_idx].copy()
     out["messages"] = new_messages
     if "metadata" in out.columns:
@@ -578,7 +590,7 @@ def _process_file(
         )
     write_partition(out.to_dict("records"), dst)
     return (total_stripped, total_dropped, total_footgun, total_failed, total_oob,
-            total_collapse, total_final, True)
+            total_invalid_action, total_collapse, total_final, True)
 
 
 def main() -> None:
@@ -689,11 +701,12 @@ def main() -> None:
              f" drop_illposed_task={args.drop_illposed_task}"
              if drop_on else ""))
     tot_stripped = tot_dropped = tot_footgun = tot_failed = tot_oob = tot_collapse = n_written = 0
+    tot_invalid = 0
     tot_final = 0
     for src in traj_files:
         rel = src.relative_to(src_root)
         dst = out_root / rel
-        ns, nd, nf, nfail, noob, ncol, nfin, wrote = _process_file(
+        ns, nd, nf, nfail, noob, ninval, ncol, nfin, wrote = _process_file(
             src, dst, noop, out_root, args.drop_search_goto, args.drop_loops,
             args.drop_xdomain_goto, args.drop_search_start, args.drop_search_flail,
             args.drop_serp_only, args.drop_captcha, args.drop_failed,
@@ -704,6 +717,7 @@ def main() -> None:
         tot_footgun += nf
         tot_failed += nfail
         tot_oob += noob
+        tot_invalid += ninval
         tot_collapse += ncol
         tot_final += nfin
         if wrote:
@@ -716,6 +730,7 @@ def main() -> None:
 
     print(f"done: stripped {tot_stripped} no-op actions, dropped {tot_dropped} no-op-only turns, "
           f"dropped {tot_failed} failed + {tot_footgun} footgun + {tot_oob} OOB-coordinate "
+          f"+ {tot_invalid} invalid-action "
           f"trajectories, collapsed {tot_collapse} inline_reasoning blocks, normalized "
           f"{tot_final} content-only final turns to text 'Done.' → {out_root} "
           f"({n_written}/{len(traj_files)} trajectories kept)")

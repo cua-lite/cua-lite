@@ -1,0 +1,50 @@
+# Qwen3.5 browser.use — image_max 1, Action-only.
+#
+# One screenshot, full text history: every past turn is still rendered in full — its text, its
+# literal <tool_call> — only the old pixels become the collapse placeholder. Against
+# browser.use.i4.yaml the only knob that moves is the image cap, so that pair isolates it.
+#
+# Unlike i4 this does NOT pack: a one-image window is never prefix-compatible with the next
+# step, so build_segment_samples emits one sequence per step.
+#
+#                                  img  text hist  mode
+#                                       (turns kept)
+#   browser.use.i4.yaml            1-4  all turns  Action
+#   browser.use.i4.reasoning.yaml  1-4  all turns  <think>
+#   browser.use.i1.yaml              1  all turns  Action   <- this file
+#   browser.use.i1.reasoning.yaml    1  all turns  <think>
+##
+# No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row from
+# metadata.dims (webgym rows are ('browser','use')). system_prompt omitted -> the adapter's
+# canonical USE_SYSTEM_PROMPT.
+
+agent_id: "qwen3_5"
+agent_kwargs:
+  sampling_kwargs:  # rollout.py only; export_sft drops it, RL sets sampling in the trainer
+    temperature: 0.0
+  # resolution omitted -> webgym's own viewport, 1280x720; smart_resize rounds to 1280x704
+  # (880 vision tokens).
+  protocol_kwargs:
+    # `i1` IS image_max: pinned, not inherited, so a protocol-default change cannot silently
+    # rename this profile. history_n omitted -> 100 (text history uncapped at these budgets).
+    # fold_size must equal image_max: above it the visible count alternates down to ZERO --
+    # at fold_size 2 the curve is 1,0,1,0,... (44% of steps see no screenshot), 67% at 4.
+    image_max: 1
+    fold_size: 1
+
+env_kwargs:
+  # max_steps omitted on purpose: webgym sets it per difficulty and per split
+  #   train: easy(1-3) 15, medium(4-6) 25, hard(7+) 35
+  #   eval:  easy(1-3) 30, medium(4-6) 50, hard(7+) 70
+  # Passing one here would flatten that and silently change the eval budget.
+  loop_detect: 5
+  # webgym is a Playwright env whose screenshot has NO browser chrome (no address bar, no
+  # tabs), so cross-page tasks are unreachable without nav tools. `response` is how an
+  # episode ends -- without it the env rejects it as an inactive extra and the model can
+  # never answer. This is the surface the SFT data was collected under
+  # (scripts/configs/qwen3_5/default/webgym.yaml); export_sft replays it from saved metadata,
+  # so changing it here trains on a surface the data does not have.
+  extra_tools: ["goto", "back", "response"]
+  # Collected with this line appended to every task instruction. Kept verbatim: the judge
+  # scores the `response` text, and a model never told to submit one scores 0 by default.
+  instruction_template: "{instruction}\n\nInitial website: {website}\n\nWhen you have found the answer, submit it with the response action. If you genuinely cannot find it, say so plainly rather than guessing."

@@ -41,12 +41,14 @@ Tests: uv run pytest tests/data/staging/test_staging_contract.py
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from typing import Any
 
 from lite.core.tools.action_space import (
     LITE_ACTION_BATCH_TOOL_NAMES,
+    LITE_VALID_ACTION_NAMES,
     lite_action_names_for_action_batch_tool,
 )
 from lite.core.tools.calls import (
@@ -103,6 +105,47 @@ def _action_name_args(
     # Filters must not republish those union placeholders as child arguments.
     args = {k: v for k, v in action.items() if k != "action" and v is not None}
     return name, args
+
+
+def has_invalid_action_batch(messages: list[dict]) -> bool:
+    """True if an action-batch child names an action that does not exist.
+
+    The model sometimes invents an action name (``terminal``, ``select_all``,
+    ``mouse_wheel``) or lets raw wire text land in it (``<parameter=action>\nkey``).
+    The batch tool itself is schema-free, so ``has_undeclared_tool_call`` cannot see
+    inside it, and staging rejects the row -- ``computer.actions cannot contain
+    terminal``.
+
+    Every filter that walks a batch through :func:`_iter_action_items` must call this
+    FIRST and drop the row: ``_action_name_args`` RAISES on an unknown child name, so
+    one such row aborts the whole log-root before any later pass can remove it, taking
+    every clean sibling with it.
+
+    Only the NAME is checked. Validating the child ARGUMENTS here would make this a
+    second row validator against a contract the filter has not applied yet: it runs
+    before normalisation, so an argument shape this pass is about to fix would be read
+    as publish-invalid and the row deleted instead of repaired.
+    """
+    for m in messages:
+        if not isinstance(m, dict) or m.get("role") != "assistant":
+            continue
+        for tc in m.get("tool_calls") or []:
+            fn = tc.get("function") or {}
+            if fn.get("name") not in LITE_ACTION_BATCH_TOOL_NAMES:
+                continue
+            args = fn.get("arguments") or {}
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except (TypeError, ValueError):
+                    return True
+            for act in (args.get("actions") or []) if isinstance(args, dict) else []:
+                if not isinstance(act, dict):
+                    return True
+                name = act.get("action")
+                if not isinstance(name, str) or name not in LITE_VALID_ACTION_NAMES:
+                    return True
+    return False
 
 
 def _iter_action_items(message: dict) -> list[tuple[str, dict[str, Any]]]:

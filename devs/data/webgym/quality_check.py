@@ -60,6 +60,7 @@ from filter import (  # noqa: E402
     _registered_domain,
     _start_host,
     _traj_footguns,
+    has_invalid_action_batch,
 )
 
 # Canonical desktop GUI actions webgym's action translator actually EXECUTES
@@ -109,8 +110,17 @@ def report_tier(root: Path) -> None:
     back_bounce = scroll_hunt = unsub = illposed = 0
     turns: list[int] = []
     steps = ad_empty = parallel_steps = 0
+    invalid_action_trajs = 0
     n = 0
     for msgs, _o in _success_trajs(root):
+        # Skip the whole trajectory, matching what filter.py does with it. Two reasons
+        # this cannot be a per-message skip: _traj_footguns() below walks the entire
+        # msgs list, and reporting on a trajectory that will never ship would describe
+        # data nobody trains on. _action_name_args RAISES on a child name outside the
+        # tool's action set, so without this the first such row aborts the report.
+        if has_invalid_action_batch(msgs):
+            invalid_action_trajs += 1
+            continue
         n += 1
         start_reg = _registered_domain(_start_host(msgs))
         ttext = _teacher_text(msgs)
@@ -198,6 +208,9 @@ def report_tier(root: Path) -> None:
           f"search_recover={pc(search_recover)} captcha={pc(captcha)}")
     print(f"              back_bounce={pc(back_bounce)} scroll_hunt={pc(scroll_hunt)} "
           f"deepX={pc(goto_deepx)} unsubmitted={pc(unsub)} illposed={pc(illposed)}")
+    if invalid_action_trajs:
+        print(f"    invalid-action trajectories SKIPPED: {invalid_action_trajs} "
+              f"(child name outside the tool's action set; filter.py drops these too)")
     print(f"    action_desc: empty={ad_empty} ({ad_empty/st*100:.1f}% of steps)  |  "
           f"parallel-tool steps: {parallel_steps} ({parallel_steps/st*100:.1f}%, compound — OK)")
     flags = []
