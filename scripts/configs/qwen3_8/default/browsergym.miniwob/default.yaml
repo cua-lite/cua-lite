@@ -4,7 +4,7 @@
 # eval-matrix default (the qwen3_vl adapter defaults enable_thinking=False and every
 # Qwen3.8 adapter inherits it; see lite/agents/models/qwen3_vl/adapter.py).
 #
-# Protocol: `Qwen3_5HistoryProtocol` rolling-window + image-fold (history_n=50,
+# Protocol: `Qwen3_5HistoryProtocol` rolling-window + image-fold (history_n=100,
 # image_max=4, fold_size=4), byte-faithful to
 # `${CUA_LITE_REFERENCES_ROOT}/OSWorld/scripts/python/run_multienv_qwen.py`.
 # LiteBrowserActionSpace coord actions ([0, 1000] normalized → pixel via env viewport).

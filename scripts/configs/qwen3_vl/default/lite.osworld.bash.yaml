@@ -16,7 +16,7 @@
 # WHY THIS ROW MATTERS MORE THAN THE QWEN3.5 ONE — the window is far tighter.
 # Qwen3VLHistoryProtocol keeps `full_history_size` (default 4) turns in full and
 # summarizes everything older, so its summary engages after 4 image turns, where
-# Qwen3.5's `history_n` summary only engages after 50. That budget is now spent
+# Qwen3.5's `history_n` summary only engages after 100. That budget is now spent
 # by image-bearing turns only:
 #   - a bash turn returns text and no screenshot, so it no longer pushes a
 #     screenshot out of the window — the same 4-image cost now buys more context;

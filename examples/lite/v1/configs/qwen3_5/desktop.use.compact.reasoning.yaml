@@ -36,7 +36,7 @@ agent_kwargs:
   # Qwen smart_resize then rounds to a multiple of 32, so the model sees 1280x704.
   resolution: [1280, 720]
   # protocol_kwargs omitted → Qwen3_5HistoryProtocol defaults
-  #                           (history_n=50, image_max=4, fold_size=4).
+  #                           (history_n=100, image_max=4, fold_size=4).
 
 env_kwargs:
   max_steps: 30

@@ -35,7 +35,7 @@
 #
 # Known OOM / step_timeout cases (see devs/exps/eval/AGENTS.md "Known Qwen3.5 mobile failures"):
 #   - Qwen/Qwen3.5-{4,9}B at tp=1: sglang dies SIGKILL ~tens of minutes in due to
-#     mamba state + KV cache peak under android's long history (history_n=50, image_max=4). **Pass 2 GPUs**
+#     mamba state + KV cache peak under android's long history (history_n=100, image_max=4). **Pass 2 GPUs**
 #     (`CUDA_VISIBLE_DEVICES=<g1>,<g2>`) so sglang launches as dp_size=2.
 #   - Qwen/Qwen3.5-2B at tp=1: usually fine, but susceptible to startup-OOM if
 #     a co-located tenant briefly grabs ~6 GiB on the same GPU. Re-run resumes.
@@ -45,7 +45,7 @@
 #     behavior uniform across the matrix.
 #   - --env-kwargs step_timeout=180s overrides the framework default 120s
 #     (`lite/gym/registry.py` _WRAPPER_KWARG_DEFAULTS) because androidworld
-#     does not pin an env-wide step_timeout. Qwen3.5 mobile (history_n=50, image_max=4)
+#     does not pin an env-wide step_timeout. Qwen3.5 mobile (history_n=100, image_max=4)
 #     under host contention can exceed 120s/step; we align with osworld's 180s.
 
 set -euo pipefail

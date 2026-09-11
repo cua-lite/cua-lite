@@ -268,9 +268,9 @@ The levers that actually work from a runner:
   (default 2048, `lite/infer/serving.py`) — note `--rollout-max-response-len` is a SLIME training
   flag (`scripts/train/run_*.sh`) and does nothing here;
 - trim the prompt with `--agent-kwargs '{"protocol_kwargs": {"image_max": 2}}'`. The qwen3_5
-  protocol defaults are `history_n=50, image_max=4, fold_size=4`
+  protocol defaults are `history_n=100, image_max=4, fold_size=4`
   (`lite/agents/models/qwen3_5/protocol.py`), so `image_max: 10` would RAISE it, not trim, and
-  `history_n: 50` is already the default.
+  `history_n: 50` halves the default (100).
 
 **Qwen3.5 is hybrid mamba+attention.** sglang's radix cache only applies to attention layers, so each turn's mamba SSM state is recomputed from scratch — Qwen3.5 on `osworld` typically runs 2–3× slower than equivalent-size Qwen3-VL even when GPU memory fits comfortably. Don't read this as "stuck"; check sample-summary mtime to confirm forward progress (see [GPU reservation discipline](#gpu-reservation-discipline) above).
 

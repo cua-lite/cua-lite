@@ -1,6 +1,8 @@
 # Qwen3.5 desktop.use — native screenshot, ONE of history, native <think> reasoning.
 #
-# The reasoning arm of the campaign's high-res profile. Pairs with
+# Not a campaign cell -- the campaign runs lowr.i4 / lowr.i1 / highr.i1.
+#
+# The reasoning arm of the highr.h1 profile. Pairs with
 # desktop.use.highr.h1.yaml, which it differs from by enable_thinking alone.
 #
 # Reasoning teachers only. gpt5_5's published rows carry the Thought in
@@ -8,12 +10,20 @@
 # qwen3_5_27b's carry the native <think> straight from collection. qwen3_8_27b
 # rows have none, so this config would train an empty <think> block on them.
 #
-#   desktop.use.default.yaml             native 1920x1080  <=4 images  Action-only
-#   desktop.use.default.reasoning.yaml   native 1920x1080  <=4 images  <think>
-#   desktop.use.lowr.h4.yaml             1280x720          <=4 images  Action-only
-#   desktop.use.lowr.h4.reasoning.yaml   1280x720          <=4 images  <think>
-#   desktop.use.highr.h1.yaml            native 1920x1080    1 image   Action-only
-#   desktop.use.highr.h1.reasoning.yaml  native 1920x1080    1 image   <think>      <- this file
+#                                        resolution        img  text hist  mode
+#                                                               (turns kept)
+#   desktop.use.default.yaml             native 1920x1080  1-4  all turns  Action
+#   desktop.use.default.reasoning.yaml   native 1920x1080  1-4  all turns  <think>
+#   desktop.use.lowr.i4.yaml             1280x720          1-4  all turns  Action
+#   desktop.use.lowr.i4.reasoning.yaml   1280x720          1-4  all turns  <think>
+#   desktop.use.lowr.h1.yaml             1280x720            1  1 turn     Action
+#   desktop.use.lowr.h1.reasoning.yaml   1280x720            1  1 turn     <think>
+#   desktop.use.lowr.i1.yaml             1280x720            1  all turns  Action
+#   desktop.use.lowr.i1.reasoning.yaml   1280x720            1  all turns  <think>
+#   desktop.use.highr.h1.yaml            native 1920x1080    1  1 turn     Action
+#   desktop.use.highr.h1.reasoning.yaml  native 1920x1080    1  1 turn     <think>  <- this file
+#   desktop.use.highr.i1.yaml            native 1920x1080    1  all turns  Action
+#   desktop.use.highr.i1.reasoning.yaml  native 1920x1080    1  all turns  <think>
 #
 # No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row
 # from metadata.dims. system_prompt omitted -> the adapter's canonical USE_SYSTEM_PROMPT.
@@ -22,7 +32,9 @@ agent_id: "qwen3_5"
 agent_kwargs:
   sampling_kwargs:  # rollout.py only; export_sft drops it, RL sets sampling in the trainer
     temperature: 0.0
-  enable_thinking: true     # native <think> channel (no prompted Thought:/Action: format)
+  enable_thinking: true     # native <think> channel. The `Action:` line still comes from the
+                            # pinned USE_SYSTEM_PROMPT, and inline `Thought:` is off in BOTH
+                            # arms (adapter enable_inline_reasoning=False).
   # resolution omitted -> native 1920x1080; smart_resize rounds to 1920x1088.
   protocol_kwargs:
     history_n: 1  # one turn kept -> one screenshot; image_max/fold_size stay at 4/4

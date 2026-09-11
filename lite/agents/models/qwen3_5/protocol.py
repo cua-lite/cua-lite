@@ -6,7 +6,7 @@
   :meth:`Qwen35VLAgent.predict`):
 
     * ``history_n`` most-recent turns kept as full user/assistant pairs
-      (default 50).
+      (default 100).
     * Older turns are summarized as
       ``"Previous actions:\\nStep N: <action>\\n..."`` lines and injected
       into the first in-window user message. **No cap** on how many
@@ -57,8 +57,26 @@ class Qwen3_5HistoryProtocol(TurnWindowProtocol, key="qwen3_5.history"):
 
     Attributes:
         history_n: Most recent turns kept as full user/assistant pairs.
-            Matches reference ``--history_n`` CLI flag. Default 50
-            (reduced from the reference's 100 to bound prompt size / VRAM).
+            Matches the reference ``--history_n`` CLI flag AND its default of
+            100. Most envs never reach it, so for them the window is
+            effectively "keep every turn". The ones that CAN reach it mostly
+            declare their budget in env config or a per-task table rather than
+            in the rollout yaml, so grepping ``max_steps`` understates the set:
+            ``cua.bench`` kicad (200, still truncates), androidworld
+            (``10 * complexity``; 9 of 116 tasks over 50, one at 120),
+            mobilegym (L4 = 60, +15 grounded), and webgym EVAL at difficulty
+            >= 7 (70). ``cua.bench`` workflows (100) stops truncating entirely
+            -- at ``total_turns == history_n`` the window start is 0.
+            A config that wants a tighter window sets one -- which is what the
+            ``hN`` desktop profiles do.
+
+            Not byte-faithful to the reference at the boundary: it keeps
+            ``history_n + 1`` turns where we keep ``history_n`` (see
+            ``tests/agents/models/qwen3_5/test_qwen3_5_history_protocol.py``).
+            At 50 nothing ran long enough to reach it; at 100 ``cua.bench``
+            kicad (200 steps) does. Screenshots are bounded separately by
+            ``image_max``/``fold_size``, so a big history_n does NOT mean a big
+            pixel budget.
         image_max: Cap on the number of un-folded screenshots in the
             rendered prompt. Matches reference ``image_max``. Default 4
             (reference: 20).
@@ -80,7 +98,7 @@ class Qwen3_5HistoryProtocol(TurnWindowProtocol, key="qwen3_5.history"):
             ``"Step N: <action_description>"`` rendering.
     """
 
-    history_n: int = 50
+    history_n: int = 100
     image_max: int = 4
     fold_size: int = 4
     collapse_text: str = "This screenshot has been collapsed."

@@ -35,7 +35,7 @@
 #
 # Known OOM / contention cases (see devs/exps/eval/AGENTS.md):
 #   - Qwen/Qwen3.5-{4,9}B at tp=1: sglang dies SIGKILL under androidlab's
-#     long history (protocol default history_n=50, image_max=4). **Pass 2 GPUs** (`CUDA_VISIBLE_DEVICES=<g1>,<g2>`)
+#     long history (protocol default history_n=100, image_max=4). **Pass 2 GPUs** (`CUDA_VISIBLE_DEVICES=<g1>,<g2>`)
 #     so sglang launches as dp_size=2 — confirmed working at this commit.
 #   - `subprocess.TimeoutExpired ... 'docker run ... --device /dev/kvm' timed out
 #     after 180 seconds`: host load_avg too high. Symptoms: 0 / 138 finishes for

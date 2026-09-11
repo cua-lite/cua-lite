@@ -1,0 +1,65 @@
+# Qwen3.5 desktop.use — 1280x720 screenshot, image_max 1, native <think> reasoning.
+#
+# The `i1` counterpart of desktop.use.lowr.h1.yaml: same ONE screenshot, different
+# history. `h1` caps TURNS (`history_n: 1`), so everything older collapses into
+# `Previous actions:` prose lines built from `action_description`. `i1` caps
+# SCREENSHOTS instead (`image_max: 1`, history_n stays 100), so every past turn is
+# still rendered in full -- its literal `<tool_call>` (action name, coordinates,
+# typed text) and, on the reasoning arm, its `<think>` block.
+#
+# Measured on 20 gpt5_5 trajectories against its `h1` sibling:
+#   Action-only  +33% text tokens in aggregate   (the tool_call literals)
+#   .reasoning   +49% text tokens in aggregate   (h1: 0 historical <think>; i1: all of
+#                them, filled). Per-step medians are lower (+23% / +36%); the aggregate
+#                is the one that sets the bill.
+# So the Action-only pair isolates "literal tool calls vs prose summary", and the
+# difference between the two pairs isolates the past-reasoning channel on its own.
+#
+# fold_size MUST equal image_max here: fold_size > image_max blinds most steps (at
+# image_max 1 / fold_size 4 the model sees an image only every 4th step). Neither
+# i1 nor h1 packs (1.00 steps/segment) -- a one-image window is never
+# prefix-compatible with the next step.
+#
+#                                        resolution        img  text hist  mode
+#                                                               (turns kept)
+#   desktop.use.default.yaml             native 1920x1080  1-4  all turns  Action
+#   desktop.use.default.reasoning.yaml   native 1920x1080  1-4  all turns  <think>
+#   desktop.use.lowr.i4.yaml             1280x720          1-4  all turns  Action
+#   desktop.use.lowr.i4.reasoning.yaml   1280x720          1-4  all turns  <think>
+#   desktop.use.lowr.h1.yaml             1280x720            1  1 turn     Action
+#   desktop.use.lowr.h1.reasoning.yaml   1280x720            1  1 turn     <think>
+#   desktop.use.lowr.i1.yaml             1280x720            1  all turns  Action
+#   desktop.use.lowr.i1.reasoning.yaml   1280x720            1  all turns  <think>  <- this file
+#   desktop.use.highr.h1.yaml            native 1920x1080    1  1 turn     Action
+#   desktop.use.highr.h1.reasoning.yaml  native 1920x1080    1  1 turn     <think>
+#   desktop.use.highr.i1.yaml            native 1920x1080    1  all turns  Action
+#   desktop.use.highr.i1.reasoning.yaml  native 1920x1080    1  all turns  <think>
+#
+# Reasoning teachers only. gpt5_5's published rows carry the Thought in
+# reasoning_content (devs/data/internalize_cot.py runs before staging);
+# qwen3_5_27b's carry the native <think> straight from collection. qwen3_8_27b
+# rows have none, so this config would train an empty <think> block on them.
+#
+# No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row
+# from metadata.dims. system_prompt omitted -> the adapter's canonical USE_SYSTEM_PROMPT.
+
+agent_id: "qwen3_5"
+agent_kwargs:
+  sampling_kwargs:  # rollout.py only; export_sft drops it, RL sets sampling in the trainer
+    temperature: 0.0
+  enable_thinking: true     # native <think> channel. The `Action:` line still comes from the
+                            # pinned USE_SYSTEM_PROMPT, and inline `Thought:` is off in BOTH
+                            # arms (adapter enable_inline_reasoning=False).
+  resolution: [1280, 720]  # smart_resize rounds to x32 -> the model sees 1280x704
+  protocol_kwargs:
+    # `i1` IS image_max: pinned, not inherited, so a protocol-default change cannot
+    # silently rename this profile. history_n omitted -> 100 (text history uncapped).
+    image_max: 1
+    fold_size: 1
+
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  # Required, not cosmetic: without it the env rejects both as inactive extras and the
+  # model can never end an episode. Qwen's native `answer` lowers to `response`.
+  extra_tools: ["response", "terminate"]

@@ -1,15 +1,27 @@
 # Qwen3.5 desktop.use — native screenshot, ONE of history, Action-only.
 #
+# Not a campaign cell -- the campaign runs lowr.i4 / lowr.i1 / highr.i1.
+#
 # Spends the VRAM budget on detail instead of history — small targets, dense text,
 # anything a 1280x720 downsample smears. `h1` comes from `history_n: 1` (one turn kept,
-# so one image); the `h4` configs leave history_n at 50 and are capped by image_max: 4.
+# so one image); the `i4` configs leave history_n at 100 and cap screenshots instead,
+# via image_max: 4. Its one-axis partner is desktop.use.lowr.h1.yaml — same one turn,
+# same one image, only resolution moves — so that pair isolates resolution.
 #
-#   desktop.use.default.yaml             native 1920x1080  <=4 images  Action-only
-#   desktop.use.default.reasoning.yaml   native 1920x1080  <=4 images  <think>
-#   desktop.use.lowr.h4.yaml             1280x720          <=4 images  Action-only
-#   desktop.use.lowr.h4.reasoning.yaml   1280x720          <=4 images  <think>
-#   desktop.use.highr.h1.yaml            native 1920x1080    1 image   Action-only  <- this file
-#   desktop.use.highr.h1.reasoning.yaml  native 1920x1080    1 image   <think>
+#                                        resolution        img  text hist  mode
+#                                                               (turns kept)
+#   desktop.use.default.yaml             native 1920x1080  1-4  all turns  Action
+#   desktop.use.default.reasoning.yaml   native 1920x1080  1-4  all turns  <think>
+#   desktop.use.lowr.i4.yaml             1280x720          1-4  all turns  Action
+#   desktop.use.lowr.i4.reasoning.yaml   1280x720          1-4  all turns  <think>
+#   desktop.use.lowr.h1.yaml             1280x720            1  1 turn     Action
+#   desktop.use.lowr.h1.reasoning.yaml   1280x720            1  1 turn     <think>
+#   desktop.use.lowr.i1.yaml             1280x720            1  all turns  Action
+#   desktop.use.lowr.i1.reasoning.yaml   1280x720            1  all turns  <think>
+#   desktop.use.highr.h1.yaml            native 1920x1080    1  1 turn     Action   <- this file
+#   desktop.use.highr.h1.reasoning.yaml  native 1920x1080    1  1 turn     <think>
+#   desktop.use.highr.i1.yaml            native 1920x1080    1  all turns  Action
+#   desktop.use.highr.i1.reasoning.yaml  native 1920x1080    1  all turns  <think>
 #
 # No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row
 # from metadata.dims. system_prompt omitted -> the adapter's canonical USE_SYSTEM_PROMPT.

@@ -799,15 +799,18 @@ _DESKTOP_USE_RECIPE_CONFIGS = {
     f"examples/lite/v1/configs/qwen3_5/desktop.use.{_variant}.yaml"
     for _variant in ("compact", "compact.reasoning", "default", "default.reasoning")
 } | {
-    # The campaign copy names its screenshot profiles by what they are (`lowr`/`highr`)
-    # and carries an extra one-image variant the public walkthrough does not. Every
-    # profile has a `.reasoning` twin (`enable_thinking` alone), and the twin must
+    # The campaign copy names its screenshot profiles by what they are (`lowr`/`highr`,
+    # `i4`/`i1`/`h1`) and carries the one-image variants the public walkthrough does not.
+    # Every profile has a `.reasoning` twin (`enable_thinking` alone), and the twin must
     # declare the same extra_tools: it is trained and scored on the same surface.
     f"devs/exps/train/desktop/configs/qwen3_5/desktop.use.{_variant}.yaml"
     for _variant in (
         "default", "default.reasoning",
-        "lowr.h4", "lowr.h4.reasoning",
+        "lowr.i4", "lowr.i4.reasoning",
+        "lowr.h1", "lowr.h1.reasoning",
+        "lowr.i1", "lowr.i1.reasoning",
         "highr.h1", "highr.h1.reasoning",
+        "highr.i1", "highr.i1.reasoning",
     )
 }
 

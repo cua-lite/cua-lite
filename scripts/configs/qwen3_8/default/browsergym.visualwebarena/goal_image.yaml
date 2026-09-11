@@ -3,7 +3,7 @@
 # Sampling: greedy decode (temperature 0.0), no native thinking channel
 # (eval-matrix default; the Qwen3.8 adapters default enable_thinking=False).
 #
-# Protocol: `Qwen3_5HistoryProtocol` (history_n=50, image_max=4, fold_size=4),
+# Protocol: `Qwen3_5HistoryProtocol` (history_n=100, image_max=4, fold_size=4),
 # byte-faithful to `${CUA_LITE_REFERENCES_ROOT}/OSWorld/scripts/python/run_multienv_qwen.py`.
 #
 # Prereqs: WA docker services + classifieds docker-compose. See

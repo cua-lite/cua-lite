@@ -29,7 +29,7 @@ agent_kwargs:
   # resolution omitted     → no agent-side downsample. Qwen smart_resize still
   #                          rounds each side to a multiple of 32 and caps pixels.
   # protocol_kwargs omitted → Qwen3_5HistoryProtocol defaults
-  #                           (history_n=50, image_max=4, fold_size=4).
+  #                           (history_n=100, image_max=4, fold_size=4).
 
 env_kwargs:
   max_steps: 30

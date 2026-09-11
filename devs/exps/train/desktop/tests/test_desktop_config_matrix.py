@@ -11,6 +11,7 @@ import yaml
 from lite.agents.bootstrap import register_all
 from lite.agents.core.agent.base import AgentRegistry, BaseAgent
 from lite.agents.factory import AGENTS, LOCAL_AGENTS, make
+from lite.agents.models.qwen3_5.protocol import Qwen3_5HistoryProtocol
 from lite.core.metadata import LiteCUAMetadata
 from lite.utils.registry import compose_key
 
@@ -20,20 +21,28 @@ _ROOT = Path(__file__).resolve().parents[5]
 _REL = "devs/exps/train/desktop/configs/qwen3_5"
 _CONFIG_ROOT = _ROOT / "devs" / "exps" / "train" / "desktop" / "configs"
 
-# Every config here is an env-less desktop.use recipe varying screenshot size,
-# history depth, and reasoning mode. ``default`` is native resolution with the
-# protocol's default 4-image window; ``lowr.h4`` downsamples to 1280x720 and keeps
-# the same 4 images; ``highr.h1`` keeps native resolution and one image. Each of the
-# three has a ``.reasoning`` twin that adds ``enable_thinking`` and nothing else --
-# reading a reasoning run against its twin is what isolates the <think> channel. The
-# env is chosen at rollout by --env-id / ENV_ID, and export_sft picks the adapter per
-# row from the data's metadata.dims + agent_id.
-_PROFILES = ("default", "highr.h1", "lowr.h4")
-_EXPECTED_CONFIGS = tuple(
+# Every config here is an env-less desktop.use recipe varying screenshot size, how
+# much history reaches the model, and reasoning mode. Two DIFFERENT caps produce the
+# "one image" profiles and they are not interchangeable:
+#   ``hN``  caps TURNS   (``history_n``)  -- older turns collapse into the
+#           ``Previous actions:`` prose summary, so their tool calls and <think> are gone.
+#   ``iN``  caps IMAGES  (``image_max``, ``fold_size`` tracking it) -- history_n stays 100,
+#           so every past turn is still rendered in full, screenshots aside.
+# ``default`` is native resolution on the protocol's own defaults (100 / 4 / 4). Six of the
+# twelve are NOT campaign cells: ``default`` and both ``h1`` profiles, with their twins. Each of the six profiles has a
+# ``.reasoning`` twin that adds ``enable_thinking`` and nothing else -- reading a reasoning
+# run against its twin is what isolates the <think> channel. The env is chosen at rollout
+# by --env-id / ENV_ID, and export_sft picks the adapter per row from metadata.dims.
+_PROFILES = ("default", "highr.h1", "highr.i1", "lowr.h1", "lowr.i1", "lowr.i4")
+# sorted(), not the _PROFILES order: ROWS comes from sorted(rglob(...)), and matching it by
+# construction order would silently require _PROFILES to be lexicographic -- an invariant
+# nothing states, that a new profile appended to the tuple breaks, and whose failure reads
+# as "wrong config filename at index N" rather than "tuple out of order".
+_EXPECTED_CONFIGS = tuple(sorted(
     f"devs/exps/train/desktop/configs/qwen3_5/desktop.use.{_p}{_suffix}.yaml"
     for _p in _PROFILES
     for _suffix in (".reasoning", "")
-)
+))
 
 _DESKTOP_USE_DIMS = ("desktop", "use")
 
@@ -127,30 +136,45 @@ def test_every_desktop_config_declares_the_finish_tools() -> None:
         assert row.env_kwargs.get("loop_detect") == 5, row.rel
 
 
-def test_lowr_configs_differ_from_default_only_by_resolution() -> None:
-    """``lowr.h4`` is the ``default`` recipe plus one agent-side downsample.
+def test_lowr_i4_differs_from_default_only_by_resolution() -> None:
+    """``lowr.i4`` is the ``default`` recipe plus one agent-side downsample.
 
-    It must match ``default`` everywhere except ``agent_kwargs.resolution``. Any other
-    drift means the pair no longer isolates the VRAM knob.
+    ``i4`` names ``image_max``, so the config PINS ``image_max``/``fold_size`` rather
+    than inheriting them -- otherwise a change to the protocol default would silently
+    rename the profile. The pin must therefore restate the defaults exactly: pinning a
+    DIFFERENT value would make this a two-knob change against ``default`` while still
+    reading as "default plus a downsample".
     """
     by_rel = {row.rel: row for row in ROWS}
     default = by_rel[f"{_REL}/desktop.use.default.yaml"]
-    lowr = by_rel[f"{_REL}/desktop.use.lowr.h4.yaml"]
+    lowr = by_rel[f"{_REL}/desktop.use.lowr.i4.yaml"]
     assert lowr.agent_id == default.agent_id
     assert lowr.env_kwargs == default.env_kwargs
     assert "resolution" not in default.agent_kwargs
     assert lowr.agent_kwargs["resolution"] == [1280, 720]
-    stripped = {k: v for k, v in lowr.agent_kwargs.items() if k != "resolution"}
+
+    # The pin equals what ``default`` inherits, so the two run the same protocol.
+    proto = Qwen3_5HistoryProtocol()
+    pinned = lowr.agent_kwargs["protocol_kwargs"]
+    assert pinned == {"image_max": 4, "fold_size": 4}
+    assert pinned["image_max"] == proto.image_max, "pin drifted from the protocol default"
+    assert pinned["fold_size"] == proto.fold_size, "pin drifted from the protocol default"
+    assert "history_n" not in pinned, "i4 caps images, not turns -- history_n stays default"
+    assert "protocol_kwargs" not in default.agent_kwargs
+
+    stripped = {k: v for k, v in lowr.agent_kwargs.items()
+                if k not in ("resolution", "protocol_kwargs")}
     assert stripped == default.agent_kwargs
 
 
 def test_highr_h1_differs_from_default_only_by_history_depth() -> None:
     """``highr.h1`` is the ``default`` recipe with a one-turn history window.
 
-    The counterpart of the ``lowr.h4`` pairing above, on the other axis: same native
-    resolution, same tool surface, only ``protocol_kwargs.history_n`` moves. That is
-    what makes a highr.h1-vs-lowr.h4 comparison isolate "detail" against "history"
-    rather than confounding both with a third difference.
+    The counterpart of the ``lowr.i4`` pairing above, on the other axis: same native
+    resolution, same tool surface, only ``protocol_kwargs.history_n`` moves. Its
+    one-axis partner is ``lowr.h1``, not ``lowr.i4`` -- highr.h1-vs-lowr.i4 moves
+    resolution AND history together, which is the confound ``lowr.h1`` was added to
+    remove.
     """
     by_rel = {row.rel: row for row in ROWS}
     default = by_rel[f"{_REL}/desktop.use.default.yaml"]
@@ -162,6 +186,68 @@ def test_highr_h1_differs_from_default_only_by_history_depth() -> None:
     assert "protocol_kwargs" not in default.agent_kwargs
     stripped = {k: v for k, v in highr.agent_kwargs.items() if k != "protocol_kwargs"}
     assert stripped == default.agent_kwargs
+
+
+@pytest.mark.parametrize("res", ["lowr", "highr"])
+def test_h1_and_i1_differ_only_by_which_cap_is_set(res: str) -> None:
+    """At one resolution, ``h1`` and ``i1`` show ONE image each and differ only in cap.
+
+    Both render a single screenshot, so this pair does not move the image axis at all --
+    it moves what the model is told about everything OLDER: ``h1`` gets prose summary
+    lines built from ``action_description``, ``i1`` gets each past turn rendered in full
+    (its literal ``<tool_call>``, and on the reasoning arm its ``<think>``). If a second
+    field ever drifts, that measurement silently becomes a two-variable one.
+    """
+    by_rel = {row.rel: row for row in ROWS}
+    h1 = by_rel[f"{_REL}/desktop.use.{res}.h1.yaml"]
+    i1 = by_rel[f"{_REL}/desktop.use.{res}.i1.yaml"]
+    assert h1.agent_id == i1.agent_id
+    assert h1.env_kwargs == i1.env_kwargs
+    assert h1.agent_kwargs.get("resolution") == i1.agent_kwargs.get("resolution")
+    assert h1.agent_kwargs["protocol_kwargs"] == {"history_n": 1}
+    assert i1.agent_kwargs["protocol_kwargs"] == {"image_max": 1, "fold_size": 1}
+    strip = lambda r: {k: v for k, v in r.agent_kwargs.items() if k != "protocol_kwargs"}
+    assert strip(h1) == strip(i1)
+
+
+@pytest.mark.parametrize("cap", ["h1", "i1"])
+def test_lowr_and_highr_of_one_cap_differ_only_by_resolution(cap: str) -> None:
+    """The resolution axis, measured twice -- once under each history cap.
+
+    Two independent clean pairs are the point: a resolution effect that shows up under
+    ``h1`` but not ``i1`` (or vice versa) is a real interaction, not noise, and that is
+    only readable while each pair moves resolution ALONE.
+    """
+    by_rel = {row.rel: row for row in ROWS}
+    lowr = by_rel[f"{_REL}/desktop.use.lowr.{cap}.yaml"]
+    highr = by_rel[f"{_REL}/desktop.use.highr.{cap}.yaml"]
+    assert lowr.agent_id == highr.agent_id
+    assert lowr.env_kwargs == highr.env_kwargs
+    assert lowr.agent_kwargs["resolution"] == [1280, 720]
+    assert "resolution" not in highr.agent_kwargs, "highr keeps the env's native size"
+    strip = lambda r: {k: v for k, v in r.agent_kwargs.items() if k != "resolution"}
+    assert strip(lowr) == strip(highr)
+
+
+def test_lowr_i1_and_i4_differ_only_by_the_image_cap() -> None:
+    """The image axis: same uncapped text history, 1 screenshot against up to 4.
+
+    Both leave ``history_n`` at the protocol default, so the text the model sees is the
+    same shape in each; only ``image_max`` moves. ``fold_size`` must track ``image_max``
+    -- below it the folded prefix advances EVERY step, so adjacent steps stop being
+    prefix-compatible and ``build_segment_samples`` can no longer pack them. (The visible
+    count gets steadier, not deeper: at ``fold_size: 1`` it pins to ``image_max``. Steadier
+    is what costs more -- every segment then carries the full image_max.)
+    """
+    by_rel = {row.rel: row for row in ROWS}
+    i1 = by_rel[f"{_REL}/desktop.use.lowr.i1.yaml"]
+    i4 = by_rel[f"{_REL}/desktop.use.lowr.i4.yaml"]
+    assert i1.agent_kwargs.get("resolution") == i4.agent_kwargs.get("resolution")
+    assert i1.env_kwargs == i4.env_kwargs
+    for row, n in ((i1, 1), (i4, 4)):
+        pk = row.agent_kwargs["protocol_kwargs"]
+        assert pk == {"image_max": n, "fold_size": n}, row.rel
+        assert "history_n" not in pk, f"{row.rel}: an i-profile caps images, not turns"
 
 
 @pytest.mark.parametrize("profile", _PROFILES)

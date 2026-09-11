@@ -3,7 +3,7 @@
 # Reference: ${CUA_LITE_REFERENCES_ROOT}/OSWorld/mm_agents/qwen/ (exported QwenAgent),
 # launched by scripts/python/run_multienv_qwen.py. Its history.py is the same
 # rolling-window + image-fold mechanism Qwen3.5 uses, so the protocol is shared
-# (see Qwen3_5HistoryProtocol): history_n=50, image_max=4, fold_size=4.
+# (see Qwen3_5HistoryProtocol): history_n=100, image_max=4, fold_size=4.
 
 agent_id: "qwen3_8"
 agent_kwargs:

@@ -14,7 +14,7 @@
 #     rollout and at export, which is what keeps model-IO parity.
 #
 # The history window is deliberately NOT overridden: it stays at the
-# Qwen3_5HistoryProtocol defaults (history_n=50, image_max=4, fold_size=4) that
+# Qwen3_5HistoryProtocol defaults (history_n=100, image_max=4, fold_size=4) that
 # every rollout config uses. `history_n` caps retained TURNS — dropping it
 # switches the mechanism from image folding (pixels replaced in place by
 # collapse_text) to turn eviction ("Previous actions:\nStep N: ..." lines). The
