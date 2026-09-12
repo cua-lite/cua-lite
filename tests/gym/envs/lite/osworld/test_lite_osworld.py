@@ -3245,6 +3245,21 @@ _ALLOWED_ACTION_TYPES = frozenset(
 class TestJsonlContract:
     """Schema + reproducibility + determinism gates for all 3 splits."""
 
+    def test_eval_catalog_lock_scored_counts_are_public_owner(self):
+        """Tracked lock owns the Lite.OSWorld public scored-count prose."""
+        entry = json.loads((_DATA_DIR / "catalog.lock.json").read_text())["splits"]["eval"]
+
+        assert entry["rows"] == 369
+        assert entry["excluded_rows"] == 41
+        assert entry["scored_rows"] == 328
+        assert entry["exclude_reasons"] == {
+            "google_auth": 8,
+            "infeasible": 29,
+            "trivial_pass:color_precheck": 1,
+            "upstream_generated_eval_bug": 1,
+            "upstream_live_site_drift": 2,
+        }
+
     @_requires_catalogs
     @pytest.mark.parametrize("split", ["eval.jsonl", "train.synth.jsonl", "train.perturb.jsonl"])
     def test_every_row_has_oracle_and_evaluator(self, split):
@@ -3283,9 +3298,34 @@ class TestJsonlContract:
         for split, entry in lock["splits"].items():
             path = _DATA_DIR / entry["path"]
             data = path.read_bytes()
-            rows = sum(1 for line in data.splitlines() if line.strip())
+            rows = 0
+            excluded_rows = 0
+            reason_counts: dict[str, int] = {}
+            for line in data.splitlines():
+                if not line.strip():
+                    continue
+                rows += 1
+                row = json.loads(line)
+                reason = (
+                    row.get("metadata", {})
+                    .get("others", {})
+                    .get("exclude_reason")
+                )
+                if reason:
+                    exclude_reasons.validate(reason)
+                    excluded_rows += 1
+                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
             actual = hashlib.sha256(data).hexdigest()
             assert rows == entry["rows"], f"{split} row count changed"
+            assert excluded_rows == entry["excluded_rows"], (
+                f"{split} excluded row count changed"
+            )
+            assert rows - excluded_rows == entry["scored_rows"], (
+                f"{split} scored row count changed"
+            )
+            assert dict(sorted(reason_counts.items())) == entry["exclude_reasons"], (
+                f"{split} exclude_reason breakdown changed"
+            )
             assert actual == entry["sha256"], (
                 f"{entry['path']} bytes changed!\n"
                 f"  pinned : {entry['sha256']}\n"
@@ -3425,9 +3465,30 @@ class TestJsonlContract:
             json.dumps(
                 {
                     "splits": {
-                        "eval": {"path": 1, "rows": "0", "sha256": 2},
-                        "train.synth": {"path": "missing.jsonl", "rows": 0, "sha256": "x"},
-                        "train.perturb": {"path": "missing.jsonl", "rows": 0, "sha256": "x"},
+                        "eval": {
+                            "exclude_reasons": {},
+                            "excluded_rows": 0,
+                            "path": 1,
+                            "rows": 0,
+                            "scored_rows": 0,
+                            "sha256": "x",
+                        },
+                        "train.synth": {
+                            "exclude_reasons": {},
+                            "excluded_rows": 0,
+                            "path": "missing.jsonl",
+                            "rows": 0,
+                            "scored_rows": 0,
+                            "sha256": "x",
+                        },
+                        "train.perturb": {
+                            "exclude_reasons": {},
+                            "excluded_rows": 0,
+                            "path": "missing.jsonl",
+                            "rows": 0,
+                            "scored_rows": 0,
+                            "sha256": "x",
+                        },
                     }
                 }
             )

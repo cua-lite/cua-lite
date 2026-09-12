@@ -241,7 +241,7 @@ Then compare base vs. SFT as in [Eval](#eval-any-cua-on-any-benchmarks): point `
 at the checkpoint above and read `stats.mean_episode_return` — evaluating with the
 *same* [`compact/lite.osworld.yaml`](/scripts/configs/qwen3_vl/compact/lite.osworld.yaml) it trained on
 ([`default/lite.osworld.yaml`](/scripts/configs/qwen3_vl/default/lite.osworld.yaml) is
-full-resolution, when VRAM allows). In our run this lifts Qwen3-VL-2B from **0.138 → 0.237** on the `lite.osworld` eval split (332 valid tasks).
+full-resolution, when VRAM allows). In our run this lifts Qwen3-VL-2B from **0.138 → 0.237** on the `lite.osworld` eval split (328 valid tasks).
 See [docs/sft.md](/docs/sft.md) for more examples.
 
 ### Supported datasets ([🤗 HF Hub](https://huggingface.co/cua-lite))

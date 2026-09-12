@@ -108,7 +108,7 @@ CUDA_VISIBLE_DEVICES=0,1 NUM_TRAIN_GPUS=1 NUM_ROLLOUT_GPUS=1 ASYNC=1 \
 ## Lite.OSWorld
 
 Full train split (synth + perturb, 2,429 raw tasks; 2,411 after the
-`exclude_reason` filter). Eval: 64 sampled from the 330 non-excluded eval tasks
+`exclude_reason` filter). Eval: 64 sampled from the 328 non-excluded eval tasks
 using the same filter as training.
 
 <details>
