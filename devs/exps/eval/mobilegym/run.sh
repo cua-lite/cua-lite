@@ -38,8 +38,11 @@
 #
 # Env shape (see lite/gym/envs/mobilegym/README.md):
 #   - eval split = 256 parameterized tasks (seed=42, deterministic) across 28
-#     simulated apps; reward = progress_rate in [0.0, 1.0] from the state-diff
-#     judge at episode end, so mean_episode_return is NOT a plain success rate.
+#     simulated apps; reward is MobileGym's Success Rate (1.0/0.0) from the
+#     state-diff judge at episode end, so mean_episode_return IS the success
+#     rate. It used to be progress_rate (fraction of sub-goals passed), which
+#     read high against MobileGym's published numbers -- results produced
+#     before that change are not comparable to these.
 #   - One shared cua-lite/mobilegym container per env-server (SINGLETON backend)
 #     holds a Chromium pool (contexts_per_browser=8, max_browsers RAM-derived,
 #     floor 4 / ceiling 32). Pool saturation → HTTP 503 → CapacityExhausted on

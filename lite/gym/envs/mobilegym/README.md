@@ -117,7 +117,7 @@ uv run python scripts/rollout.py --env-id mobilegym --splits train \
 
 ## Evaluation
 
-Runs **only at episode end** (`terminate` / `response` / `max_steps`) via a deterministic state-diff judge that reads the full JSON environment state, checks goals, and detects unexpected side effects, returning `reward = progress_rate` (float `0.0`–`1.0`, fraction of sub-goals passed). Truncation (`max_steps` without `terminate`) still evaluates the final state.
+Runs **only at episode end** (`terminate` / `response` / `max_steps`) via a deterministic state-diff judge that reads the full JSON app state. The score is MobileGym's own **Success Rate**: the goal met, no unexpected state changed, and the episode ended via `terminate` with `status="success"` (or a `response` in text mode) — `terminate(status="failure")` steps ABORT and scores 0 even if the goal was met. RL can opt into partial credit with the `reward_shaping` env_kwarg ([`configs/default.yaml`](/lite/gym/envs/mobilegym/configs/default.yaml)); eval must leave it off — see [docs/grpo.md](/docs/grpo.md#mobilegym).
 
 ## Action Space
 

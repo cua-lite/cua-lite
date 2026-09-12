@@ -165,6 +165,7 @@ def test_config_override_replaces_whole_config(monkeypatch, tmp_path, _reimport_
     override.write_text(
         "env_var_prefix: MOBILEGYM\n"
         "env_kwargs: {max_steps: null, post_action_delay: 0.8, eval_mode: text, "
+        "reward_shaping: false, "
         "display_resolution: [1080, 2400], dpr: 3.0, seed: null, extra_tools: [], "
         "headless: true}\n"
         "server_kwargs: {max_browsers: 0, contexts_per_browser: 4, "
@@ -202,6 +203,7 @@ def test_config_override_auto_derives_max_browsers(monkeypatch, tmp_path, _reimp
     override.write_text(
         "env_var_prefix: MOBILEGYM\n"
         "env_kwargs: {max_steps: null, post_action_delay: 0.8, eval_mode: text, "
+        "reward_shaping: false, "
         "display_resolution: [1080, 2400], dpr: 3.0, seed: null, extra_tools: [], "
         "headless: true}\n"
         "server_kwargs: {max_browsers: 0, contexts_per_browser: 8, "
@@ -228,6 +230,7 @@ def test_config_override_pins_max_browsers(monkeypatch, tmp_path, _reimport_mobi
     override.write_text(
         "env_var_prefix: MOBILEGYM\n"
         "env_kwargs: {max_steps: null, post_action_delay: 0.8, eval_mode: text, "
+        "reward_shaping: false, "
         "display_resolution: [1080, 2400], dpr: 3.0, seed: null, extra_tools: [], "
         "headless: true}\n"
         "server_kwargs: {max_browsers: 7, contexts_per_browser: 8, "
@@ -1703,3 +1706,318 @@ def test_container_step_returns_one_frame_per_executed_action(monkeypatch):
     assert r.status_code == 200, r.text
     resp = r.json()
     assert [base64.b64decode(f) for f in resp["screenshots_b64"]] == [b"mg-4"]
+
+
+# ---------------------------------------------------------------------------
+# reward_shaping (env_kwarg) — MobileGym's Success Rate vs the RL-only shaped
+# variant. These pin the properties that make the shaped branch safe to train
+# on; without them a regression here is silent (it only moves a number).
+# ---------------------------------------------------------------------------
+
+
+def _judge(*, success: bool, clean: bool, progress: float, judge_error: str | None = None):
+    return SimpleNamespace(
+        success=success, clean=clean, progress=progress, judge_error=judge_error,
+    )
+
+
+async def _score(monkeypatch, *, judge, terminated: bool, reward_shaping: bool) -> float:
+    """Drive server._evaluate with a stubbed judge and no browser."""
+    server = _import_mobilegym_container_server(monkeypatch)
+
+    inst = server._Instance(
+        env=SimpleNamespace(
+            get_state=_async_return({}),
+            get_route=_async_return({}),
+            get_observation=_async_return(
+                SimpleNamespace(get_screenshot_bytes=lambda: b"png")
+            ),
+        ),
+        slot={},
+        task=SimpleNamespace(apps=None, evaluate=lambda _inp: judge, answer_fields=None),
+        task_id="clock.AddAlarm",
+        eval_mode="text",
+        max_steps=5,
+        init_obs=SimpleNamespace(),
+        reward_shaping=reward_shaping,
+    )
+    return await server._evaluate(inst, terminated)
+
+
+def _async_return(value):
+    async def _f(*_a, **_kw):
+        return value
+    return _f
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("success", "clean", "terminated", "expected"),
+    [
+        (True, True, True, 1.0),    # all three hold -> the SR numerator
+        (True, True, False, 0.0),   # ran out of steps: upstream scores 0
+        (True, False, True, 0.0),   # goal met but state dirtied
+        (False, True, True, 0.0),   # goal not met
+    ],
+)
+async def test_default_reward_is_the_benchmark_success_rate(
+    monkeypatch, success, clean, terminated, expected
+):
+    """Default (reward_shaping=False) reproduces upstream's SR definition:
+    COMPLETE and judge.success and judge.clean. progress is high on purpose --
+    it must not leak into the score."""
+    got = await _score(
+        monkeypatch,
+        judge=_judge(success=success, clean=clean, progress=0.99),
+        terminated=terminated,
+        reward_shaping=False,
+    )
+    assert got == expected
+
+
+@pytest.mark.asyncio
+async def test_shaped_reward_never_reaches_a_real_success(monkeypatch):
+    """The argmax invariant: every shaped (SR=0) outcome must rank strictly below
+    a genuine success, or RL learns to farm progress by skipping terminate or
+    dirtying state -- neither of which `progress` penalizes."""
+    server = _import_mobilegym_container_server(monkeypatch)
+
+    success_score = await _score(
+        monkeypatch, judge=_judge(success=True, clean=True, progress=1.0),
+        terminated=True, reward_shaping=True,
+    )
+    assert success_score == 1.0
+    # The two ways to have progress==1.0 while the SR is 0.
+    for terminated, clean in ((False, True), (True, False)):
+        shaped = await _score(
+            monkeypatch, judge=_judge(success=True, clean=clean, progress=1.0),
+            terminated=terminated, reward_shaping=True,
+        )
+        assert 0.0 < shaped < success_score
+        assert shaped == pytest.approx(server._SHAPED_REWARD_CEILING)
+
+
+@pytest.mark.asyncio
+async def test_shaped_reward_is_monotone_in_progress(monkeypatch):
+    prev = -1.0
+    for progress in (0.0, 0.25, 0.5, 0.75, 1.0):
+        got = await _score(
+            monkeypatch, judge=_judge(success=False, clean=True, progress=progress),
+            terminated=True, reward_shaping=True,
+        )
+        assert got > prev
+        prev = got
+
+
+@pytest.mark.asyncio
+async def test_judge_error_scores_zero_even_when_shaping(monkeypatch):
+    """A broken judge must not be paid partial credit: JudgeResult.error()
+    returns progress=0.0, and shaping must not invent a score around it."""
+    got = await _score(
+        monkeypatch, judge=_judge(success=False, clean=True, progress=0.0, judge_error="boom"),
+        terminated=True, reward_shaping=True,
+    )
+    assert got == 0.0
+
+
+def _instance_for_step(server, monkeypatch, *, iid, judge, reward_shaping=False):
+    """A live _Instance wired to a fake device so /step can be driven end to end."""
+    class _Env:
+        def __init__(self):
+            self.executed = []
+
+        async def step(self, action):
+            self.executed.append(action)
+
+        async def get_observation(self):
+            return SimpleNamespace(get_screenshot_bytes=lambda: b"mobile-png")
+
+        async def get_state(self, required_apps=None):
+            return {}
+
+        async def get_route(self):
+            return {}
+
+    env = _Env()
+    inst = server._Instance(
+        env=env,
+        slot={},
+        task=SimpleNamespace(apps=None, evaluate=lambda _inp: judge, answer_fields=None),
+        task_id="clock.AddAlarm",
+        eval_mode="text",
+        max_steps=30,
+        init_obs=SimpleNamespace(),
+        reward_shaping=reward_shaping,
+    )
+    monkeypatch.setitem(server._instances, iid, inst)
+    return env, inst
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [("success", 1.0), ("failure", 0.0)],
+)
+def test_terminate_status_gates_the_success_rate(monkeypatch, status, expected):
+    """Driven through /step so the COMPLETE-vs-ABORT branch actually runs.
+
+    `terminate(status="failure")` steps ABORT, and upstream's SR requires
+    stop_reason == COMPLETE (bench_env/runner/base.py::EpisodeResult.success), so a
+    self-declared failure scores 0 even with every goal met. `terminated` alone
+    cannot gate it -- it is True on both branches, which is exactly the bug this
+    pins. Asserting on _evaluate's boolean argument instead would not catch it.
+    """
+    from fastapi.testclient import TestClient
+
+    server = _import_mobilegym_container_server(monkeypatch)
+    iid = f"iid-terminate-{status}"
+    _instance_for_step(
+        server, monkeypatch, iid=iid,
+        judge=_judge(success=True, clean=True, progress=1.0),
+    )
+    r = TestClient(server.app).post("/step", json={
+        "instance_id": iid,
+        "actions": [{"name": "terminate", "arguments": {"status": status}}],
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["terminated"] is True
+    assert body["reward"] == expected
+
+
+def test_reward_shaping_defaults_to_off_everywhere(monkeypatch):
+    """These three defaults must agree on False, or eval silently scores shaped
+    runs: the env yaml, the host ctor, and the container's _Instance field. The
+    fourth (the /reset body fallback) is pinned by
+    test_container_reset_reads_reward_shaping_off_the_body."""
+    from lite.gym.envs.mobilegym import main as mg
+
+    assert mg._REWARD_SHAPING is False, "configs/default.yaml"
+    server = _import_mobilegym_container_server(monkeypatch)
+    inst = server._Instance(
+        env=SimpleNamespace(), slot={}, task=SimpleNamespace(), task_id="t",
+        eval_mode="text", max_steps=5, init_obs=SimpleNamespace(),
+    )
+    assert inst.reward_shaping is False, "_Instance field default"
+    import inspect
+    sig = inspect.signature(mg.RemoteMobileGymEnv.__init__)
+    assert sig.parameters["reward_shaping"].default is False, "host ctor default"
+
+
+@pytest.mark.parametrize("shaping", [False, True])
+def test_reset_body_forwards_reward_shaping(shaping):
+    """The env_kwarg has to reach the container, where the judge runs.
+
+    Dropping it from the body is silent in the worst way: the training yaml says
+    `reward_shaping: true`, the container falls back to its `False` default, and RL
+    trains on the sparse binary reward with nothing logged. Asserting the host-side
+    attribute would not catch that -- only the wire body does.
+    """
+    import asyncio
+
+    env = _remote(
+        "clock.AddAlarm", answer_fields=False, base_max_steps=15,
+        reward_shaping=shaping,
+    )
+    captured = {}
+
+    def _fake_post(path, body):
+        captured["body"] = body
+        return {
+            "instance_id": "iid", "screenshot_b64": "", "instruction": "",
+            "max_steps": body["max_steps"],
+        }
+
+    env._post = _fake_post
+    asyncio.run(env.reset())
+    assert captured["body"]["reward_shaping"] is shaping
+
+
+@pytest.mark.parametrize("shaping", [False, True])
+def test_container_reset_reads_reward_shaping_off_the_body(monkeypatch, shaping):
+    """The other half of the wire: /reset must put the body flag on the _Instance.
+
+    The host can send `reward_shaping: true` correctly and the container still
+    drop it on the floor, in which case every episode is scored with the sparse
+    Success Rate while the training yaml says otherwise -- silently, since the
+    default is a legal value. Only reading back the stored instance catches that.
+    """
+    from fastapi.testclient import TestClient
+
+    server = _import_mobilegym_container_server(monkeypatch)
+
+    class _Task:
+        description = "task"
+        answer_fields = None
+
+        def __init__(self, _seed=None):
+            pass
+
+        async def setup(self, _env):
+            return SimpleNamespace(get_screenshot_bytes=lambda: b"mobile-png")
+
+    class _Env:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def start(self):
+            pass
+
+    async def _acquire():
+        return {"browser": object(), "n_ctx": 0}
+
+    monkeypatch.setattr(server, "TaskRegistry",
+                        lambda: SimpleNamespace(get_by_id=lambda _tid: _Task))
+    monkeypatch.setattr(server, "MobileGymEnv", _Env)
+    monkeypatch.setattr(server, "_acquire_browser", _acquire)
+
+    r = TestClient(server.app).post("/reset", json={
+        "task_id": "clock.AddAlarm", "max_steps": 15, "reward_shaping": shaping,
+    })
+    assert r.status_code == 200, r.text
+    inst = server._instances[r.json()["instance_id"]]
+    assert inst.reward_shaping is shaping
+
+    # An older host that predates the flag sends no key at all; the fallback must
+    # be the eval-safe value, or an unflagged run would score shaped by accident.
+    r = TestClient(server.app).post("/reset", json={
+        "task_id": "clock.AddAlarm", "max_steps": 15,
+    })
+    assert r.status_code == 200, r.text
+    assert server._instances[r.json()["instance_id"]].reward_shaping is False
+
+
+@pytest.mark.parametrize(
+    ("judge_kwargs", "expected"),
+    [
+        ({"success": True, "clean": True}, 1.0),
+        ({"success": True, "clean": False}, 0.0),
+        ({"success": False, "clean": True}, 0.0),
+    ],
+)
+def test_text_mode_response_is_scored_as_a_completed_episode(
+    monkeypatch, judge_kwargs, expected
+):
+    """`response` ending a text-mode episode is the DEFAULT eval scoring path.
+
+    It is also this env's one deliberate deviation from upstream, which returns
+    done=False from AnswerHandler and lets its own runner end the episode
+    (bench_env/env/mobile_gym.py) -- there is no such outer runner here, so the
+    COMPLETE signal has to land in /step. Flipping that flag scores every Q&A
+    eval task 0 with nothing in the logs, so pin the reward, not just `terminated`.
+    """
+    from fastapi.testclient import TestClient
+
+    server = _import_mobilegym_container_server(monkeypatch)
+    iid = f"iid-response-{judge_kwargs['success']}-{judge_kwargs['clean']}"
+    _instance_for_step(
+        server, monkeypatch, iid=iid,
+        judge=_judge(progress=1.0, **judge_kwargs),
+    )
+    r = TestClient(server.app).post("/step", json={
+        "instance_id": iid,
+        "actions": [{"name": "response", "arguments": {"text": "42"}}],
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["terminated"] is True
+    assert body["reward"] == expected

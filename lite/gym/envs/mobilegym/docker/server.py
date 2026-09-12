@@ -17,7 +17,8 @@ load-bearing every-tick idle compaction, re-homed in-container ⚠️).
 
 Endpoints (JSON in/out, no pickle):
   GET  /healthz                     → {ok, browsers, instances, contexts_in_use}
-  POST /reset  {task_id, seed, eval_mode, physical_size, dpr, delay, max_steps?, app_ids?}
+  POST /reset  {task_id, seed, eval_mode, reward_shaping, physical_size, dpr,
+               delay, max_steps?, app_ids?}
                                     → {instance_id, screenshot_b64, instruction, max_steps}
   POST /step   {instance_id, actions}
                                     → {screenshots_b64, reward, terminated,
@@ -76,6 +77,9 @@ _IDLE_BROWSER_TTL_S = float(os.environ.get("MOBILEGYM_IDLE_BROWSER_TTL_S", "300"
 # client's 180s urlopen timeout.
 _LAUNCH_TIMEOUT_S = float(os.environ.get("MOBILEGYM_LAUNCH_TIMEOUT_S", "60"))
 _DIFFICULTY_MAX_STEPS = {"L1": 15, "L2": 30, "L3": 45, "L4": 60}
+#: Ceiling for the shaped branch (reward_shaping=true). Any value < 1.0 keeps the
+#: argmax on genuine success; 0.5 leaves a wide margin over the best partial run.
+_SHAPED_REWARD_CEILING = 0.5
 
 #: Model-caused action errors — mirrors
 #: ``lite/gym/utils/feedback/errors.py::MODEL_ACTION_ERROR_TYPES`` (this
@@ -244,6 +248,9 @@ class _Instance:
     eval_mode: str
     max_steps: int
     init_obs: Observation
+    #: Defaults False so an instance built without it scores the benchmark metric.
+    #: Only RL opts in (see _evaluate and configs/default.yaml).
+    reward_shaping: bool = False
     agent_answer: str | None = None
     step_count: int = 0
 
@@ -495,9 +502,23 @@ def _evaluate_grounded(task: BaseTask, judge_input: JudgeInput) -> JudgeResult:
 
 
 async def _evaluate(inst: _Instance, terminated: bool) -> float:
-    """Run the task judge — verbatim port of the former host env's _evaluate
-    (removed). Returns ``result.progress`` ∈ [0,1]; 0.0 on any
-    exception (the silent path; logged)."""
+    """Run the task judge — port of the former host env's _evaluate (removed).
+
+    Returns MobileGym's official Success Rate as 1.0/0.0, which upstream defines
+    (bench_env/runner/base.py::EpisodeResult.success) as all three of:
+    ``stop_reason == COMPLETE`` and ``judge.success`` (goal achieved) and
+    ``judge.clean`` (no unexpected state changes) -- the last two being
+    ``JudgeResult.passed`` (bench_env/task/judge.py). ``terminated`` is this env's
+    COMPLETE signal: an episode that merely ran out of steps scores 0 upstream even
+    if the goal happened to be met, so it must gate the score here too.
+
+    This deliberately does NOT return ``result.progress`` (the fraction of
+    check_goals that passed). progress >= success always, so reporting it as THE
+    score made this env read high against MobileGym's published numbers. It is a
+    separate, coarser signal and upstream reports it separately.
+
+    0.0 on any exception (the silent path; logged).
+    """
     if inst.task is None or inst.init_obs is None:
         return 0.0
     try:
@@ -517,7 +538,30 @@ async def _evaluate(inst: _Instance, terminated: bool) -> float:
             result = _evaluate_grounded(inst.task, judge_input)
         else:
             result = inst.task.evaluate(judge_input)
-        return result.progress
+        if result.judge_error:
+            # JudgeResult.error() RETURNS (bench_env/task/judge.py::error), it does
+            # not raise, so the except below never sees it and the score is a plain
+            # 0.0 -- indistinguishable from an agent that achieved nothing. Log it so
+            # a broken judge is attributable instead of silently counted as failure.
+            logger.error(
+                "Judge errored for %s (scored 0, NOT an agent failure): %s",
+                inst.task_id, result.judge_error,
+            )
+        if terminated and result.success and result.clean:
+            return 1.0
+        if not inst.reward_shaping:
+            return 0.0
+        # Shaping (RL only, same contract as screenspot_pro/osworld_g: partial
+        # credit ONLY where the metric is 0, and strictly below 1.0 so a truly
+        # successful episode always outranks a partial one and the argmax is
+        # unchanged). The explicit 0.5 cap is what those two do not need -- their
+        # shaped value is 1-dist/max_dist, which only reaches 1.0 at a point that
+        # already scored 1.0. Here the cap is load-bearing: `progress` is the fraction of
+        # check_goals that passed and looks at NEITHER `clean` NOR COMPLETE
+        # (bench_env/task/base.py computes it before either is known), so
+        # paying it at face value would let a policy max the reward by hitting
+        # every goal while dirtying state or never calling terminate.
+        return _SHAPED_REWARD_CEILING * float(result.progress)
     except Exception as e:
         logger.error("Evaluation failed for %s: %s", inst.task_id, e)
         return 0.0
@@ -553,6 +597,7 @@ async def reset(request: Request) -> dict[str, Any]:
     task_id = body["task_id"]
     seed = body.get("seed")
     eval_mode = body.get("eval_mode", "text")
+    reward_shaping = bool(body.get("reward_shaping", False))
     physical_size = tuple(body.get("physical_size", [1080, 2400]))
     dpr = float(body.get("dpr", 3.0))
     delay = float(body.get("delay", 0.8))
@@ -633,6 +678,7 @@ async def reset(request: Request) -> dict[str, Any]:
     iid = uuid.uuid4().hex
     _instances[iid] = _Instance(
         env=env, slot=slot, task=task, task_id=task_id, eval_mode=eval_mode,
+        reward_shaping=reward_shaping,
         max_steps=max_steps, init_obs=init_obs,
     )
     return {
@@ -677,6 +723,9 @@ async def step(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"unknown instance {iid}")
 
     terminated = False
+    # Whether the episode ended via COMPLETE (vs ABORT). Only COMPLETE counts
+    # toward the Success Rate; see the terminate branch below and _evaluate.
+    completed = False
     executed: list[dict[str, Any]] = []
     # One result frame per EXECUTED action, in action order. The host ships the
     # whole batch here, so this loop -- not the host -- is the only place that
@@ -720,8 +769,15 @@ async def step(request: Request) -> dict[str, Any]:
             terminated = True
             status = args.get("status", "success")
             if status == "success":
+                completed = True
                 mgym_act = Action(ActionType.COMPLETE, {"return": ""})
             else:
+                # ABORT, not COMPLETE. Upstream's Success Rate requires
+                # stop_reason == COMPLETE (bench_env/runner/base.py::
+                # EpisodeResult.success), so a self-declared failure scores 0 there
+                # even with every goal met -- ``terminated`` alone cannot gate the
+                # score, since it is True for both branches.
+                completed = False
                 mgym_act = Action(ActionType.ABORT, {"value": args.get("reason", "")})
             await inst.env.step(mgym_act)
             # ``terminate`` really drives the device here (COMPLETE/ABORT), so it
@@ -757,7 +813,14 @@ async def step(request: Request) -> dict[str, Any]:
                 executed.append({"call": "ANSWER", "args": args})
                 frames_b64.append(await _capture_frame_b64(inst))
             if inst.eval_mode == "text":
+                # Answering IS how a text task finishes here, so this counts as
+                # COMPLETE for scoring. Upstream's AnswerHandler returns done=False
+                # and leaves stop_reason unset (bench_env/env/mobile_gym.py::
+                # AnswerHandler) because its runner ends the episode itself; this
+                # env has no such outer runner, so the completion signal lands here.
+                # Only ABORT (terminate status!=success) is excluded from the SR.
                 terminated = True
+                completed = True
                 break
             continue
 
@@ -818,7 +881,7 @@ async def step(request: Request) -> dict[str, Any]:
 
     reward = None
     if terminated or truncated:
-        reward = await _evaluate(inst, terminated)
+        reward = await _evaluate(inst, terminated and completed)
 
     return {
         "screenshots_b64": frames_b64,

@@ -314,7 +314,7 @@ uv run python scripts/rollout.py \
 
 ## MobileGym
 
-416 parameterized tasks (256 eval + 160 train) across 24 simulated mobile apps — a lightweight browser-based simulator in Docker (no KVM). Reward is progress rate (0.0–1.0).
+416 parameterized tasks (256 eval + 160 train) across 24 simulated mobile apps — a lightweight browser-based simulator in Docker (no KVM). Reward is MobileGym's Success Rate (1.0/0.0): goal met, no unexpected state changed, and the episode ended via COMPLETE.
 
 **Setup:** see [`lite/gym/envs/mobilegym/README.md`](/lite/gym/envs/mobilegym/README.md).
 

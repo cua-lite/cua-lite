@@ -13,6 +13,13 @@ agent_kwargs:
 # budget: L1=15, L2=30, L3=45, L4=60. Pass max_steps explicitly to override.
 env_id: "mobilegym"
 env_kwargs:
+  # RL only: pay partial credit where the Success Rate is 0, capped strictly
+  # below 1.0 (0.5) so a real success always wins. That cap also means REINFORCE's
+  # filtered-BC sees no change: its min_episode_return=1.0 keeps exactly the true
+  # successes either way, and any threshold in (0.5, 1.0] keeps nothing.
+  # Eval leaves this off and reports MobileGym's own SR.
+  # See docs/grpo.md#mobilegym.
+  reward_shaping: true
   # Qwen native open parses to canonical open_app; opt in to the env-side
   # extra_tool boundary so app launch is available in this task.
   loop_detect: 5

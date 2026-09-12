@@ -390,6 +390,19 @@ deterministic seeded tasks filtered to **L1+L2** (easy + medium) so
 small models have a non-trivial baseline. Difficulty is in
 `m.others['difficulty']` as `L1/L2/L3/L4`.
 
+**Reward: `reward_shaping: true` in the training config's `env_kwargs`.** MobileGym's
+Success Rate is `stop_reason == COMPLETE` AND `judge.success` AND `judge.clean`
+(`bench_env/runner/base.py::EpisodeResult.success`) — a binary signal that is too
+sparse to bootstrap from. With shaping on, an episode that misses the SR still earns
+partial credit for the `check_goals` it passed, capped strictly below 1.0 so a real
+success always outranks it. The cap is load-bearing: `progress` looks at neither
+`clean` nor COMPLETE, so paying it at face value would let a policy max the reward by
+hitting every goal while dirtying state or never calling terminate. Eval leaves the
+flag off (`scripts/configs/*/default/mobilegym.yaml`) and reports the SR itself. One
+known deviation remains: in `eval_mode: text` a `response` ends the episode and counts
+as COMPLETE here, where upstream's `AnswerHandler` leaves `stop_reason` unset and lets
+its own runner finish the episode — so Q&A-style tasks can still read slightly high.
+
 <details>
 <summary>Data</summary>
 

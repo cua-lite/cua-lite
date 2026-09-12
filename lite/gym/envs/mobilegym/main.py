@@ -143,6 +143,7 @@ def _derive_max_browsers() -> int:
 _MAX_STEPS = CFG.env_kwargs["max_steps"]
 _POST_ACTION_DELAY = CFG.env_kwargs["post_action_delay"]
 _EVAL_MODE = CFG.env_kwargs["eval_mode"]
+_REWARD_SHAPING = CFG.env_kwargs["reward_shaping"]
 _DISPLAY_RESOLUTION = tuple(CFG.env_kwargs["display_resolution"])
 _DPR = CFG.env_kwargs["dpr"]
 _SEED = CFG.env_kwargs["seed"]
@@ -419,6 +420,7 @@ class RemoteMobileGymEnv(LiteBaseEnv):
         max_steps: int | None = _MAX_STEPS,
         post_action_delay: float = _POST_ACTION_DELAY,
         eval_mode: Literal["text", "grounded"] = _EVAL_MODE,
+        reward_shaping: bool = _REWARD_SHAPING,
         seed: int | None = _SEED,
         valid_actions: list[str] | None = _VALID_ACTIONS_CONFIG,
         extra_tools: list[str] | None = _EXTRA_TOOLS,
@@ -442,6 +444,7 @@ class RemoteMobileGymEnv(LiteBaseEnv):
         self._max_steps = max_steps
         self._post_action_delay = post_action_delay
         self._eval_mode = eval_mode
+        self._reward_shaping = reward_shaping
         self._display_resolution = tuple(display_resolution)
         self._dpr = dpr
         # Soft env_kwarg, resolved through the shared helper so every env
@@ -538,6 +541,7 @@ class RemoteMobileGymEnv(LiteBaseEnv):
             "task_id": self._task_id,
             "seed": self._seed,
             "eval_mode": self._eval_mode,
+            "reward_shaping": self._reward_shaping,
             "physical_size": list(self._display_resolution),
             "dpr": self._dpr,
             "delay": self._post_action_delay,

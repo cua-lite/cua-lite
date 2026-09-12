@@ -1,6 +1,6 @@
 # Qwen3-VL rollout eval on MobileGym
 # 416 parameterized mobile tasks across 28 simulated apps, evaluated by
-# deterministic state-diff judges (progress rate 0.0–1.0).
+# deterministic state-diff judges (Success Rate 1.0/0.0).
 #
 # MobileGym uses 1080x2400 physical pixels (DPR=3, CSS 360x800).
 # Coordinates are [0, 1000] normalized — matches LiteMobileActionSpace.
