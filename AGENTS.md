@@ -369,6 +369,18 @@ concept rather than directory, and keep each assignment bounded.
 
 - The worktree may be dirty. Do not revert unrelated or user-authored changes.
   If a precise revert is requested, revert only the requested change.
+- Keep semantic default changes in their own commits. A commit that changes what
+  happens when a flag, config key, prompt option, tool surface, score rule, or
+  rollout/env default is unset must say the old default, the new default, and why.
+- Keep mechanical migrations separate from behavior changes. If the split is
+  genuinely impossible, the commit body must name each semantic decision instead
+  of hiding it inside a broad rename/refactor.
+- When a refactor makes a config key, flag, prompt knob, or compatibility path
+  unreachable, remove it at the owner boundary in the same slice. Do not keep
+  dead YAML keys, comments, tests, or aliases that imply the old behavior still
+  exists.
+- Do not commit placeholder subjects such as `wip`, `tmp save`, `save smell.md`,
+  or `checkpoint`. Use a subject that names the behavior, docs, or test boundary.
 - Before making an explicitly requested commit that modifies Python behavior,
   ensure the relevant tests pass first. If tests fail, report the failures
   instead of committing.
