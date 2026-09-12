@@ -112,21 +112,6 @@ Cold-booting a Windows VM per episode dominates wall-clock. `install.sh` builds 
 admission, ownership cleanup, and retry/recovery during full-suite evals. See
 [Snapshot restore](/lite/gym/envs/waa/README.md#snapshot-restore-fast-by-default).
 
-To explicitly reproduce the full upstream 154-task set, use an agent/config
-that supports extra tools, omit the filter, and enable `report_infeasible`:
-
-```bash
-uv run python scripts/rollout.py \
-  --model-id {gpt-5.5,Qwen/Qwen3-VL-8B-Instruct} \
-  --env-id waa \
-  --splits eval \
-  --env-kwargs '{"extra_tools":["report_infeasible","terminate"]}' \
-  --config-path scripts/configs/{gpt,qwen3_vl}/default/waa.yaml
-```
-
-A correct `report_infeasible` action scores `1` on an infeasible task and `0`
-on a feasible task.
-
 ## OSWorld-2
 
 [`osworld_2`](/lite/gym/envs/osworld_2/README.md) is **OSWorld-V2** — 108 capability-graded tasks, a separate benchmark from v1 with **float / partial-credit** scoring. **82 scored** by default (needs a host `OPENAI_API_KEY` for the ~18 LLM-judge tasks); **200-step** budget. Full service/exclusion details are in the [README](/lite/gym/envs/osworld_2/README.md).
