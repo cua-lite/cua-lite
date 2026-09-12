@@ -134,20 +134,24 @@ uv run python scripts/rollout.py \
   --log-root ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT"
 ```
 
-**Check the token budget on the first batch.** The rollout default is
-`max_new_tokens: 2048` (`lite/infer/serving.py`), and no ceiling has been measured for this
-teacher: with thinking on the reply carries the whole `<think>` body ahead of the action, a
-different and much longer distribution than `qwen3_8_27b`'s. A truncated reply is not silent
-— `lite/agents/core/agent/base.py` maps a `finish_reason` of `length` / `max_tokens` /
-`context_length_exceeded` to a truncated step — so check the first batch before collecting the
-rest. To raise it, extend the SAME `--agent-kwargs` object; it is one flag, so a second one
-would drop `enable_thinking` and silently collect Action-only rows:
+**Token budget: 3072 clears the measured ceiling.** The rollout default is
+`max_new_tokens: 2048` (`lite/infer/serving.py`), and with thinking on the reply carries the
+whole `<think>` body ahead of the action. Measured with the model's own tokenizer over the
+257,002 assistant turns of a full `rl` + `train` collection (17,539 trajectories): the longest
+whole reply was **2336 tokens**, **2** turns exceeded 2048, and **0** exceeded 3072. So the
+default truncates about one turn in 130,000 — rare, but silent in the aggregate — while 3072
+sits 24% above the observed maximum. Anything larger is headroom over a ceiling nothing
+approached. The reasoning body alone runs p50 1289 / p99 1923 characters with an
+8327-character tail; note that this content tokenizes at roughly 4.1 characters per token, so
+character counts overstate the budget if read as tokens. Lowering it is visible rather than
+silent: `lite/agents/core/agent/base.py` maps a `finish_reason` of `length` / `max_tokens` /
+`context_length_exceeded` to a truncated step. Extend the SAME `--agent-kwargs`
+object; it is one flag, so a second one would drop `enable_thinking` and silently collect
+Action-only rows:
 
 ```
---agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"max_new_tokens": 4096}}'
+--agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"max_new_tokens": 3072}}'
 ```
-
-Record whatever you settle on here, and drop this paragraph once it is measured.
 
 There is no `scripts/configs/qwen3_5/default/lite.scalecua.yaml`, for the same
 reason the Export section of the dataset runbook gives for `qwen3_5`:
@@ -183,3 +187,43 @@ wire format — so it carries no model-family branch and needs none.
 
 Review the `exclude_reason` tag counts and sample every tag class, plus a sample
 of clean (untagged) and terminal trajectories, before publishing.
+
+## Screen For Unpublishable Rows
+
+Run the shared pre-stage check on the annotated roots before handing them to the
+dataset runbook's §3:
+
+```bash
+uv run python devs/data/prestage_check.py \
+  --log-roots ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT/rl_annotated" \
+              ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT/train_annotated"
+```
+
+This teacher needs it and the other two do not. Measured on the full `rl` +
+`train` collection:
+**17 of 17,556 trajectories (0.1%)** carry a tool call whose ARGUMENTS violate the
+schema, while the same check over all 35,300 published `gpt5_5` and `qwen3_8_27b`
+rows found **zero**. Two shapes, both from thinking-on Qwen:
+
+- `terminate(status="fail")` — `status` is `enum ["success", "failure"]` (6 rows);
+- `hold_key` without its required `duration` (11 rows).
+
+`filter.py` does not catch them. Its four hard-drop classes check tool and action
+NAMES (an undeclared tool, an invented action); these are declared names with
+invalid arguments, so they pass the annotation pass and reach `stage`, which
+refuses the row and ends the run.
+
+The trajectories are not otherwise bad — the env rejected each malformed call
+visibly and the model corrected itself on the next turn:
+
+```
+[29] hold_key(keys=["ctrl"])
+     -> "## Error from previous action: invalid arguments for hold_key:
+         hold_key.duration is required"
+[33] hold_key(keys=["ctrl"], duration=0.1)
+```
+
+`stage` still refuses the whole row, because publication validates every call in
+the sequence and not just the ones the env accepted. Set the named trajectories
+aside (move the task directory out of the annotated root) and stage the rest;
+at 0.1% the loss is not worth a repair pass.

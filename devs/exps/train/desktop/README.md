@@ -519,11 +519,22 @@ three-knob confound the current profile set was reshaped to remove.
   either count, say so before reading their MER gap.
 ```
 
-Note what the reasoning row measures here: every trajectory's terminal turn is a bare
-`Done.` with no `reasoning_content`, so a `.reasoning` cell trains an empty `<think>` on its
-last step. That is one step per trajectory — **11.8%** of steps on the real 5000-row export
-(42427 steps, 8.49 per trajectory), not the ~29% a short-trajectory sample suggests. It is a
-property of the data, not of the config. Read the `<think>` effect with it in mind.
+Note what the reasoning row measures here, and that the answer is per teacher rather than
+per config. A `.reasoning` cell trains an empty `<think>` on any step whose turn carries no
+`reasoning_content`, and the only turn that can is the terminal one — which `filter.py`
+normalizes to a bare `Done.` when the teacher ended the episode with prose instead of a
+`terminate` call. How often that happens is a teacher's habit, and the two reasoning teachers
+sit at opposite ends of it:
+
+| teacher | terminal turn is content-only | empty `<think>` steps |
+|---|---:|---:|
+| `gpt5_5` | every trajectory | **11.8%** (42427 steps, 8.49 per trajectory) |
+| `qwen3_5_27b` | 9 of 600 sampled | **0.01%** (6 of 50956 steps, 10.19 per trajectory) |
+
+`qwen3_5_27b` ends 98.5% of its episodes with a real `terminate` tool call carrying non-empty
+reasoning, so its reasoning row pays almost none of this tax while `gpt5_5`'s pays one step per
+trajectory. Read each `<think>` effect against its own teacher's row with the teacher's own
+number in mind; do not carry `gpt5_5`'s 11.8% across the rows.
 
 ### RL
 
