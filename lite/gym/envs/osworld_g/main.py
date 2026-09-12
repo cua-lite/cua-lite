@@ -338,7 +338,6 @@ class OSWorldGEnv(LiteBaseEnv):
         action_errors: dict[str, ToolErrorFeedback] = dict(ingress_errors)
         unsupported_current_ids: set[str] = set()
         model_error_actions: list[LiteExecutedAction] = []
-        had_model_action_error = False
         executable_actions: list[EnvAction] = []
         inactive_action_ids: set[int] = set()
         unknown_action_ids: set[int] = set()
@@ -375,7 +374,6 @@ class OSWorldGEnv(LiteBaseEnv):
                 try:
                     self._extract_click([action])
                 except MODEL_ACTION_ERROR_TYPES as e:
-                    had_model_action_error = True
                     malformed_action_ids.add(id(action))
                     record_model_action_error(
                         action_errors, result_call_id, e, action_name=name
@@ -387,29 +385,10 @@ class OSWorldGEnv(LiteBaseEnv):
                     continue
             executable_actions.append(action)
 
-        # The reward scores the ANSWER -- a ``point``, or ``report_infeasible``
-        # on a refusal task. It is 0.0 when that answer is missing, ambiguous,
-        # or malformed, and ONLY then. Two inputs decide that, and the split
-        # between them is what the gate is FOR:
-        #
-        #   * a botched ATTEMPT TO ANSWER poisons the score. That is
-        #     ``had_model_action_error`` (a ``point`` whose coordinate would not
-        #     parse) and ``ingress_errors`` (a call rejected as an invalid
-        #     action for this task -- notably answering through the wrong
-        #     wrapper, ``computer(actions=[{"action": "point", ...}])``). Both
-        #     are the model reaching for the answer and missing, which makes the
-        #     surviving ``point`` one of SEVERAL attempts, not a lone answer.
-        #   * a rejected NON-ANSWER call does not. An unknown tool, or a
-        #     ``terminate`` this task never advertised, is reported to the model
-        #     as feedback and otherwise ignored. These pass ingress and are
-        #     caught in the loop above as inactive/unknown STANDALONE tools, so
-        #     they land in ``unsupported_reasons`` -- never in ``ingress_errors``.
-        #
-        # A model that answers ONLY with an unavailable tool still scores 0.0
-        # without a gate: the call never reaches ``executable_actions``, so
-        # ``_evaluate`` sees no answer.
-        answer_is_malformed = had_model_action_error or bool(ingress_errors)
-        reward = 0.0 if answer_is_malformed else self._evaluate(executable_actions)
+        # Feedback/logging still records malformed or rejected calls, but the
+        # benchmark score follows the first surviving well-formed answer. If no
+        # usable answer remains, ``_evaluate`` returns 0.0.
+        reward = self._evaluate(executable_actions)
         executed_actions: list[LiteExecutedAction] = []
         img_w, img_h = self._annotation["image_size"]
         for action, result_call_id in actions_with_result_ids:
@@ -489,28 +468,33 @@ class OSWorldGEnv(LiteBaseEnv):
     # -------------------------------------------------------------------
 
     def _evaluate(self, actions: list[EnvAction]) -> float:
-        """Score the single answer call against the annotation.
+        """Score the first usable answer call against the annotation.
 
-        EXACTLY ONE answer (``point``, or ``report_infeasible`` on a refusal
-        task) scores. Zero is no answer. Two or more is ambiguous, and taking
-        the first pays a model for hedging -- emitting several candidate clicks
-        and letting the grader find the hit turns a single-shot grounding
-        benchmark into a multiple-choice one. Both are 0.0.
+        The first well-formed ``point`` or ``report_infeasible`` answer scores.
+        Zero answer calls is no answer. Later answers are ignored so migration
+        results stay comparable with the original first-valid benchmark scoring
+        rule.
         """
         ann = self._annotation
         box_type = ann["box_type"]
-        answer_actions = [
-            action for action in actions
-            if action["name"] in {"point", "report_infeasible"}
-        ]
-        if len(answer_actions) != 1:
+        answer_action = next(
+            (
+                action for action in actions
+                if action["name"] in {"point", "report_infeasible"}
+            ),
+            None,
+        )
+        if answer_action is None:
             return 0.0
 
         if box_type == "refusal":
             # A refusal task scores 1.0 iff the model called report_infeasible.
-            return 1.0 if answer_actions[0]["name"] == "report_infeasible" else 0.0
+            return 1.0 if answer_action["name"] == "report_infeasible" else 0.0
 
-        click = self._extract_click(actions)
+        if answer_action["name"] == "report_infeasible":
+            return 0.0
+
+        click = self._extract_click([answer_action])
         if click is None:
             return 0.0
 
