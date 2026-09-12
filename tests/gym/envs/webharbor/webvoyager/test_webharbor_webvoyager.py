@@ -19,6 +19,8 @@ import asyncio
 import base64
 import io
 import os
+import re
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -1764,6 +1766,184 @@ def test_registered_manifest_source_is_webharbor():
     ids = gym.registry.task_ids("webharbor.webvoyager", split="eval")
     meta = gym.registry.task_metadata("webharbor.webvoyager", ids[0])
     assert meta.others["source"] == "webharbor"
+
+
+def test_docker_asset_fetch_is_pinned_and_scoped_to_pinned_sites(tmp_path):
+    docker_dir = _REPO_ROOT / "lite/gym/envs/webharbor/webvoyager/docker"
+    dockerfile = (docker_dir / "Dockerfile").read_text()
+    patch = (docker_dir / "patches/fetch_assets-no-same-owner.patch").read_text()
+
+    assert re.search(r"^ARG WEBHARBOR_ASSETS_REVISION=[0-9a-f]{40}$", dockerfile, re.M)
+    assert 'ASSETS_REVISION="${WEBHARBOR_ASSETS_REVISION}" ./scripts/fetch_assets.sh' in dockerfile
+    assert "find sites -mindepth 1 -maxdepth 1 -type d ! -name .cache | sort" in patch
+    assert 'INCLUDE_ARGS+=(--include "$site.tar.gz")' in patch
+
+    webharbor = tmp_path / "webharbor"
+    scripts = webharbor / "scripts"
+    scripts.mkdir(parents=True)
+    sites = webharbor / "sites"
+    for site in ("amazon", "apple"):
+        (sites / site).mkdir(parents=True)
+    (webharbor / ".assets-revision").write_text(
+        "repo: ChilleD/WebHarbor\nrevision: old-revision\n",
+        encoding="utf-8",
+    )
+    fetch_assets = scripts / "fetch_assets.sh"
+    fetch_assets.write_text(
+        """#!/usr/bin/env bash
+# Pull per-site asset tarballs from the Hugging Face dataset and extract
+# them into sites/.
+#
+# The dataset stores assets as <site>.tar.gz (one tarball per site) to
+# dodge the small-file tax that previously made `hf download` stall on
+# 4000+ tiny image files. Each tarball extracts back to
+# sites/<site>/{instance_seed,static/images,static/external_cache}.
+#
+# Usage:
+#   ./scripts/fetch_assets.sh                 # fetch all sites at pinned rev
+#   ./scripts/fetch_assets.sh google_search   # fetch one site only
+#   ASSETS_REVISION=abc123 ./scripts/fetch_assets.sh   # override pin
+#
+# Requires:
+#   - hf CLI  (pip install -U "huggingface_hub[cli]")
+#   - (optional) HF auth if the dataset becomes gated: hf auth login  (or set HF_TOKEN env)
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+REPO=$(awk '/^repo:/ {print $2}' .assets-revision)
+REVISION="${ASSETS_REVISION:-$(awk '/^revision:/ {print $2}' .assets-revision)}"
+ONLY_SITE="${1:-}"
+CACHE_DIR="sites/.cache/tarballs"
+
+if ! command -v hf >/dev/null 2>&1; then
+    echo "fetch_assets: 'hf' CLI not found. Install with: pip install -U \\"huggingface_hub[cli]\\"" >&2
+    exit 1
+fi
+
+mkdir -p "$CACHE_DIR"
+echo "[fetch] huggingface.co/datasets/$REPO @ $REVISION -> sites/"
+
+if [[ -n "$ONLY_SITE" ]]; then
+    INCLUDE="$ONLY_SITE.tar.gz"
+    echo "[fetch] scope: $ONLY_SITE only"
+else
+    INCLUDE="*.tar.gz"
+fi
+
+hf download "$REPO" --repo-type dataset --revision "$REVISION" \\
+    --include "$INCLUDE" --local-dir "$CACHE_DIR"
+
+shopt -s nullglob
+extracted=0
+for tarball in "$CACHE_DIR"/*.tar.gz; do
+    site=$(basename "$tarball" .tar.gz)
+    if [[ -n "$ONLY_SITE" && "$site" != "$ONLY_SITE" ]]; then continue; fi
+    echo "[fetch] extracting $site"
+    tar -xzf "$tarball" -C sites/
+    extracted=$((extracted + 1))
+done
+
+echo "[fetch] done — $extracted site(s) extracted into sites/"
+""",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["patch", "-p1"],
+        cwd=webharbor,
+        input=patch,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+    patched = fetch_assets.read_text()
+    assert 'INCLUDE="*.tar.gz"' not in patched
+    assert 'tar --no-same-owner -xzf "$tarball" -C sites/' in patched
+    subprocess.run(["bash", "-n", str(fetch_assets)], check=True)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    include_log = tmp_path / "hf-includes.txt"
+    fake_hf = fake_bin / "hf"
+    fake_hf.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" != "download" ]]; then
+    echo "fake hf only supports download" >&2
+    exit 2
+fi
+shift
+
+declare -a includes=()
+local_dir=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --include)
+            includes+=("$2")
+            shift 2
+            ;;
+        --local-dir)
+            local_dir="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+: "${local_dir:?}"
+: "${HF_INCLUDE_LOG:?}"
+mkdir -p "$local_dir"
+printf "%s\\n" "${includes[@]}" > "$HF_INCLUDE_LOG"
+
+for include in "${includes[@]}"; do
+    if [[ "$include" == ".cache.tar.gz" ]]; then
+        echo "cache dir must not be fetched as a site" >&2
+        exit 42
+    fi
+    site="${include%.tar.gz}"
+    tmp="$(mktemp -d)"
+    mkdir -p "$tmp/$site/instance_seed"
+    printf "seed\\n" > "$tmp/$site/instance_seed/seed.txt"
+    tar -czf "$local_dir/$include" -C "$tmp" "$site"
+    rm -rf "$tmp"
+done
+""",
+        encoding="utf-8",
+    )
+    fake_hf.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+    env["HF_INCLUDE_LOG"] = str(include_log)
+    env["ASSETS_REVISION"] = "0123456789abcdef0123456789abcdef01234567"
+
+    result = subprocess.run(
+        ["bash", str(fetch_assets)],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+
+    assert "scope: 2 site(s) declared by the pinned WebHarbor checkout" in result.stdout
+    assert include_log.read_text(encoding="utf-8").splitlines() == [
+        "amazon.tar.gz",
+        "apple.tar.gz",
+    ]
+    assert (sites / "amazon/instance_seed/seed.txt").is_file()
+    assert (sites / "apple/instance_seed/seed.txt").is_file()
+
+
+def test_task_manifest_generator_keeps_env_id_out_of_task_ids():
+    generator = (
+        _REPO_ROOT
+        / "lite/gym/envs/webharbor/webvoyager/scripts/utils/tasks.sh"
+    ).read_text()
+
+    assert 'task_id = f"{site_slug}.{slug(suffix)}"' in generator
+    assert "task_id = f\"webvoyager." not in generator
 
 
 def test_max_steps_from_constructor():
