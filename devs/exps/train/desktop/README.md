@@ -573,18 +573,19 @@ uv run python -m lite.train.export.export_tasks --env-id lite.osworld --split ev
 
 ```bash
 # --- Slime container ---
-# sync, 8 GPUs colocated, TP=2 (-> DP=4). No HF_CKPT: this starts from BASE weights, which is the
+# sync, 8 GPUs colocated, TP=4 (-> DP=2). No HF_CKPT: this starts from BASE weights, which is the
 # point -- starting from an SFT checkpoint answers a different question.
 W=/workspaces/cua-lite
 CELL=grpo.desktop.use.lowr.i4
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=2 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
   MODEL_ID=Qwen/Qwen3.5-4B \
   ENV_ID=lite.scalecua \
   PROMPT_DATA="$W/.data/rl/qwen3_5/desktop.use/scalecua.rl.parquet" \
   EVAL_PROMPT_DATA="$W/.data/rl/qwen3_5/desktop.use/osworld.eval128.parquet" \
   ENV_CONCURRENCY=64 \
   ROLLOUT_BATCH_SIZE=16 \
+  ROLLOUT_MAX_RESPONSE_LEN=2048 \
   CONFIG_PATH="$W/devs/exps/train/desktop/configs/qwen3_5/desktop.use.lowr.i4.yaml" \
   SAVE=1 SAVE_HF_DIR="$W/.ckpts/qwen3_5-4b/$CELL/iter_{rollout_id}" \
   WANDB_GROUP_SUFFIX=".$CELL" \
@@ -600,9 +601,41 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=2 \
   deliberate cost. The compact configs pin `history_n: 1` with the comment "reduced from the
   rollout default to save VRAM during training"; `lowr.i4` keeps 4 images and uncapped text
   history, and in RL both the rollout and the backward pass carry that length. It is the price of
-  scoring on the same surface as the SFT cells. If it OOMs, `TP_SIZE=4` before anything that
-  changes the prompt — a smaller `image_max` or `history_n` would make the run incomparable, which
-  defeats the reason for using this config at all.
+  scoring on the same surface as the SFT cells.
+- **`TP_SIZE=4`, not the 2 that SFT uses on the same 8 GPUs — measured, TP=2 OOMs here.** The
+  backward dies allocating the fp32 vocab-parallel logits: `(8448, 1, 124160)` = 3.91 GiB, where
+  124160 is `vocab_size 248320 / TP 2` and 8448 is one packed segment, with only 1.38 GiB free on
+  an 80 GB card. The parallelism is NOT what differs from SFT — `run_sft.sh` at `TP_SIZE=2 MBS=1`
+  on 8 GPUs is the same TP, the same MBS, the same DP=4, and the same `build_segment_samples`
+  packing (`lite/train/rollout/sft.py` says so in as many words). What differs is that RL is
+  colocated: 8 sglang engines hold `--sglang-mem-fraction-static 0.6` ≈ 47.5 GB per card for the
+  whole run, so training gets ~31 GB where SFT gets ~79 GB. TP=4 halves the vocab shard (logits
+  1.95 GiB) and the per-GPU weight/optimizer share. It costs DP 4 → 2 and roughly doubles the
+  train phase (measured 180s → 345s), but train is only ~35% of a step, so the step grows ~17% —
+  cheap against not running at all. Do NOT fix this by lowering `MEM_FRACTION` (that trades
+  sglang's KV cache for training memory and slows the phase that is already 65% of the step) and
+  do NOT touch `image_max` or `history_n` — a smaller prompt would make the run incomparable,
+  which defeats the reason for using this config at all. `ASYNC=1` is the only lever that would
+  make TP=2 viable again, by giving train and rollout their own cards.
+  This is a per-run override, not a launcher default: every GRPO example in
+  [README.md](/README.md) and [docs/grpo.md](/docs/grpo.md) runs on 1-2 GPUs and passes no
+  `TP_SIZE`, and `resolve_tp` hard-fails when TP does not divide `NUM_TRAIN_GPUS`, so a default of
+  4 would break all of them.
+- **`ROLLOUT_MAX_RESPONSE_LEN=2048` because `run_grpo.sh`'s 512 default is a real ceiling here.**
+  That default is sized for "short agentic turns are usually ~100 tokens" (run_grpo.sh:234).
+  Measured on this campaign's step-0 eval, base weights under `lowr.i4`: mean response 258 tokens,
+  max 710, and **35% of episodes hit the cap at least once** (per-turn `truncated_ratio` 0.069,
+  trajectory-level 0.352). A truncated turn is a turn the policy did not get to finish, so the cap
+  is a reward ceiling that RL cannot train past. It binds harder on the `.reasoning` arm, whose
+  `<think>` channel adds hundreds of tokens before the action ever appears — this cell is
+  Action-only, but the same launcher runs those, so the value is set here once.
+  This is a GENERATION budget, not a prompt change: it leaves `image_max` / `history_n` / the
+  rendered prompt untouched, so it does not affect comparability with the SFT column. It also does
+  not touch the final 328-task score, which goes through `scripts/rollout.py` and takes its
+  generation config from the yaml, not from this flag. What it DOES shift is the in-training
+  128-eval curve, so a step-0 taken at 2048 is not the same measurement as one taken at 512
+  (measured at 512: 0.2544, against the table's 0.2557 base). Keep the value fixed for the whole
+  run; changing it mid-run breaks the curve's own step-to-step pairing.
 - **Eval budget: 128 during training, 328 once at the end.** A rollout step is
   `ROLLOUT_BATCH_SIZE x N_SAMPLES_PER_PROMPT` = 128 trajectories, so an eval pass costs exactly
   one step and the default `EVAL_INTERVAL=5` puts it at 20% of training — cheap enough to leave
