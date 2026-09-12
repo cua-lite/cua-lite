@@ -213,6 +213,21 @@ class TestToolsSection:
         assert "name_for_human" not in schemas[0]["function"]
         assert "args_format" not in schemas[0]["function"]
 
+    def test_rendered_tools_section_has_evocua_reference_function_metadata(self):
+        adapter = AgentAdapterRegistry.get("evocua@desktop@use")
+        schemas = self._rendered_schemas(adapter)
+        assert schemas[0]["name"] == "computer_use"
+        assert schemas[0]["name_for_human"] == "computer_use"
+        assert schemas[0]["args_format"] == "Format the arguments as a JSON object."
+
+    def test_rendered_tools_section_does_not_mutate_canonical_action_schema(self):
+        adapter = AgentAdapterRegistry.get("evocua@desktop@use")
+        adapter._build_tools_section()
+
+        schemas = adapter.action_space.get_tool_schemas()
+        assert "name_for_human" not in schemas[0]["function"]
+        assert "args_format" not in schemas[0]["function"]
+
     def test_terminate_extra_schema_does_not_duplicate_native_finish_tool(self):
         adapter = EvoCUADesktopUseAdapter(
             metadata=LiteCUAMetadata(
@@ -221,6 +236,8 @@ class TestToolsSection:
         )
         schemas = self._rendered_schemas(adapter)
         assert [s["name"] for s in schemas] == ["computer_use"]
+        assert schemas[0]["name_for_human"] == "computer_use"
+        assert schemas[0]["args_format"] == "Format the arguments as a JSON object."
         enum = schemas[0]["parameters"]["properties"]["action"]["enum"]
         assert "terminate" in enum
         rendered = adapter._tool_calls_to_agent_ordered(
