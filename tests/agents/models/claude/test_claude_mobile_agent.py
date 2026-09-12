@@ -1005,6 +1005,93 @@ class TestSampleLoopMobilePath:
         assert "terminate" not in sys_content
         assert "response" not in sys_content
 
+    async def test_finish_extra_tools_restore_mobile_completion_guidance(self, monkeypatch):
+        mock = AsyncMock(return_value=_fake_mobile_response())
+        monkeypatch.setattr("litellm.acompletion", mock)
+
+        metadata = LiteCUAMetadata(extra_tool_schemas=[
+            LiteFinishToolSet.get_tool_schema("response"),
+            LiteFinishToolSet.get_tool_schema("terminate"),
+        ])
+        agent = ClaudeMobileUseAgent(metadata=metadata)
+        await agent.sample(_FakeMobileEnv(terminate_after=1), max_steps=3)
+
+        messages = mock.call_args.kwargs["messages"]
+        sys_msgs = [m for m in messages if m.get("role") == "system"]
+        assert sys_msgs
+        assert (
+            "When the task is done, call `terminate` "
+            "(use `response` to return an answer the task asks for)."
+        ) in str(sys_msgs[0]["content"])
+
+    async def test_custom_system_prompt_is_augmented_by_finish_tools(self, monkeypatch):
+        mock = AsyncMock(return_value=_fake_mobile_response())
+        monkeypatch.setattr("litellm.acompletion", mock)
+
+        metadata = LiteCUAMetadata(extra_tool_schemas=[
+            LiteFinishToolSet.get_tool_schema("response"),
+            LiteFinishToolSet.get_tool_schema("terminate"),
+        ])
+        agent = ClaudeMobileUseAgent(
+            metadata=metadata,
+            system_prompt="CUSTOM {w}x{h}",
+            system_prompt_suffix="APPENDED",
+        )
+        await agent.sample(_FakeMobileEnv(terminate_after=1), max_steps=3)
+
+        messages = mock.call_args.kwargs["messages"]
+        sys_msgs = [m for m in messages if m.get("role") == "system"]
+        assert sys_msgs
+        sent_w, sent_h = _sent_image_size(messages)
+        content_blocks = sys_msgs[0]["content"]
+        assert isinstance(content_blocks, list)
+        text = "".join(
+            block["text"]
+            for block in content_blocks
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+        assert text.startswith(f"CUSTOM {sent_w}x{sent_h}\nAPPENDED")
+        assert "\n\nWhen the task is done, call `terminate`" in text
+        assert "use `response` to return an answer" in text
+
+    async def test_mobile_completion_guidance_matches_active_finish_surface(self, monkeypatch):
+        async def first_prompt_for(*schema_names: str) -> str:
+            mock = AsyncMock(return_value=_fake_mobile_response())
+            monkeypatch.setattr("litellm.acompletion", mock)
+            metadata = LiteCUAMetadata(extra_tool_schemas=[
+                LiteFinishToolSet.get_tool_schema(name) for name in schema_names
+            ])
+            await ClaudeMobileUseAgent(metadata=metadata).sample(
+                _FakeMobileEnv(terminate_after=1), max_steps=3
+            )
+            messages = mock.call_args.kwargs["messages"]
+            sys_msgs = [m for m in messages if m.get("role") == "system"]
+            return str(sys_msgs[0]["content"])
+
+        response_only = await first_prompt_for("response")
+        assert "call `response`" in response_only
+        assert "call `terminate`" not in response_only
+
+        terminate_only = await first_prompt_for("terminate")
+        assert "When the task is done, call `terminate`." in terminate_only
+        assert "call `response`" not in terminate_only
+
+    async def test_finish_guidance_stands_alone_without_base_system_prompt(self, monkeypatch):
+        mock = AsyncMock(return_value=_fake_mobile_response())
+        monkeypatch.setattr("litellm.acompletion", mock)
+
+        metadata = LiteCUAMetadata(extra_tool_schemas=[
+            LiteFinishToolSet.get_tool_schema("terminate")
+        ])
+        agent = ClaudeMobileUseAgent(metadata=metadata, system_prompt=None)
+        await agent.sample(_FakeMobileEnv(terminate_after=1), max_steps=3)
+
+        messages = mock.call_args.kwargs["messages"]
+        sys_msgs = [m for m in messages if m.get("role") == "system"]
+        assert sys_msgs
+        assert "When the task is done, call `terminate`." in str(sys_msgs[0]["content"])
+        assert "mobile device" not in str(sys_msgs[0]["content"])
+
     async def test_tap_coords_from_resized_frame_scale_to_original(self, monkeypatch):
         """Model pixel coords are relative to the frame sent to Claude."""
         # FakeMobileEnv renders 1080x2400. Claude receives the largest
