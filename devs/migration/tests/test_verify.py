@@ -15,6 +15,7 @@ from lite.core.tools.calls import (
     tool_call_id,
     tool_call_name,
 )
+from lite.core.tools.results import project_tool_result_text
 from lite.core.tools.schemas import make_tool_schema, tool_schema_name
 from lite.data.utils.rows import validate_canonical_rows
 
@@ -418,6 +419,38 @@ def test_verify_rejects_standalone_extra_call_without_matching_schema(name: str)
     )
 
     with pytest.raises(verify.VerificationError, match="missing from metadata.extra_tool_schemas"):
+        verify.verify_lite_sample(sample)
+
+
+def test_verify_rejects_extra_tool_invalid_arguments_even_with_error_feedback():
+    verify = _load_migration_module("verify.py")
+    schema = make_tool_schema(
+        "search",
+        parameters={
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+    )
+    sample = _canonical_sample(
+        [{"call_id": "call_0000", "name": "search", "arguments": {"query": 3}}],
+        [
+            _tool_result(
+                "call_0000",
+                [{
+                    "type": "text",
+                    "text": project_tool_result_text(
+                        "current observation",
+                        "invalid arguments for search: search.arguments.query must be a string",
+                    ),
+                }],
+            )
+        ],
+        extra_tool_schemas=[schema],
+        platform="browser",
+    )
+
+    with pytest.raises(verify.VerificationError, match="arguments do not match"):
         verify.verify_lite_sample(sample)
 
 
