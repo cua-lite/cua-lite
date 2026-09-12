@@ -102,6 +102,7 @@ _POST_ACTION_DELAY = CFG.env_kwargs["post_action_delay"]
 _VIEWPORT = tuple(CFG.env_kwargs["viewport"])
 _FIX_BOX_COLOR = CFG.env_kwargs["fix_box_color"]
 _USE_SOM = CFG.env_kwargs["use_som"]
+_INCLUDE_PAGE_CONTEXT_TEXT = bool(CFG.env_kwargs["include_page_context_text"])
 _VALID_ACTIONS = resolve_valid_actions(
     CFG.env_kwargs["valid_actions"], env_name="webharbor.webvoyager", platform="browser",
 )
@@ -412,7 +413,15 @@ def _strip_web_text_coords(text: str) -> str:
     return _WEB_TEXT_COORD_RE.sub("", text)
 
 
-def _web_observation_text(resp: dict[str, Any], *, strip_coords: bool) -> str:
+def _web_observation_text(
+    resp: dict[str, Any],
+    *,
+    strip_coords: bool,
+    include_page_context_text: bool,
+) -> str:
+    if not include_page_context_text:
+        return ""
+
     web_text = str(resp.get("web_text") or "")
     if strip_coords:
         web_text = _strip_web_text_coords(web_text)
@@ -429,7 +438,14 @@ def _web_observation_text(resp: dict[str, Any], *, strip_coords: bool) -> str:
     return "\n".join(parts)
 
 
-def _web_rejection_feedback_text(resp: dict[str, Any], web_text: str) -> str:
+def _web_rejection_feedback_text(
+    resp: dict[str, Any],
+    web_text: str,
+    *,
+    include_page_context_text: bool,
+) -> str | None:
+    if not include_page_context_text:
+        return None
     if web_text:
         return web_text
     parts: list[str] = []
@@ -609,6 +625,7 @@ class RemoteWebVoyagerEnv(LiteBaseEnv):
         viewport: tuple[int, int] = _VIEWPORT,
         fix_box_color: bool = _FIX_BOX_COLOR,
         use_som: bool = _USE_SOM,
+        include_page_context_text: bool = _INCLUDE_PAGE_CONTEXT_TEXT,
         valid_actions: list[str] | None = _VALID_ACTIONS,
         extra_tools: list[str] | None = _EXTRA_TOOLS,
         eval_config: dict[str, Any] | None = None,
@@ -627,6 +644,7 @@ class RemoteWebVoyagerEnv(LiteBaseEnv):
         self._viewport = tuple(viewport)
         self._fix_box_color = fix_box_color
         self._use_som = use_som
+        self._include_page_context_text = include_page_context_text
         self._rpc_url = os.environ.get("WEBHARBOR_WEBVOYAGER_RPC_URL") or _RPC_URL
         self._instance_id: str | None = None
         # Unconditional assignment: the signature default (yaml-sourced) is
@@ -889,19 +907,33 @@ class RemoteWebVoyagerEnv(LiteBaseEnv):
         png = await png_from_b64_async(resp.get("screenshot_b64"))
         if png:
             self._screenshots.append(png)
-        web_text = _web_observation_text(resp, strip_coords=self._strip_web_text_coords)
+        raw_web_text = str(resp.get("web_text") or "")
+        web_text = _web_observation_text(
+            resp,
+            strip_coords=self._strip_web_text_coords,
+            include_page_context_text=self._include_page_context_text,
+        )
         metadata = {
             "url": resp.get("url", ""),
             "title": resp.get("title", ""),
-            "web_text": web_text,
+            "web_text": raw_web_text,
         }
+        if web_text:
+            metadata["model_web_text"] = web_text
         self._last_observation_image = png
-        self._last_observation_text = _web_rejection_feedback_text(resp, web_text)
+        self._last_observation_text = _web_rejection_feedback_text(
+            resp,
+            web_text,
+            include_page_context_text=self._include_page_context_text,
+        )
         self._last_observation_metadata = {
             "url": resp.get("url", ""),
             "title": resp.get("title", ""),
+            "web_text": raw_web_text,
             "downloads": [],
         }
+        if web_text:
+            self._last_observation_metadata["model_web_text"] = web_text
 
         return LiteEnvObservation(
             image=png,
@@ -1131,14 +1163,26 @@ class RemoteWebVoyagerEnv(LiteBaseEnv):
         if terminated or truncated:
             reward, eval_info = await self._evaluate()
 
-        web_text = _web_observation_text(resp, strip_coords=self._strip_web_text_coords)
+        raw_web_text = str(resp.get("web_text") or "")
+        web_text = _web_observation_text(
+            resp,
+            strip_coords=self._strip_web_text_coords,
+            include_page_context_text=self._include_page_context_text,
+        )
         obs_metadata = {
             "url": resp.get("url", ""),
             "title": resp.get("title", ""),
+            "web_text": raw_web_text,
             "downloads": resp.get("downloads", []),
         }
+        if web_text:
+            obs_metadata["model_web_text"] = web_text
         self._last_observation_image = png
-        self._last_observation_text = _web_rejection_feedback_text(resp, web_text)
+        self._last_observation_text = _web_rejection_feedback_text(
+            resp,
+            web_text,
+            include_page_context_text=self._include_page_context_text,
+        )
         self._last_observation_metadata = obs_metadata
         # Action failures are PER-CALL feedback, not page context: splicing them
         # into the shared web_text blob sent them to every call of the turn, so
@@ -1173,7 +1217,11 @@ class RemoteWebVoyagerEnv(LiteBaseEnv):
                 if call_id not in terminal_call_ids
             ],
             images=pngs,
-            text=_web_rejection_feedback_text(resp, web_text),
+            text=_web_rejection_feedback_text(
+                resp,
+                web_text,
+                include_page_context_text=self._include_page_context_text,
+            ),
             metadata=obs_metadata,
             feedback=action_errors,
         )

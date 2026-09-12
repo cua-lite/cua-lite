@@ -95,6 +95,21 @@ _SAMPLE_TASK = {
     "web_name": "Allrecipes",
     "source": "webharbor",  # matches the real committed manifest (NOT "webharbor.webvoyager")
 }
+_RESET_WEB_TEXT = '[0]: <a> "Recipes" @ (100, 50);\t[1]: <input> "Search" @ (500, 60);'
+_STEP_WEB_TEXT = '[0]: <a> "Recipes" @ (100, 50);'
+_RESET_MODEL_WEB_TEXT = (
+    f"CURRENT URL: https://www.allrecipes.com/\nPAGE TITLE: Allrecipes\nDOM:\n{_RESET_WEB_TEXT}"
+)
+_STEP_MODEL_WEB_TEXT = (
+    "CURRENT URL: https://www.allrecipes.com/search/\n"
+    "PAGE TITLE: Allrecipes Search\n"
+    f"DOM:\n{_STEP_WEB_TEXT}"
+)
+_RESET_SOM_MODEL_WEB_TEXT = (
+    "CURRENT URL: https://www.allrecipes.com/\n"
+    "PAGE TITLE: Allrecipes\n"
+    'DOM:\n[0]: <a> "Recipes";\t[1]: <input> "Search";'
+)
 
 
 def _reset_resp(instance_id: str = "iid-abc123") -> dict:
@@ -102,7 +117,7 @@ def _reset_resp(instance_id: str = "iid-abc123") -> dict:
         "instance_id": instance_id,
         "screenshot_b64": _PNG_B64,
         "instruction": _SAMPLE_TASK["instruction"],
-        "web_text": '[0]: <a> "Recipes" @ (100, 50);\t[1]: <input> "Search" @ (500, 60);',
+        "web_text": _RESET_WEB_TEXT,
         "url": "https://www.allrecipes.com/",
         "title": "Allrecipes",
         "max_steps": 15,
@@ -120,7 +135,7 @@ def _step_resp(
         "executed": [{"call": "click", "args": {"coordinate": [500, 300]}}],
         "errors": [],
         "downloads": [],
-        "web_text": '[0]: <a> "Recipes" @ (100, 50);',
+        "web_text": _STEP_WEB_TEXT,
         "url": "https://www.allrecipes.com/search/",
         "title": "Allrecipes Search",
         "answer": answer,
@@ -149,6 +164,7 @@ def _make_env(
     skip_eval: bool = True,
     eval_config: dict | None = None,
     cursor: bool = True,
+    include_page_context_text: bool = True,
 ) -> RemoteWebVoyagerEnv:
     os.environ.setdefault("WEBHARBOR_WEBVOYAGER_RPC_URL", "http://localhost:7800")
     return RemoteWebVoyagerEnv(
@@ -160,7 +176,26 @@ def _make_env(
         skip_eval=skip_eval,
         eval_config=eval_config,
         cursor=cursor,
+        include_page_context_text=include_page_context_text,
     )
+
+
+def test_webvoyager_default_disables_page_context_text():
+    import inspect
+
+    import lite.gym.envs.webharbor.webvoyager.main as m
+
+    default = (
+        inspect.signature(
+            m.RemoteWebVoyagerEnv.__init__,
+        )
+        .parameters["include_page_context_text"]
+        .default
+    )
+
+    assert m.CFG.env_kwargs["include_page_context_text"] is False
+    assert m._INCLUDE_PAGE_CONTEXT_TEXT is False
+    assert default is False
 
 
 def test_container_services_launches_with_freshness_gated_image(monkeypatch):
@@ -241,7 +276,57 @@ async def test_reset_populates_observation_fields():
     assert obs.text == _SAMPLE_TASK["instruction"]
     assert obs.metadata["url"] == "https://www.allrecipes.com/"
     assert obs.metadata["title"] == "Allrecipes"
-    assert "web_text" in obs.metadata
+    assert obs.metadata["web_text"] == _RESET_WEB_TEXT
+    assert obs.metadata["model_web_text"] == _RESET_MODEL_WEB_TEXT
+    await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_text_can_be_disabled_without_losing_screenshot():
+    env = _make_env(include_page_context_text=False)
+    env._post = MagicMock(side_effect=_route)
+
+    obs = await env.reset()
+    r = await env.step([_call("click", {"coordinate": [500, 300]}, call_id="call-click")])
+
+    assert obs.text == _SAMPLE_TASK["instruction"]
+    assert obs.metadata["web_text"] == _RESET_WEB_TEXT
+    result = r.results[0]
+    assert result.tool_call_id == "call-click"
+    assert result.images[-1] == _PNG
+    assert result.text is None
+    assert result.error is None
+    assert result.metadata == {
+        "url": "https://www.allrecipes.com/search/",
+        "title": "Allrecipes Search",
+        "web_text": _STEP_WEB_TEXT,
+        "downloads": [],
+    }
+    await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_text_disabled_keeps_current_action_error():
+    env = _make_env(include_page_context_text=False)
+    env._post = MagicMock(side_effect=_route)
+
+    await env.reset()
+    r = await env.step([_raw_call("click", ["bad"], call_id="call-bad-click")])
+
+    result = r.results[0]
+    assert result.tool_call_id == "call-bad-click"
+    assert result.images[-1] == _PNG
+    assert result.text is None
+    assert result.error == (
+        "invalid tool call: tool_call.function.arguments must be an object, got list"
+    )
+    assert result.metadata == {
+        "url": "https://www.allrecipes.com/",
+        "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "downloads": [],
+        "is_error": True,
+    }
     await env.close()
 
 
@@ -527,6 +612,7 @@ async def test_click_scroll_same_names_route_by_argument_shape():
         extra_tools=["click", "scroll"],
         valid_actions=["click", "scroll"],
         skip_eval=True,
+        include_page_context_text=True,
     )
     captured: list[dict] = []
 
@@ -576,6 +662,12 @@ async def test_click_scroll_same_names_route_by_argument_shape():
         assert tool_result.metadata == {
             "url": "https://www.allrecipes.com/results/",
             "title": "Results",
+            "web_text": '[7]: <button> "Continue" @ (222, 333);',
+            "model_web_text": (
+                "CURRENT URL: https://www.allrecipes.com/results/\n"
+                "PAGE TITLE: Results\n"
+                'DOM:\n[7]: <button> "Continue" @ (222, 333);'
+            ),
             "downloads": [],
         }
 
@@ -591,6 +683,7 @@ async def test_som_mode_rejects_coordinate_shapes_but_sends_index_shapes():
         valid_actions=[],
         use_som=True,
         skip_eval=True,
+        include_page_context_text=True,
     )
     captured: list[dict] = []
 
@@ -642,6 +735,13 @@ async def test_som_mode_rejects_coordinate_shapes_but_sends_index_shapes():
         assert tool_result.images[-1] == _STEP_PNG
         assert 'DOM:\n[8]: <button> "Marked";' in (tool_result.text or "")
         assert "@ (" not in (tool_result.text or "")
+        assert tool_result.metadata["web_text"] == '[8]: <button> "Marked" @ (444, 555);'
+        assert tool_result.metadata["model_web_text"] == (
+            "CURRENT URL: https://www.allrecipes.com/marked/\n"
+            "PAGE TITLE: Marked\n"
+            'DOM:\n[8]: <button> "Marked";'
+        )
+        assert "@ (" not in tool_result.metadata["model_web_text"]
 
 
 @pytest.mark.asyncio
@@ -654,6 +754,7 @@ async def test_malformed_som_same_name_shapes_return_current_feedback_without_rp
         extra_tools=["click", "scroll"],
         valid_actions=["click", "scroll"],
         skip_eval=True,
+        include_page_context_text=True,
     )
     captured: list[dict] = []
 
@@ -694,6 +795,8 @@ async def test_malformed_som_same_name_shapes_return_current_feedback_without_rp
         assert tool_result.metadata == {
             "url": "https://www.allrecipes.com/",
             "title": "Allrecipes",
+            "web_text": _RESET_WEB_TEXT,
+            "model_web_text": _RESET_MODEL_WEB_TEXT,
             "downloads": [],
             "is_error": True,
         }
@@ -838,6 +941,8 @@ async def test_done_boundary_alias_is_unsupported_without_public_schema():
     assert r.results[0].metadata == {
         "url": "https://www.allrecipes.com/",
         "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "model_web_text": _RESET_MODEL_WEB_TEXT,
         "downloads": [],
         "is_error": True,
     }
@@ -989,6 +1094,98 @@ async def test_action_error_pairs_to_originating_call_id():
     assert "element not interactable" in by_id["call-b"].error
     assert r.info["errors"] == ["type: element not interactable"]
     await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_disabled_preserves_container_action_error():
+    env = _make_env(include_page_context_text=False)
+
+    def _with_error(path: str, body: dict) -> dict:
+        if path == "/step":
+            resp = _step_resp()
+            resp["errors"] = ["click: stale element"]
+            resp["action_errors"] = [
+                _container_action_error_record(
+                    0,
+                    "click",
+                    "stale element",
+                )
+            ]
+            return resp
+        return _route(path, body)
+
+    env._post = MagicMock(side_effect=_with_error)
+    await env.reset()
+
+    r = await env.step(
+        [
+            _call(
+                "computer",
+                {"actions": [{"action": "click", "coordinate": [500, 300]}]},
+                call_id="call-click",
+            ),
+        ]
+    )
+
+    result = r.results[0]
+    assert result.tool_call_id == "call-click"
+    assert result.images[-1] == _PNG
+    assert result.text is None
+    assert result.error == "invalid arguments for click: stale element"
+    assert result.metadata == {
+        "url": "https://www.allrecipes.com/search/",
+        "title": "Allrecipes Search",
+        "web_text": _STEP_WEB_TEXT,
+        "downloads": [],
+        "is_error": True,
+    }
+    assert r.info["errors"] == ["click: stale element"]
+    await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_disabled_hides_current_context_on_valid_action_rejection():
+    env = _make_env(
+        include_page_context_text=False,
+        max_steps=10,
+        extra_tools=["back", "response"],
+    )
+    paths: list[str] = []
+
+    def _capture(path: str, body: dict) -> dict:
+        paths.append(path)
+        if path == "/step":
+            raise AssertionError("rejected action should not POST /step")
+        return _route(path, body)
+
+    env._post = MagicMock(side_effect=_capture)
+
+    await env.reset()
+    r = await env.step(
+        [
+            _call(
+                "computer",
+                {"actions": [{"action": "screenshot"}]},
+                call_id="call-screenshot",
+            ),
+        ]
+    )
+    await env.close()
+
+    assert paths == ["/reset", "/close"]
+    assert len(r.results) == 1
+    result = r.results[0]
+    assert result.tool_call_id == "call-screenshot"
+    assert result.images[-1] == _PNG
+    assert result.text is None
+    assert result.error == "invalid action: screenshot; choose an available action for this task"
+    assert result.metadata == {
+        "url": "https://www.allrecipes.com/",
+        "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "downloads": [],
+        "is_error": True,
+    }
 
 
 def test_action_error_pairing_uses_record_name_not_action_fallback():
@@ -1295,6 +1492,8 @@ async def test_malformed_tool_call_with_call_id_returns_current_feedback():
     assert result.metadata == {
         "url": "https://www.allrecipes.com/",
         "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "model_web_text": _RESET_MODEL_WEB_TEXT,
         "downloads": [],
         "is_error": True,
     }
@@ -1361,6 +1560,8 @@ async def test_validation_only_malformed_known_action_skips_the_remote_but_consu
     assert result.metadata == {
         "url": "https://www.allrecipes.com/",
         "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "model_web_text": _RESET_MODEL_WEB_TEXT,
         "downloads": [],
         "is_error": True,
     }
@@ -1910,6 +2111,7 @@ async def test_valid_actions_rejection_keeps_current_observation_feedback():
         extra_tools=["click", "input", "scroll", "go_back", "response"],
         valid_actions=[],
         skip_eval=True,
+        include_page_context_text=True,
     )
     paths: list[str] = []
 
@@ -1942,6 +2144,8 @@ async def test_valid_actions_rejection_keeps_current_observation_feedback():
     assert tool_result.metadata == {
         "url": "https://www.allrecipes.com/",
         "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "model_web_text": _RESET_SOM_MODEL_WEB_TEXT,
         "downloads": [],
         "is_error": True,
     }
@@ -1957,6 +2161,7 @@ async def test_valid_actions_rejection_keeps_separate_error_when_page_text_empty
         extra_tools=["click", "input", "scroll", "go_back", "response"],
         valid_actions=[],
         skip_eval=True,
+        include_page_context_text=True,
     )
 
     def _blank_page(path: str, body: dict) -> dict:
@@ -1991,6 +2196,7 @@ async def test_valid_actions_rejection_keeps_separate_error_when_page_text_empty
     assert tool_result.metadata == {
         "url": "",
         "title": "",
+        "web_text": "",
         "downloads": [],
         "is_error": True,
     }
@@ -2704,7 +2910,10 @@ def test_container_type_with_nothing_focused_matches_the_focused_branch(monkeypa
     assert guarded == [True], "a navigation wipes the reset-time guard; reinstall it"
     assert slept == [10], "a submit navigates and needs the long settle"
 
-    sent.clear(); performed.clear(); guarded.clear(); slept.clear()
+    sent.clear()
+    performed.clear()
+    guarded.clear()
+    slept.clear()
     server._execute_action(inst, "type", {"text": "query"})
     assert sent == ["query"], "a plain type must not submit"
     assert performed == [("query",)]

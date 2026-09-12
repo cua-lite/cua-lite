@@ -717,6 +717,28 @@ async def test_configless_registered_miniwob_metadata_matches_the_live_env():
         await env.close()
 
 
+def test_browsergym_catalog_declares_page_context_toggle():
+    import lite.gym as gym
+
+    try:
+        supported = gym.registry.env_supported_kwargs("browsergym.miniwob")
+    except Exception as exc:
+        pytest.skip(f"browsergym.miniwob unavailable: {exc}")
+
+    assert "include_page_context_text" in supported
+
+
+def test_browsergym_default_disables_page_context_text():
+    import lite.gym.envs.browsergym.main as m
+
+    assert m.CFG.env_kwargs["include_page_context_text"] is False
+    assert m._INCLUDE_PAGE_CONTEXT_TEXT is False
+    assert BrowserGymConfig(
+        bgym_task_id="miniwob.click-dialog",
+        benchmark="miniwob",
+    ).include_page_context_text is False
+
+
 @pytest.mark.asyncio
 async def test_metadata_overrides_via_action_subsets():
     """yaml-style override: action_subsets=['webarena'] should re-derive tools at
@@ -1107,8 +1129,15 @@ async def test_known_unsupported_mobile_action_keeps_current_carrier(
         assert r.results[0].tool_call_id == "call_mobile"
         assert r.results[0].error == f"unsupported action: {name}"
         assert r.results[0].text
+        assert "BrowserGym Fake" not in r.results[0].text
+        assert "http://browsergym.fake/" not in r.results[0].text
         assert r.results[0].images == []
-        assert r.results[0].metadata == {"is_error": True}
+        assert r.results[0].metadata == {
+            "open_pages_urls": ["http://browsergym.fake/"],
+            "open_pages_titles": ["BrowserGym Fake"],
+            "active_page_index": 0,
+            "is_error": True,
+        }
         env._execute_bgym_action.assert_not_awaited()
     finally:
         await env.close()
@@ -1250,6 +1279,54 @@ async def test_backend_last_action_error_sets_tool_result_error():
         assert TOOL_RESULT_ERROR_SECTION_HEADER not in r.results[0].text
         assert "timeout exceeded" not in r.results[0].text
         assert r.results[0].metadata == {"is_error": True}
+    finally:
+        await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_disabled_keeps_backend_action_error_without_page_text():
+    env = _make_fake(
+        max_steps=50,
+        include_page_context_text=False,
+        use_screenshot=True,
+        use_ax_tree=True,
+        use_html=True,
+    )
+    screenshot = _png_bytes(5, 5, (0, 0, 255))
+    try:
+        await env.reset()
+        env._execute_bgym_action = AsyncMock(
+            return_value={
+                **_fake_bgym_step_obs(
+                    screenshot=screenshot,
+                    url="https://metadata-leak.test/",
+                ),
+                "open_pages_titles": ("Metadata Leak",),
+                "last_action_error": "timeout exceeded",
+            }
+        )
+
+        r = await env.step(
+            [
+                make_tool_call(
+                    "computer",
+                    {"actions": [{"action": "click", "coordinate": [500, 500]}]},
+                    call_id="call_action",
+                ),
+            ]
+        )
+
+        result = r.results[0]
+        assert result.tool_call_id == "call_action"
+        assert result.images[-1] == env._overlay_cursor(screenshot)
+        assert result.text is None
+        assert result.error == "click failed: execution failed"
+        assert result.metadata == {
+            "open_pages_urls": ["https://metadata-leak.test/"],
+            "open_pages_titles": ["Metadata Leak"],
+            "active_page_index": 0,
+            "is_error": True,
+        }
     finally:
         await env.close()
 
@@ -1570,6 +1647,7 @@ async def test_noncanonical_tool_names_return_unsupported_without_submitting(
     config = BrowserGymConfig(
         bgym_task_id="miniwob.click-dialog",
         benchmark="miniwob",
+        include_page_context_text=True,
         use_screenshot=False,
     )
     env = BrowserGymEnv(config=config, use_fake=True, extra_tools=["response", "terminate"])
@@ -1597,6 +1675,61 @@ async def test_noncanonical_tool_names_return_unsupported_without_submitting(
         env._execute_bgym_action.assert_not_awaited()
         schema_names_after = {tool_schema_name(s) for s in env.metadata.extra_tool_schemas}
         assert schema_names_after == schema_names
+    finally:
+        await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_disabled_keeps_unsupported_tool_error_without_page_text():
+    config = BrowserGymConfig(
+        bgym_task_id="miniwob.click-dialog",
+        benchmark="miniwob",
+        include_page_context_text=False,
+    )
+    env = BrowserGymEnv(config=config, use_fake=True, extra_tools=["response", "terminate"])
+    try:
+        await env.reset()
+        env._execute_bgym_action = AsyncMock()
+
+        r = await env.step(
+            [
+                make_tool_call("tab_focus", {"index": 0}, call_id="call-tab-focus"),
+            ]
+        )
+
+        result = r.results[0]
+        assert result.tool_call_id == "call-tab-focus"
+        assert result.images
+        assert result.text is None
+        assert result.error == "tab_focus is not available in this task."
+        assert result.metadata == {
+            "open_pages_urls": ["http://browsergym.fake/"],
+            "open_pages_titles": ["BrowserGym Fake"],
+            "active_page_index": 0,
+            "is_error": True,
+        }
+        env._execute_bgym_action.assert_not_awaited()
+    finally:
+        await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_disabled_keeps_page_context_in_reset_metadata():
+    config = BrowserGymConfig(
+        bgym_task_id="miniwob.click-dialog",
+        benchmark="miniwob",
+        include_page_context_text=False,
+    )
+    env = BrowserGymEnv(config=config, use_fake=True)
+    try:
+        obs = await env.reset()
+
+        assert obs.text == "Fake task instruction for testing"
+        assert obs.metadata == {
+            "open_pages_urls": ["http://browsergym.fake/"],
+            "open_pages_titles": ["BrowserGym Fake"],
+            "active_page_index": 0,
+        }
     finally:
         await env.close()
 
@@ -1727,8 +1860,46 @@ class TestBuildObsText:
         out = env._build_obs_text({}, prefix="hello")
         assert out == "hello"
 
+    def test_page_context_disabled_keeps_prefix_only(self):
+        env = _make_fake(
+            include_page_context_text=False,
+            use_ax_tree=True,
+            use_html=True,
+            use_focused_element=True,
+        )
+        obs = {
+            "open_pages_urls": ["https://example.com/"],
+            "open_pages_titles": ["Example"],
+            "active_page_index": [0],
+            "url": "https://example.com/",
+            "focused_element_bid": "a47",
+            "axtree_object": {"role": "RootWebArea", "name": "root", "nodeId": "1"},
+            "dom_object": {"any": "html"},
+            "extra_element_properties": {},
+        }
+        with (
+            patch("browsergym.utils.obs.flatten_axtree_to_str") as ax_fn,
+            patch("browsergym.utils.obs.flatten_dom_to_str") as html_fn,
+        ):
+            out = env._build_obs_text(obs, prefix="goal text")
+            no_prefix = env._build_obs_text(obs, prefix=None)
+
+        assert out == "goal text"
+        assert no_prefix is None
+        assert not ax_fn.called
+        assert not html_fn.called
+
+        metadata = env._build_page_context_metadata(obs)
+        assert metadata == {
+            "open_pages_urls": ["https://example.com/"],
+            "open_pages_titles": ["Example"],
+            "active_page_index": 0,
+            "url": "https://example.com/",
+            "focused_element_bid": "a47",
+        }
+
     def test_focused_element_inline(self):
-        env = _make_fake(use_focused_element=True)
+        env = _make_fake(include_page_context_text=True, use_focused_element=True)
         out = env._build_obs_text({"focused_element_bid": "a47"}, prefix=None)
         assert out is not None
         assert "## Focused element:" in out
@@ -1741,13 +1912,13 @@ class TestBuildObsText:
         assert out is None
 
     def test_focused_element_no_bid(self):
-        env = _make_fake(use_focused_element=True)
+        env = _make_fake(include_page_context_text=True, use_focused_element=True)
         out = env._build_obs_text({"focused_element_bid": ""}, prefix=None)
         # Empty bid → block skipped (no "## Focused element:" emitted).
         assert out is None
 
     def test_tabs_block_rendered(self):
-        env = _make_fake()
+        env = _make_fake(include_page_context_text=True)
         obs = {
             "open_pages_urls": ["https://google.com/", "http://localhost:7770/"],
             "open_pages_titles": ["Google", "WA Shopping"],
@@ -1762,7 +1933,7 @@ class TestBuildObsText:
         assert "URL: http://localhost:7770/" in out
 
     def test_tabs_block_active_index_int_or_array(self):
-        env = _make_fake()
+        env = _make_fake(include_page_context_text=True)
         # numpy-style: active is single-element array
         obs1 = {"open_pages_urls": ["a"], "open_pages_titles": ["t"], "active_page_index": [0]}
         # plain int variant
@@ -1773,14 +1944,14 @@ class TestBuildObsText:
             assert "Tab 0 (active tab):" in out
 
     def test_no_tabs_block_when_obs_lacks_them(self):
-        env = _make_fake()
+        env = _make_fake(include_page_context_text=True)
         out = env._build_obs_text({"focused_element_bid": "a1"}, prefix=None)
         # No open_pages_urls/titles → no tabs section
         if out:
             assert "## Currently open tabs:" not in out
 
     def test_prefix_with_focused_block(self):
-        env = _make_fake(use_focused_element=True)
+        env = _make_fake(include_page_context_text=True, use_focused_element=True)
         out = env._build_obs_text(
             {"focused_element_bid": "a47"},
             prefix=f"{TOOL_RESULT_ERROR_SECTION_HEADER}\nclick: timed out",
@@ -1825,7 +1996,7 @@ class TestObsFlagsTakeEffect:
         with patch(
             "browsergym.utils.obs.flatten_axtree_to_str", return_value="MOCKED AXTREE BODY"
         ) as fn:
-            env = _make_fake(use_ax_tree=True)
+            env = _make_fake(include_page_context_text=True, use_ax_tree=True)
             out = env._build_obs_text(self._stub_obs_with_axtree(), prefix=None)
         assert out is not None
         assert "## AXTree:" in out
@@ -1845,7 +2016,7 @@ class TestObsFlagsTakeEffect:
         # AgentLab convention: tabs context comes BEFORE the page tree so the
         # model sees "which tab am I on" before parsing the (often huge) tree.
         with patch("browsergym.utils.obs.flatten_axtree_to_str", return_value="ax body"):
-            env = _make_fake(use_ax_tree=True)
+            env = _make_fake(include_page_context_text=True, use_ax_tree=True)
             out = env._build_obs_text(self._stub_obs_with_axtree(), prefix=None)
         assert out is not None
         assert "## Currently open tabs:" in out
@@ -1856,7 +2027,11 @@ class TestObsFlagsTakeEffect:
         with patch(
             "browsergym.utils.obs.flatten_dom_to_str", return_value="MOCKED HTML BODY"
         ) as fn:
-            env = _make_fake(use_html=True, use_ax_tree=False)
+            env = _make_fake(
+                include_page_context_text=True,
+                use_html=True,
+                use_ax_tree=False,
+            )
             obs = {"dom_object": {"any": "html"}, "extra_element_properties": {}}
             out = env._build_obs_text(obs, prefix=None)
         assert out is not None
@@ -1878,6 +2053,7 @@ class TestObsFlagsTakeEffect:
         # to flatten_axtree_to_str — verify the kwargs reach it.
         with patch("browsergym.utils.obs.flatten_axtree_to_str", return_value="ax") as fn:
             env = _make_fake(
+                include_page_context_text=True,
                 use_ax_tree=True,
                 extract_visible_tag=False,
                 extract_clickable_tag=True,
@@ -1897,7 +2073,11 @@ class TestObsFlagsTakeEffect:
             ("box", False, True),
         ]:
             with patch("browsergym.utils.obs.flatten_axtree_to_str", return_value="ax") as fn:
-                env = _make_fake(use_ax_tree=True, extract_coords=value)
+                env = _make_fake(
+                    include_page_context_text=True,
+                    use_ax_tree=True,
+                    extract_coords=value,
+                )
                 env._build_obs_text(self._stub_obs_with_axtree(), prefix=None)
             kwargs = fn.call_args.kwargs
             assert kwargs["with_center_coords"] is expect_center, value
@@ -1971,7 +2151,7 @@ class TestObsFlagsTakeEffect:
     def test_no_error_section_when_prefix_none(self):
         # Empty error → ``BrowserGymEnv.step`` passes ``prefix=None``;
         # ``_build_obs_text`` must not synthesize a stray error section.
-        env = _make_fake(use_focused_element=True)
+        env = _make_fake(include_page_context_text=True, use_focused_element=True)
         out = env._build_obs_text({"focused_element_bid": "a1"}, prefix=None)
         if out:
             assert TOOL_RESULT_ERROR_SECTION_HEADER not in out

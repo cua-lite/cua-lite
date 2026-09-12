@@ -13,6 +13,7 @@ env_kwargs:
   step_timeout: 600.0                 # terminal step includes WebJudge reward/eval
   post_action_delay: 1.5
   viewport: [1280, 720]
+  include_page_context_text: false     # screenshot-first default: omit URL/title/body text but keep screenshots and operational errors
   # GUI action enum only. Finish actions are terminal env operations, not
   # metadata.valid_actions; nav tools stay opt-in through extra_tools below.
   valid_actions: ["click", "type", "key", "scroll", "wait"]
