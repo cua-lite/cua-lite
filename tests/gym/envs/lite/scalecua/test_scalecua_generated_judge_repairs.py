@@ -10,7 +10,7 @@ import pytest
 
 from lite.gym.envs.lite.scalecua.src.osworld import judges
 from lite.gym.envs.lite.scalecua.src.osworld import verify as scalecua_verify
-from lite.gym.envs.lite.scalecua.src.utils import dataset
+from lite.gym.envs.lite.scalecua.src.utils import assets, dataset
 
 
 def _cache_ready() -> bool:
@@ -1472,7 +1472,12 @@ def test_metrics_calling_undefined_helpers_are_detected_and_excluded() -> None:
     """
     from lite.gym.envs.lite.scalecua.src.utils import dataset
 
-    broken = dataset._metrics_calling_undefined_helpers()
+    # The scan now takes the overlay root explicitly: it used to read the LIVE cache
+    # from inside an import that had not published staging yet, so on a cold cache it
+    # returned an empty set and every un-runnable row shipped as runnable.
+    broken = dataset._metrics_calling_undefined_helpers(
+        assets.CACHE_DIR / "judge_functions"
+    )
     # The overlay ships with a real, non-empty set of these; an empty result means
     # the scan silently stopped working (moved overlay, parse failure) rather than
     # that the shards became clean.
@@ -1481,5 +1486,9 @@ def test_metrics_calling_undefined_helpers_are_detected_and_excluded() -> None:
 
     # Only train/rl carry the generated overlay; other splits must not be tagged.
     payload = {"evaluator": {"func": sorted(broken)[0]}}
-    assert dataset._has_metric_with_undefined_helper(payload, runtime_split="train")
-    assert not dataset._has_metric_with_undefined_helper(payload, runtime_split="eval")
+    assert dataset._has_metric_with_undefined_helper(
+        payload, runtime_split="train", broken_metrics=broken
+    )
+    assert not dataset._has_metric_with_undefined_helper(
+        payload, runtime_split="eval", broken_metrics=broken
+    )

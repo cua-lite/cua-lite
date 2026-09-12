@@ -179,10 +179,10 @@ def _build_perturb_row(
 ) -> dict:
     oracle = _build_oracle(file_path, expected_path)
     evaluator = _build_evaluator(op_idx, file_path, expected_path)
-    # oracle_after_postconfig=True: validate.py runs postconfig (Ctrl+S)
-    # first, then kills soffice, then runs oracle. The oracle just needs to
-    # cp the expected file over; LO is already dead and _postconfig_done=True
-    # prevents the evaluator from sending another Ctrl+S that would revert it.
+    # oracle_after_postconfig=True: validate.py runs postconfig (Ctrl+S) first,
+    # then kills soffice, then runs oracle, so the oracle just needs to cp the
+    # expected file over. Final evaluation still runs postconfig through the
+    # production path, but with LO dead its Ctrl+S has no window to reach.
     return make_perturb_row(
         eval_row=eval_row,
         knob_assignment={"type": perturb_type, "op": op_idx, "variant": instruction[:30]},

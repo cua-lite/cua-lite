@@ -106,7 +106,7 @@ overlay resolution.
 | component | behavior |
 |---|---|
 | setup | run the shared OSWorld preamble, then strict-dispatch normalized ScaleCUA `config` actions |
-| eval | run ScaleCUA `postconfig`, use `lite.osworld` canonical getters first, then ScaleCUA/official getter and metric fallback for `train`/`rl` |
+| eval | run ScaleCUA `postconfig`, resolve getters scalecua-local first, then the `lite.osworld` base runner, then the generated `train`/`rl` overlay; metrics resolve overlay → `lite.osworld` → upstream |
 | registry | registers generated `data/{train,rl}.jsonl` after catalog-lock validation |
 | env-server | registered as a DEDICATED desktop env using the same immutable backend-shape kwargs as `lite.osworld` |
 

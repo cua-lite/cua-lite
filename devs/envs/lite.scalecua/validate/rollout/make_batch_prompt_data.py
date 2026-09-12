@@ -13,6 +13,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import random
@@ -27,7 +28,19 @@ os.environ.pop("CUA_LITE_ENV_SERVER_TOKEN", None)
 
 import lite.gym as gym  # noqa: E402
 from common import catalog_index, payload_for_exclusion  # noqa: E402
+from lite.gym.envs.lite.scalecua.src.osworld import judges  # noqa: E402
 from lite.gym.envs.lite.scalecua.src.utils import dataset  # noqa: E402
+
+
+@functools.lru_cache(maxsize=1)
+def _broken_metrics() -> frozenset[str]:
+    """The un-runnable-metric set of the LIVE overlay.
+
+    ``dataset._exclude_reason`` takes it from the import context, so a caller outside
+    import supplies its own. Read on first use, not at import: the scan raises when the
+    overlay is missing, and that should surface where the catalog is being checked.
+    """
+    return dataset._metrics_calling_undefined_helpers(judges.overlay_root())
 
 
 def _task_domain(env_id: str, task_id: str) -> str:
@@ -55,6 +68,7 @@ def _is_runnable(env_id: str, task_id: str, catalog: dict[str, dict[str, Any]]) 
         inherited_exclusion=(current_md.get("others") or {}).get("exclude_reason"),
         unsupported=[],
         runtime_split=current_split,
+        broken_metrics=_broken_metrics(),
     )
     return not bool(reason)
 

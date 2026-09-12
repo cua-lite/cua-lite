@@ -12,6 +12,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 from collections import Counter
 from pathlib import Path
@@ -20,7 +21,19 @@ from typing import Any
 import pandas as pd
 
 from common import catalog_index, payload_for_exclusion
+from lite.gym.envs.lite.scalecua.src.osworld import judges
 from lite.gym.envs.lite.scalecua.src.utils import dataset
+
+
+@functools.lru_cache(maxsize=1)
+def _broken_metrics() -> frozenset[str]:
+    """The un-runnable-metric set of the LIVE overlay.
+
+    ``dataset._exclude_reason`` takes it from the import context, so a caller outside
+    import supplies its own. Read on first use, not at import: the scan raises when the
+    overlay is missing, and that should surface where the catalog is being checked.
+    """
+    return dataset._metrics_calling_undefined_helpers(judges.overlay_root())
 
 
 def _metadata_dict(value: Any) -> dict[str, Any]:
@@ -81,6 +94,7 @@ def main() -> int:
             inherited_exclusion=others.get("exclude_reason"),
             unsupported=[],
             runtime_split=current_split,
+            broken_metrics=_broken_metrics(),
         )
         if reason:
             excluded.append((task_id, str(reason)))

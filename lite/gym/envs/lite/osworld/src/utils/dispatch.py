@@ -372,7 +372,7 @@ async def dispatch_action(
     # Types forwarded to Flask server endpoints
     # ===================================================================
 
-    # --- execute/command → POST /execute ---
+    # --- execute/command → run_command over exec-stdio ---
     # OSWorld default: shell=False. Parameters must explicitly set shell=True.
     if t in ("execute", "command"):
         cmd = _replace_templates(p.get("command", ""))

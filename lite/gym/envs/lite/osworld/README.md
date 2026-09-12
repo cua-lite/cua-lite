@@ -147,8 +147,8 @@ print(gym.registry.task_ids("lite.osworld"))   # {"eval": [...], "train": [...]}
 
 | Status | Count | Description |
 |--------|-------|-------------|
-| `oracle_actions` non-empty, no `exclude_reason` | 326 | Curated oracle solution produces reward=1.0 |
-| `exclude_reason` set | 39 | Infeasible (29) / Google auth (8) / live-site drift (1) / trivial pass (1) |
+| `oracle_actions` non-empty, no `exclude_reason` | 324 | Curated oracle solution produces reward=1.0 |
+| `exclude_reason` set | 41 | Infeasible (29) / Google auth (8) / live-site drift (2) / generated eval bug (1) / trivial pass (1) |
 | Unverified (feasible) | 4 | Feasible tasks without an authored oracle |
 
 Counts are derived from `data/eval.jsonl`; regenerate with
@@ -160,9 +160,11 @@ and recount if the source JSONs change.
 Runs **only at episode end** (`terminate` / `response` / `max_steps`): the same OSWorld
 built-in evaluators as [`osworld`](/lite/gym/envs/osworld/README.md#evaluation) — checking real
 system state (files, command output, app state) — return a float `reward` in `[0.0, 1.0]`, just on a
-GNOME-Shell container instead of a full KVM VM. `--filter "lambda m: not m.others.get('exclude_reason')"`
-drops the 39 excluded tasks (see [Task Statistics](#task-statistics))
-→ 330 scored. **Extra tool:** active `report_infeasible(reason)` is an env-local terminal tool evaluated
+GNOME-Shell container instead of a full KVM VM. **Always pass**
+`--filter "lambda m: not m.others.get('exclude_reason')"`: it drops the 41 excluded tasks (see
+[Task Statistics](#task-statistics)) → **328 scored**. Unfiltered, all 369 count toward the
+denominator and the 29 infeasible rows pay 1.0 for a bare `terminate(status="failure")`.
+**Extra tool:** active `report_infeasible(reason)` is an env-local terminal tool evaluated
 directly by the OSWorld infeasible checker; it is not rewritten to canonical `terminate`.
 
 <details>

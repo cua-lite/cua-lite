@@ -244,9 +244,13 @@ def _lo_normalize_cmd(path: str, fmt: str = "pptx") -> str:
 def _build_oracle_pptx(out_path: str, expected_path: str) -> list[dict]:
     """Oracle: ① normalize gold, ② plant at sink.
 
-    oracle_after_postconfig=True kills LO before running oracle actions and
-    sets _postconfig_done=True so LO_SAVE_POSTCONFIG (Ctrl+S) is skipped after
-    oracle. Result = cp of norm(gold). Expected = norm(gold). They are
+    oracle_after_postconfig=True tells the oracle-validation harness
+    (devs/envs/lite.osworld/validate/oracle/validate.py) to run the evaluator's
+    postconfig BEFORE replaying the oracle, and it SIGKILLs LibreOffice first, so
+    the `cp` lands un-raced by LO's save-on-close. It does NOT mark postconfig
+    done on the task — final evaluation runs LO_SAVE_POSTCONFIG again through the
+    production path — but with LO dead its Ctrl+S has no window to reach.
+    Result = cp of norm(gold). Expected = norm(gold). They are
     byte-identical without a third normalize step.  A third normalize would
     produce result = norm(norm(gold)) which diverges when LO normalize is
     non-idempotent (font-name, size, colour, alignment properties in pptx).

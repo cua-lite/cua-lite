@@ -666,3 +666,66 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
   checkpoint; then pick one `iter_*` for the 328-task score rather than scoring whatever is last.
 - Compare against the `base` / `lowr.i4` cell, never against an SFT cell — RL-from-base and
   SFT-from-a-teacher answer different questions.
+
+<details>
+<summary>Runs so far</summary>
+
+Both scored on the **n=128 eval subset** (the in-training curve), not the 328-task denominator
+the table above uses — these two numbers are not interchangeable, and neither run has a 328 score
+yet.
+
+**1. From base** — `desktop.use.lowr.i4.yaml`, no `HF_CKPT`, `LR=1e-6`, `TP_SIZE=4`,
+`ROLLOUT_MAX_RESPONSE_LEN=512`, `SKIP_EVAL_BEFORE_TRAIN=1`. 30 steps, 5 eval points:
+0.2880 / 0.2802 / 0.3114 / — / 0.2958, mean 0.2865 against a step-0 anchor of 0.2544.
+
+Flat. The training-reward regression slope is t=+0.87, which is not significant, so the earlier
+reading of "training improves but does not transfer" was wrong — both curves are flat. The
+diagnosis is **`LR=1e-6` is too small for this setup**, not an algorithm fault: ppo_kl p50 1.1e-5,
+clipfrac p50 0.29%, grad_norm p50 5.38, adv_abs_max p50 2.43. Every one of those says the policy
+barely moved. 19.0% of steps had zero gradient (a whole group scored identically, so GRPO's
+group-normalized advantage is 0).
+
+Two things to read with care: the step-0 anchor of 0.2544 was measured during the TP=2 startup
+that later OOM'd, and `ratio_max` reaching 1.2e9 in that run is an artifact of `loss.py:974`
+taking a bare unmasked `.max()` — the masked health metrics are clean.
+
+**2. From the `qwen3_8_27b` SFT checkpoint** (`.ckpts-pull/sft.lowr.i4.qwen3_8_27b/epoch_2`, the
+0.4052 cell) — same config, `LR=1e-6`, `TP_SIZE=4`, `ROLLOUT_MAX_RESPONSE_LEN=512`,
+`NUM_ROLLOUT=100`, `EVAL_INTERVAL=5`, `SAVE_INTERVAL=10`. Running.
+
+| rollout | eval | valid / errored |
+|---:|---:|---:|
+| 0 | 0.4367 | 128 / 0 |
+| 5 | 0.4442 | 128 / 0 |
+| 10 | **0.4911** | 128 / 0 |
+
+This one moves. Starting from SFT weights is what fixed the zero-gradient problem the base run
+had — 19.0% of steps to 2.5% — because an SFT policy produces enough within-group spread for the
+group-normalized advantage to be non-zero. Same `LR=1e-6` in both runs, so the lr was never the
+whole story: at base-model competence the groups collapse and there is nothing for GRPO to
+normalize against.
+
+`task_crash` sits at 4 for the run, all of them one `scalecua_osworld_rl_vs_code_*` task failing
+in its config phase with an HTTP 422.
+
+**The 512 response cap binds on eval, not on training.** Aligning every
+`rollout/truncated_ratio` with its log line shows all three spikes land on the line immediately
+after an `Eval ... valid` marker:
+
+| | truncated_ratio |
+|---|---|
+| eval (`lite.osworld`) | 0.203 / 0.195 / 0.234, rising |
+| train (`lite.scalecua` rl) | 0.010 - 0.053 |
+
+Two consequences worth carrying into the next run. The eval numbers above are measured under a cap
+that is actively cutting about one trajectory in five, and a cut trajectory scores 0 — so they
+understate the policy. And the two splits disagree about whether the cap binds at all, which is a
+train/eval mismatch that widens as the policy learns to write longer. This is what
+`ROLLOUT_MAX_RESPONSE_LEN=2048` in the block above is for; it was raised after this run launched,
+so this run did not get it.
+
+The 503s are admission back-pressure working, not a fault: 120 retry-1, 18 retry-2, 0 retry-3, and
+the server reports `capacity: 0` / `env_internal: 0` with every 503 coming from `docker_sema`.
+All three evals still came back 128 valid / 0 errored / 0 missing.
+
+</details>

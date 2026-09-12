@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import copy
-import functools
 import hashlib
 import json
 import os
@@ -1268,7 +1267,13 @@ def import_all(*, force_download: bool = False) -> dict[str, Any]:
             "excluded_count_by_reason": {},
             "url_rewrite_count": 0,
         }
-        context = _ImportContext(snapshot=snapshot)
+        # Classify against the overlay THIS import just materialized into
+        # staging: the live cache still holds the previous pull (nothing at all
+        # on a cold cache) until the os.replace below publishes the new one.
+        context = _ImportContext(
+            snapshot=snapshot,
+            broken_metrics=_metrics_calling_undefined_helpers(staging / "judge_functions"),
+        )
         for source_name, runtime_split in (
             ("generated_tasks", "train"),
             ("rl_tasks", "rl"),
@@ -1341,8 +1346,13 @@ def import_all(*, force_download: bool = False) -> dict[str, Any]:
 
 
 class _ImportContext:
-    def __init__(self, *, snapshot: Path):
+    def __init__(self, *, snapshot: Path, broken_metrics: frozenset[str] = frozenset()):
         self.snapshot = snapshot
+        #: Metric names of the overlay being imported that cannot run (see
+        #: ``_metrics_calling_undefined_helpers``). Carried on the context so
+        #: classification reads the overlay this import materialized, never a
+        #: live cache that ``import_all`` has not published yet.
+        self.broken_metrics = broken_metrics
         self.action_before: dict[str, Counter] = defaultdict(Counter)
         self.action_after: dict[str, Counter] = defaultdict(Counter)
         self.excluded_count_by_reason: Counter = Counter()
@@ -1460,6 +1470,7 @@ def _row_from_payload(
         inherited_exclusion=inherited_exclusion,
         unsupported=unsupported,
         runtime_split=runtime_split,
+        broken_metrics=context.broken_metrics,
     )
     if exclude_reason:
         exclude_reason = exclude_reasons.validate(exclude_reason)
@@ -1496,7 +1507,14 @@ def _exclude_reason(
     inherited_exclusion: str | None,
     unsupported: list[str],
     runtime_split: str,
+    broken_metrics: frozenset[str] = frozenset(),
 ) -> str | None:
+    """Canonical exclude_reason for one payload, or None when the row is runnable.
+
+    ``broken_metrics`` is the un-runnable-metric set of the overlay this row is
+    being imported against (``_ImportContext.broken_metrics``); the import path
+    always supplies it.
+    """
     del inherited_exclusion
     actions = _action_types(payload)
     if actions & UNSUPPORTED_AUTH_ACTIONS:
@@ -1537,7 +1555,11 @@ def _exclude_reason(
         return "upstream_generated_eval_bug"
     if _has_uncompilable_python_heredoc(payload, runtime_split=runtime_split):
         return "upstream_generated_eval_bug"
-    if _has_metric_with_undefined_helper(payload, runtime_split=runtime_split):
+    if _has_metric_with_undefined_helper(
+        payload,
+        runtime_split=runtime_split,
+        broken_metrics=broken_metrics,
+    ):
         return "upstream_generated_eval_bug"
     if unsupported:
         first = unsupported[0]
@@ -1629,8 +1651,7 @@ def _has_uncompilable_python_heredoc(
     return False
 
 
-@functools.lru_cache(maxsize=1)
-def _metrics_calling_undefined_helpers() -> frozenset[str]:
+def _metrics_calling_undefined_helpers(judge_root: Path) -> frozenset[str]:
     """Generated metric functions that call a helper this overlay never defines.
 
     The generated shards were split from a larger source and some kept calls to
@@ -1642,15 +1663,20 @@ def _metrics_calling_undefined_helpers() -> frozenset[str]:
 
     Derived, not an id list: a future overlay refresh that fixes or breaks more
     shards is picked up without anyone re-curating.
+
+    ``judge_root`` is the ``judge_functions`` directory holding the overlay being
+    classified, passed in rather than read from the live cache: during an import
+    the only copy that matches the rows being written is the STAGING one, and on
+    a cold cache it is the only copy that exists at all.
     """
     import ast
     import builtins
 
     from lite.gym.envs.lite.scalecua.src.osworld import judges
 
-    roots = [r for r in (judges.overlay_dir(s) for s in ("train", "rl")) if r and r.is_dir()]
+    roots = [d for d in (judge_root / split for split in RUNTIME_SPLITS) if d.is_dir()]
     if not roots:
-        return frozenset()
+        raise RuntimeError(f"no ScaleCUA judge overlay under {judge_root}")
     trees: dict[Path, ast.Module] = {}
     # judges injects a fixed set of helpers back into every shard; those names
     # resolve at runtime even though the shard never defines them.
@@ -1703,15 +1729,17 @@ def _has_metric_with_undefined_helper(
     payload: dict[str, Any],
     *,
     runtime_split: str,
+    broken_metrics: frozenset[str],
 ) -> bool:
-    """True iff the row is scored by a metric that cannot run (see above)."""
+    """True iff the row is scored by a metric that cannot run (see above).
+
+    ``broken_metrics`` is required: an empty set here means "nothing is broken", and
+    defaulting to it is how this rule silently stopped firing before.
+    """
     if runtime_split not in {"train", "rl"}:
         return False
-    broken = _metrics_calling_undefined_helpers()
-    if not broken:
-        return False
     blob = json.dumps(payload)
-    return any(f'"{name}"' in blob for name in broken)
+    return any(f'"{name}"' in blob for name in broken_metrics)
 
 
 def _has_thunderbird_gmail_auth_gap(
