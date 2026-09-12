@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from lite.gym.remote.alive import SERVER_KEEP_ALIVE_TIMEOUT_SEC, resolve_keep_alive_timeout
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +37,20 @@ def test_serve_env_help_documents_operator_flags() -> None:
     assert "--warm-singleton" in proc.stdout
     assert "--timeout-keep-alive" in proc.stdout
     assert "--reset-concurrency" not in proc.stdout
+
+
+def test_warm_abbreviation_is_rejected(monkeypatch) -> None:
+    mod = _load_serve_env()
+
+    for flag in ("--warm", "--war"):
+        monkeypatch.setattr(sys, "argv", [str(SCRIPT), flag])
+        with pytest.raises(SystemExit) as exc:
+            mod._parse_args()
+        assert exc.value.code == 2
+
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--warm-singleton"])
+    args = mod._parse_args()
+    assert args.warm_singleton is True
 
 
 def test_serve_env_passes_the_derived_timeout_to_uvicorn() -> None:
