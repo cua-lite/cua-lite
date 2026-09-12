@@ -330,6 +330,14 @@ scored against a baseline that saw the same screenshot surface, and the fifteen 
 # tokenizer/processor, so all eighteen runs GENERATE from whatever model that server holds and
 # every summary.json still looks normal. Nothing warns.
 unset SGLANG_SERVER_URL
+
+# The env-server is REQUIRED, and it is a scoring condition, not an implementation detail:
+# unset, rollout runs envs in-process and owns the containers itself, which changes container
+# lifecycle and timing enough to move MER by a few points. Measured on the same checkpoints,
+# direct mode scored 0.017-0.035 BELOW the env-server runs. Every number in the Results table
+# must come from the same mode, so a campaign that mixes them cannot be read across columns.
+export CUA_LITE_ENV_SERVER_URL="http://$(hostname -I | awk '{print $1}'):30100"
+export CUA_LITE_ENV_SERVER_TOKEN=desktop-eval   # passthrough auth; any value scopes your envs
 EPOCH=epoch_2                            # epoch_1 = after 1 epoch
 DS=scalecua_5k
 CFG=devs/exps/train/desktop/configs/qwen3_5
@@ -368,7 +376,13 @@ done <<< "$(cells)"
 
 # $1 = config stem, $2 = --model-path ("" = base model), $3 = log slug. --config-path always
 # follows $1, so a checkpoint is only ever scored on the surface it was trained on.
+# CONCURRENCY IS A BUDGET ON THE HOST, not a per-run knob: every run in flight adds
+# `--concurrency` desktop containers to the same docker daemon. Pick the host total first,
+# then divide. 96 containers is what a 208-vCPU / 1.8 TB host carries with ~25% idle left;
+# with NGPU runs in flight that is `--concurrency $((96 / NGPU))`. Raising the per-run number
+# without lowering the number of runs is what oversubscribes the host.
 NGPU=8   # cards this host will use -- eighteen runs no longer fit one per card
+CONC=12  # 8 x 12 = 96 containers
 gpu=0
 score() {
   # Drain the batch before wrapping back to card 0, or two rollouts land on one GPU and
@@ -376,7 +390,7 @@ score() {
   if [ "$gpu" -ge "$NGPU" ]; then wait; gpu=0; fi
   CUDA_VISIBLE_DEVICES=$gpu uv run python scripts/rollout.py \
     --model-id Qwen/Qwen3.5-4B ${2:+--model-path "$2"} \
-    --env-id lite.osworld --splits eval --concurrency 8 \
+    --env-id lite.osworld --splits eval --concurrency "$CONC" \
     --filter "lambda m: not m.others.get('exclude_reason')" \
     --config-path "$CFG/$1.yaml" \
     --log-root "$LOGS/$3" < /dev/null &
@@ -485,8 +499,11 @@ byte-identical prompts on these episodes, because `history_n` 50 vs 100 cannot b
 | **`qwen3_8_27b`** | **0.4052** (130/328) | | | **0.4187** (131/328) |
 | **GRPO from base** | | — | — | — |
 
-`num_valid` is 328 in every scored run so far — no run lost samples to errors, so those means
-share one denominator. Each sits +0.009 to +0.019 above its solved count (the partial-credit
+`num_valid` is NOT 328 in every run: of the three `lowr.i4` runs, `gpt5_5` lost one sample and
+`qwen3_8_27b` three. `mean_episode_return` in `summary.json` averages over `num_valid`, so a
+number divided by 328 instead is smaller than the run's own mean — that is where 0.3670 and
+0.4052 below came from, against the runs' 0.3682 and 0.4090. Record both the mean and its
+denominator. Each sits +0.009 to +0.019 above its solved count (the partial-credit
 tail); the ordering reads the same either way. Every blank is UNSCORED — the whole `lowr.i1` and
 `highr.i1` columns, `base` and `GRPO` rows included. Of the fifteen SFT cells, nine are trained
 and on the Hub (every `gpt5_5` cell, plus `qwen3_8_27b`'s three); seven of those nine are still
