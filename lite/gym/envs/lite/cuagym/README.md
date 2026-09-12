@@ -104,7 +104,7 @@ upstream task logic is not patched.
 
 ## Excluded Rows
 
-494 of the 10,910 registered rows (4.53%) are unusable as default training
+513 of the 10,910 registered rows (4.70%) are unusable as default training
 signals and are *annotated* — never removed — with
 `metadata.others.exclude_reason`, drawn from the closed `EXCLUDE_REASONS`
 vocabulary in
@@ -116,6 +116,7 @@ vocabulary in
 | `broken_mock:blank_render` | 81 | broken upstream mocks — 44 Google Drive and 37 Uber Eats homepage rows render an empty browser root |
 | `broken_reward:no_sentinel` | 42 | broken reward script — compiles, but no reachable top-level path can emit `REWARD:` (16 web + 26 desktop) |
 | `broken_reward:syntax_error` | 26 | broken reward script — `reward.py` does not compile under the container's Python 3.12 |
+| `broken_reward:missing_golden` | 19 | broken reward script — compares against a `*_golden.*` artifact that setup never creates |
 | `broken_reward:instruction_mismatch` | 178 | broken reward/spec pair — `task.json` and `reward.py` disagree on a material success criterion; 128 come from the revision-pinned duplicate-bundle audit |
 | `broken_setup:unsatisfiable_gate` | 1 | broken setup script — `initial_setup.sh` gate-aborts on a condition no branch can satisfy |
 | `broken_setup:external_dependency` | 8 | broken setup script — reset depends on a live external package/service or invalid external CLI conversion instead of pinned assets |
@@ -125,13 +126,15 @@ vocabulary in
 | `broken_setup:no_task_window` | 1 | broken setup script — setup is expected to launch a task GUI, but no usable task window appears |
 | `broken_task:empty_instruction` | 1 | broken upstream row — `task.json` states no instruction, so reset has no prompt to hand the agent |
 
-81 are broken upstream mocks, 398 are broken reward/spec pairs, 14 are broken
+81 are broken upstream mocks, 417 are broken reward/spec pairs, 14 are broken
 setups, and 1 states no task at all. Per runtime side, 98 of the 1,505 upstream
-web/cross-app rows and 396 of the 9,405 desktop-shaped rows are tagged, leaving
-**10,416 default-collectable rows**.
+web/cross-app rows and 415 of the 9,405 desktop-shaped rows are tagged, leaving
+**10,397 default-collectable rows**.
 
 The revision-pinned findings live in
-[`data/validation_excludes.json`](/lite/gym/envs/lite/cuagym/data/validation_excludes.json).
+[`data/validation_excludes.json`](/lite/gym/envs/lite/cuagym/data/validation_excludes.json);
+the generated count lock lives in
+[`data/catalog.lock.json`](/lite/gym/envs/lite/cuagym/data/catalog.lock.json).
 Audit them offline or run a review-sized live no-op sample with:
 
 ```bash
@@ -140,7 +143,7 @@ uv run python lite/gym/envs/lite/cuagym/scripts/utils/validation_sweep.py \
   --live --limit 20 --concurrency 4
 ```
 
-The full live-eligible run (10,417 rows in the pinned snapshot) is intentionally
+The full live-eligible run (10,397 rows in the pinned snapshot) is intentionally
 explicit: `--live --all --write`.
 
 The registry does not filter them for you: a tagged task remains registered.
