@@ -1,0 +1,8 @@
+## d982edcfb3  (2026-07-09)
+
+Initial standardized snapshot for `cua.bench.local.basic` at this commit. The
+current checked-in snapshot is basic-suite only; expanding to workflows or KiCad
+changes the task set and must be recorded in a new entry.
+
+No known metric, prompt, or tool-surface comparability break is recorded for the
+checked-in basic-suite snapshot in the migration audit.

@@ -1,0 +1,8 @@
+## 2a40f5258e  (2026-07-08)
+
+Initial standardized snapshot at this commit. MobileGym eval reports the
+official Success Rate: an episode scores 1.0 only when the final state satisfies
+the goal and the agent ends through the success finish path.
+
+Snapshots produced before the Success Rate switch used `progress_rate`
+sub-goal shaping and are NOT comparable to this eval definition.
