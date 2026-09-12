@@ -16,10 +16,15 @@ import hashlib
 import functools
 import json
 import logging
+import multiprocessing
 import os
 from pathlib import Path
 import shlex
+import shutil
+import signal
 import tempfile
+import threading
+import time
 import urllib.request
 
 from lite.gym.envs.lite.osworld.src.utils.dispatch import (
@@ -27,6 +32,7 @@ from lite.gym.envs.lite.osworld.src.utils.dispatch import (
     CHROME_DATA_DIR as _CHROME_DATA_DIR,
     _replace_templates,
 )
+from lite.gym.errors import EnvBlocked
 logger = logging.getLogger(__name__)
 
 _SERVER = "http://localhost:5000"
@@ -39,6 +45,312 @@ _SERVER = "http://localhost:5000"
 _SHELL_OP_TOKENS = frozenset({
     "|", "||", "&&", ";", "&", ">", ">>", "<", "2>", "2>>", "2>&1", "|&", "&>",
 })
+
+# --- Metric isolation ---
+# OSWorld metric functions are third-party code this repo neither owns nor bounds, and the task
+# JSON picks which one runs. Some hold the GIL for minutes: ``compare_audios`` runs a pure-Python
+# ``fastdtw`` over MFCC frames, ``compare_videos`` walks frames through cv2. In a thread that
+# starves the env-server's loop, which needs the GIL to run any bytecode -- so it stops serving
+# EVERY request, not just the env being scored -- and a thread cannot be cancelled, so no timeout
+# can enforce against it.
+#
+# A metric therefore runs in a CHILD PROCESS under a hard deadline: its own GIL, and killable.
+# ``forkserver``, not ``fork``: the env-server is a multi-GB, ~150-thread process and a rollout
+# resets 64 envs at once. The template is spawned once and preloads the metric modules so each
+# child starts warm.
+#: PER METRIC, and below the env's ``step_timeout`` (120.0 in both lite.osworld's and
+#: lite.scalecua's configs/default.yaml) so that a single slow metric is reported as a
+#: ``MetricTimeout`` rather than as the step timing out. A row with several metrics can still
+#: exhaust the step budget first (50 of 369 eval rows carry 2-5); that surfaces as
+#: ``EnvTimeoutError``, which is also a dropped sample — not a 0.0 — so the split this module
+#: exists to protect holds either way.
+_METRIC_TIMEOUT_S = 90.0
+
+#: Poll granularity for the async wait below. Nothing is gained by going finer — metrics run for
+#: seconds at minimum — and each tick is one cheap non-blocking pipe probe.
+_METRIC_POLL_S = 0.05
+
+#: Per-connection and whole-call ceilings for evaluator downloads. The step that runs the
+#: final eval is itself capped at 120s (``step_timeout``), so a fetch budget above that can
+#: only ever be cut off by the step, losing the episode instead of the file.
+_DOWNLOAD_TIMEOUT_S = 30.0
+_DOWNLOAD_TOTAL_BUDGET_S = 75.0
+
+#: The modules a metric NAME resolves against, first match wins — lite's overrides shadow
+#: upstream, same precedence ``evaluate_osworld_task`` uses. One declaration, two consumers: the
+#: forkserver preloads them (so a child never imports desktop_env's dependency stack itself) and
+#: the child resolves against them. The child gets the tuple as an argument rather than reading
+#: this global, because a forkserver template is a separate process that would not see a test's
+#: patch of it.
+_METRIC_MODULES = (
+    "lite.gym.envs.lite.osworld.src.eval.metrics",
+    "desktop_env.evaluators.metrics",
+)
+
+_metric_ctx_cached = None
+
+
+class MetricTimeout(Exception):
+    """A metric outran ``_METRIC_TIMEOUT_S`` and its process was killed."""
+
+
+class MetricRaised(RuntimeError):
+    """The metric function itself raised while inspecting the artifacts it was given.
+
+    The one failure in this file that IS a verdict on the agent: the metric ran, looked at
+    what the episode produced, and threw (a corrupt ``.docx``, a ``None`` where a path was
+    expected). It scores 0.0 like any other failed check. Every other failure here --
+    :class:`MetricTimeout`, a dead metric child, a gold that would not download -- says
+    nothing about the agent and must never reach that 0.0; see ``_evaluate_osworld_task``.
+    """
+
+
+def _metric_ctx():
+    """The forkserver context, started on first use and reused thereafter.
+
+    Every preload module is imported HERE first, in the parent. ``forkserver.main`` swallows only
+    ``ImportError``; anything else kills the template, and the caller then sees a bare
+    ``EOFError`` from ``Process.start()`` that scores every metric 0.0 with no hint why. Failing
+    in the parent instead puts the real traceback where someone can read it.
+    """
+    global _metric_ctx_cached
+    if _metric_ctx_cached is None:
+        import importlib
+
+        for mod_name in _METRIC_MODULES:
+            importlib.import_module(mod_name)
+        ctx = multiprocessing.get_context("forkserver")
+        ctx.set_forkserver_preload(list(_METRIC_MODULES))
+        _metric_ctx_cached = ctx
+    return _metric_ctx_cached
+
+
+def _lookup_metric(fn_name: str, modules=None):
+    """Resolve a metric name across ``modules``, first match wins. ``None`` when absent.
+
+    The single resolver for both sides: the parent uses it to reject an unknown name before
+    paying for a process, and the child uses it to find the callable it must run. Keeping one
+    implementation is what stops the two from drifting into different answers.
+    """
+    import importlib
+
+    for mod_name in modules if modules is not None else _METRIC_MODULES:
+        fn = getattr(importlib.import_module(mod_name), fn_name, None)
+        if fn is not None:
+            return fn
+    return None
+
+
+def _metric_child(
+    conn, modules, fn_name: str, result_data, expected_data, opts: dict, deadline_s: float
+) -> None:
+    """Resolve ``fn_name`` across ``modules`` and run it. Module-level so forkserver can address it.
+
+    The function is resolved by NAME in the child rather than pickled from the parent: metric
+    callables come from module attributes, and a metric may import task code at call time that
+    would not travel.
+
+    Two things are set up before the metric runs, both about what happens when it misbehaves:
+
+    ``os.setsid()`` — several metrics shell out (``soffice``, ``xwdtopnm``, …). Leading a session
+    means the parent's deadline kill can signal the whole group, so a grandchild cannot outlive
+    the metric that spawned it.
+
+    ``signal.alarm(deadline)`` — the parent enforces the same deadline, but only while the parent
+    is alive: if the env-server is SIGKILLed mid-metric this process is reparented to init and
+    keeps burning a core, so the child bounds itself too.
+    """
+    try:
+        os.setsid()
+    except OSError:
+        pass  # already a session leader, or not permitted — the parent deadline still applies
+    signal.alarm(max(1, int(deadline_s) + 5))  # parent fires first; this is the backstop
+    # Upstream metrics explain a 0.0 only through ``logger.error``/``warning`` (e.g.
+    # desktop_env/.../vscode.py), and forkserver does not inherit the parent's handlers. Each
+    # record is sent as its OWN message the moment it is emitted, not batched onto the result:
+    # a metric that hits the deadline is killed before it can send anything, so a batch would
+    # lose exactly the diagnostics that explain the timeout. WARNING+ only, and the root level
+    # is left alone -- capturing every library INFO line made payloads large enough to split
+    # ``Connection._send_bytes`` into two writes, which is what put an unbounded ``recv`` in
+    # front of the deadline.
+    # One lock over every send: ``emit`` runs on whichever thread logged, and a metric that
+    # spawns threads could otherwise interleave two writes into one corrupt message.
+    send_lock = threading.Lock()
+
+    def send(msg) -> None:
+        with send_lock:
+            conn.send(msg)
+
+    class _Ship(logging.Handler):
+        def emit(self, record):
+            try:
+                send(("log", record.levelno, record.name, record.getMessage()))
+            except Exception:
+                pass
+
+    root = logging.getLogger()
+    handler = _Ship()
+    handler.setLevel(logging.WARNING)
+    root.addHandler(handler)
+    try:
+        fn = _lookup_metric(fn_name, modules)
+        if fn is None:
+            raise AttributeError(f"metric not found in {list(modules)}: {fn_name}")
+        score = fn(result_data, expected_data, **opts) if expected_data is not None \
+            else fn(result_data, **opts)
+    except BaseException as exc:  # report everything; a silent child would hang the parent
+        send(("err", f"{type(exc).__name__}: {exc}"))
+    else:
+        # OUTSIDE the except: a score that will not pickle is this channel failing, not a
+        # verdict on the episode. Letting it kill the child gets the parent a dead-child
+        # ``EnvBlocked`` instead of an ``("err", ...)`` the caller would score 0.0.
+        send(("ok", score))
+    finally:
+        root.removeHandler(handler)
+        conn.close()
+
+
+async def _run_metric_isolated(fn_name: str, result_data, expected_data, opts: dict):
+    """Run one metric in a child process under a deadline. Raises rather than returning a verdict.
+
+    Three outcomes, and the caller scores them differently: :class:`MetricRaised` when the
+    metric ran and threw (a verdict on the artifacts → 0.0, including a ``BaseException``
+    such as a metric's own ``sys.exit``, which the child reports rather than letting it
+    escape), :class:`MetricTimeout` past the deadline, and ``RuntimeError`` when the child
+    died without answering. The last two mean the metric never produced a verdict, so
+    ``_evaluate_osworld_task`` voids the episode instead of scoring it.
+
+    The wait is an async poll loop, NOT ``asyncio.to_thread`` on a blocking ``poll(timeout)``.
+    Three things follow from that, all measured:
+
+    * **Cancellation reaches it.** The final eval runs inside ``step()``, which ``wrappers.py``
+      wraps in ``asyncio.wait_for(..., step_timeout)``. Cancelling a thread future does nothing —
+      the thread would stay parked and the child keep burning a core behind an already-failed
+      step. Here the ``finally`` kills the child on the way out.
+    * **Graceful shutdown is not held hostage.** ``loop.shutdown_default_executor()`` joins every
+      pool thread; one parked on a metric pipe would delay SIGTERM by the whole deadline, past
+      the 60s the server runbook tells operators to wait.
+    * **The executor stays free.** The loop's default pool is also what serves ``gym.make`` for
+      ``POST /instances``, the drift reconciler and the admission semaphore. Parking a slot per
+      concurrent metric would starve instance creation — the original "server goes silent"
+      symptom, reproduced through a different resource.
+    """
+    # Off the loop: the FIRST call imports desktop_env's stack in this process (~3.7s) and
+    # the first ``start()`` below waits on the forkserver template importing the same
+    # (~3.8s), so it runs in a thread rather than inline on the loop.
+    # Once per server process. Warm calls are ~1ms and the thread hop
+    # costs nothing next to that.
+    ctx = await asyncio.to_thread(_metric_ctx)
+    parent_conn = child_conn = None
+    proc = None
+    deadline = time.monotonic() + _METRIC_TIMEOUT_S
+    try:
+        parent_conn, child_conn = ctx.Pipe(duplex=False)
+        proc = ctx.Process(
+            target=_metric_child,
+            args=(child_conn, _METRIC_MODULES, fn_name, result_data, expected_data, opts,
+                  _METRIC_TIMEOUT_S),
+            daemon=True,
+        )
+        # Everything from Pipe() on lives inside this try: ``start()`` raises for real -- EOFError
+        # when the forkserver template died, RuntimeError for an unguarded ``__main__`` -- and
+        # creating the pipe outside leaked both ends on every such failure, per metric.
+        # ``start()`` also goes off the loop: it blocks on the forkserver template finishing
+        # its preload (~3.8s the first time, and again whenever the template is respawned).
+        # Threading only ``_metric_ctx`` is not enough -- the preload is the larger half.
+        await asyncio.to_thread(proc.start)
+        child_conn.close()  # parent keeps the read end only
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise MetricTimeout(f"{fn_name} exceeded {_METRIC_TIMEOUT_S:.0f}s")
+            if not parent_conn.poll(0):  # non-blocking probe; the sleep below is the wait
+                await asyncio.sleep(_METRIC_POLL_S)
+                continue
+            # A readable pipe does NOT mean a whole message is there: Connection._send_bytes
+            # writes the header separately once a payload passes 16 KiB, so a bare ``recv()``
+            # here can block the loop with the deadline already behind it. The deadline is
+            # carried across the ``recv`` itself, and the kill in ``finally`` unblocks the
+            # parked thread by closing the child's end.
+            try:
+                msg = await asyncio.wait_for(
+                    asyncio.to_thread(parent_conn.recv), timeout=remaining
+                )
+            except TimeoutError as exc:
+                raise MetricTimeout(f"{fn_name} exceeded {_METRIC_TIMEOUT_S:.0f}s") from exc
+            except (EOFError, OSError) as exc:
+                # EOFError = nothing arrived; OSError("got end of file during message") = the
+                # child died mid-body, which is exactly the deadline/alarm kill path.
+                raise RuntimeError(
+                    f"{fn_name} process died without a result ({type(exc).__name__}). One "
+                    f"cause: a caller whose __main__ lacks an `if __name__ == \"__main__\"` "
+                    f"guard — forkserver re-executes it in every metric child."
+                ) from exc
+            if msg[0] == "log":  # streamed as emitted, so a timeout still keeps what came before
+                logging.getLogger(msg[2]).log(msg[1], msg[3])
+                continue
+            status, payload = msg
+            break
+    finally:
+        # Shielded: a cancellation landing while the kill awaits would otherwise skip the
+        # close below and abandon a live child holding two fds.
+        if proc is not None:
+            await asyncio.shield(_kill_metric_child(proc))
+        for conn in (parent_conn, child_conn):
+            if conn is not None:
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+    if status == "err":
+        raise MetricRaised(payload)
+    return payload
+
+
+async def _kill_metric_child(proc) -> None:
+    """Take the child and anything it spawned down, then reap it. Never signals our own group.
+
+    Signalling the process GROUP is what stops a metric's grandchild (``soffice``, ``xwdtopnm``)
+    from outliving it — but only once the child LEADS a group of its own. It does not at first:
+    a forkserver child runs ``spawn.prepare`` → ``runpy.run_path(__main__)`` before reaching
+    ``_metric_child``'s ``setsid``, ~0.1-0.33s depending on how heavy the caller's ``__main__``
+    is, and until then its pgid is the SERVER's. Killing that group takes the server down
+    (reproduced: parent exit 143). The parent cannot close the window either — ``setpgid`` on
+    the child fails ESRCH because a forkserver child's parent is the TEMPLATE, not us — so the
+    guard is the whole defense and has to be the strict one.
+
+    ``pgid == proc.pid`` is that guard, matching ``exec_stdio/session.py``'s: a pgid equal to the
+    pid means the process leads its own group, so the group holds it and its descendants and
+    nothing else. The weaker ``pgid != our pgid`` would also pass for a recycled pid sitting in
+    some third group, and this branch runs on every metric including the success path.
+
+    Async because the joins would otherwise block the loop this design exists to keep live: a
+    child ignoring SIGTERM would otherwise stall the loop for the full grace period.
+    """
+    if proc.pid is None:
+        return
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        if not proc.is_alive():
+            break
+        try:
+            pgid = os.getpgid(proc.pid)
+        except OSError:
+            pgid = None
+        if pgid is not None and pgid == proc.pid and pgid != os.getpgrp():
+            try:
+                os.killpg(pgid, sig)
+            except OSError:
+                pass
+        else:  # pre-setsid, or a pid we can no longer vouch for — signal the process alone
+            try:
+                proc.terminate() if sig == signal.SIGTERM else proc.kill()
+            except OSError:
+                pass
+        for _ in range(100):  # up to ~5s, yielding so the loop keeps serving
+            if not proc.is_alive():
+                break
+            await asyncio.sleep(_METRIC_POLL_S)
+    proc.join(1)  # bounded: a child wedged in uninterruptible sleep must not hang the loop
 
 
 def _cache_output_path(cache_dir: str, name: str, *, label: str = "output") -> str:
@@ -100,9 +412,25 @@ def _summarize(data: object, limit: int = 2000) -> object:
 async def evaluate_osworld_task(
     computer, evaluator: dict, cache_dir: str | None = None, *, debug: bool = False,
 ) -> float | tuple[float, dict]:
-    """Run OSWorld evaluator: postconfig → getter(result) → getter(expected) → metric."""
-    if cache_dir is None:
+    """Run OSWorld evaluator: postconfig → getter(result) → getter(expected) → metric.
+
+    Owns the scratch dir only when the caller did not bring one, so a caller-supplied dir
+    (``lite.scalecua``'s ``evaluate_final_fn``) is left for its owner to remove. A ``debug``
+    run keeps its artifacts — that is what the flag is for.
+    """
+    owned = cache_dir is None
+    if owned:
         cache_dir = tempfile.mkdtemp(prefix="osworld_eval_")
+    try:
+        return await _evaluate_osworld_task(computer, evaluator, cache_dir, debug=debug)
+    finally:
+        if owned and not debug:
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
+
+async def _evaluate_osworld_task(
+    computer, evaluator: dict, cache_dir: str, *, debug: bool = False,
+) -> float | tuple[float, dict]:
     os.makedirs(cache_dir, exist_ok=True)
 
     func = evaluator.get("func", "")
@@ -126,25 +454,24 @@ async def evaluate_osworld_task(
     if not isinstance(options_list, list):
         options_list = [options_list]
 
+    # ``result``/``expected`` are NOT padded: padding a short list fed ``{}`` to a real metric
+    # and scored whatever came back. ``options`` genuinely defaults per metric (1525 of 2798
+    # rows carry none), so that one does pad — rebound, never ``+=``, because these lists ARE
+    # the task's own ``evaluator`` dict and extending in place grew it across re-scorings.
     n = len(func_list)
-    result_list += [{}] * (n - len(result_list))
-    expected_list += [{}] * (n - len(expected_list))
-    options_list += [{}] * (n - len(options_list))
+    options_list = options_list + [{}] * (n - len(options_list))
 
     conj = evaluator.get("conj", "and")
     scores = []
     details = [] if debug else None
 
-    # desktop_env presence is enforced at lite.osworld/main.py module-load
-    # time (raises EnvDepsMissingError if missing → env removed from registry).
-    # By the time eval runs it's guaranteed importable — no fallback needed.
-    from desktop_env.evaluators import metrics
-
-    # Local lite_osworld metrics override / extend the upstream OSWorld set.
-    # See custom_metrics.py for the rationale (compare_docx_files is text-only,
-    # so all format-only writer tasks trivially pass without it).
-    from lite.gym.envs.lite.osworld.src.eval import metrics as custom_metrics
-
+    # Metric names resolve through ``_METRIC_MODULES`` (see "Metric isolation" above): lite's
+    # local metrics override / extend the upstream OSWorld set — see metrics.py for the
+    # rationale (compare_docx_files is text-only, so all format-only writer tasks trivially
+    # pass without it). desktop_env presence is checked at ``gym.make`` time
+    # (``main.py:_check_desktop_env``, raising ``EnvDepsMissingError``), not at module load --
+    # ``gym.registry.task_ids`` deliberately works without it -- so by the time eval runs it is
+    # importable and no fallback is needed.
     for i, fn_name in enumerate(func_list):
         try:
             result_data = await _get_result(computer, result_list[i] or {}, cache_dir)
@@ -171,10 +498,11 @@ async def evaluate_osworld_task(
                     expected_data = await _get_expected(computer, expected_list[i] or {}, cache_dir)
             else:
                 expected_data = await _get_expected(computer, expected_list[i] or {}, cache_dir)
-            metric_fn = getattr(custom_metrics, fn_name, None)
-            if metric_fn is None:
-                metric_fn = getattr(metrics, fn_name, None)
-            if metric_fn is None:
+            # Reject an unknown name here rather than paying for a process to discover it.
+            # In a thread: the first call imports ``desktop_env.evaluators.metrics``, several
+            # seconds on a cold page cache, which inline would freeze the loop. Later calls hit
+            # ``sys.modules`` and cost nothing.
+            if await asyncio.to_thread(_lookup_metric, fn_name) is None:
                 logger.warning("Metric not found: %s", fn_name)
                 scores.append(0.0)
                 if details is not None:
@@ -184,33 +512,9 @@ async def evaluate_osworld_task(
             # - with expected: metric(result, expected, **options)
             # - without expected: metric(result, **options)
             opts = options_list[i] or {}
-            # Run the metric in a thread so CPU-heavy evaluators (SSIM on
-            # large images, PDF parsing, audio DTW, etc.) don't block the
-            # async event loop and stall other concurrent tasks.
-            import sys as _sys
-
-            def _run_metric(
-                _fn=metric_fn, _rd=result_data, _ed=expected_data,
-                _opts=opts, _cache=cache_dir,
-            ):
-                # Snapshot sys.modules so we can evict task-specific modules
-                # (e.g. settings, tetris, block) imported from cache_dir.
-                _modules_before = set(_sys.modules.keys())
-                if _ed is not None:
-                    result = _fn(_rd, _ed, **_opts)
-                else:
-                    result = _fn(_rd, **_opts)
-                # Remove modules imported from the temp cache_dir
-                for _mod in list(_sys.modules.keys()):
-                    if _mod not in _modules_before:
-                        _mod_obj = _sys.modules.get(_mod)
-                        _mod_file = getattr(_mod_obj, "__file__", None) or ""
-                        if _cache and _mod_file.startswith(_cache):
-                            del _sys.modules[_mod]
-                return result
-
-            loop = asyncio.get_running_loop()
-            score = await loop.run_in_executor(None, _run_metric)
+            # Run the metric in a child process under a deadline — see "Metric isolation" at
+            # the top of this file for why a thread is not enough.
+            score = await _run_metric_isolated(fn_name, result_data, expected_data, opts)
             score_f = float(score) if isinstance(score, (int, float)) else (1.0 if score else 0.0)
             scores.append(score_f)
             if details is not None:
@@ -221,20 +525,36 @@ async def evaluate_osworld_task(
                     "expected_data": _summarize(expected_data),
                     "score": score_f,
                 })
-        except Exception as e:
-            logger.warning("Metric %s[%d] failed: %s", fn_name, i, e)
+        # The agent's two failures, and the only two that may score 0.0 here. Upstream
+        # ``DesktopEnv.evaluate`` catches exactly ``FileNotFoundError`` off the result getter
+        # and scores 0; ``MetricRaised`` is the metric having looked at the artifacts and
+        # thrown. Both are verdicts on what the episode produced.
+        except (FileNotFoundError, MetricRaised) as e:
+            logger.warning("Metric %s[%d] scored 0.0: %s", fn_name, i, e)
             scores.append(0.0)
             if details is not None:
                 details.append({"func": fn_name, "error": str(e), "score": 0.0})
+        # Everything else means we could not TELL: a metric past its deadline, a dead metric
+        # child, a gold that would not download, a container that stopped answering. Scoring
+        # that 0.0 makes "the agent failed" and "we could not tell" the same training signal,
+        # and the reason was recorded only under ``debug=True`` — which rollout never sets
+        # (``--debug`` drives ``debug_artifacts`` alone, lite/infer/rollout.py:1540). Void the
+        # episode instead: ``EnvBlocked`` crosses the env-server RPC typed, and rollout writes
+        # its message to the sample's ``error.txt`` + ``summary.json`` and drops the sample
+        # from the denominator (lite/infer/rollout.py:1562-1578).
+        except EnvBlocked:
+            raise
+        except Exception as e:
+            raise EnvBlocked(what=(
+                f"lite.osworld eval could not score {fn_name}[{i}]: {type(e).__name__}: {e}"
+            )) from e
 
     # Faithful to upstream OSWorld DesktopEnv.evaluate(): return the RAW aggregate
     # score (partial credit preserved) — NEVER binarize at 0.5. The old
     # `1.0 if all(s >= 0.5)` promoted a partial (e.g. compare_references 0.855) to a
     # full 1.0 pass, making the eval strictly EASIER than upstream and inflating
     # results. Upstream aggregation: "and" → 0.0 if any sub-metric is exactly 0.0
-    # else the mean; "or" → max. For a single metric both reduce to the raw
-    # metric value. (Mirrors lite.scalecua
-    # verify._combine_scores, which is already faithful.)
+    # else the mean; "or" → max. For a single metric both reduce to the raw metric value.
     if not scores:
         final = 0.0
     elif conj == "and":
@@ -1132,9 +1452,8 @@ async def _get_result(computer, config: dict, cache_dir: str):
                 local = await _download_from_container(computer, p, cache_dir)
                 if local and dest_name and os.path.basename(local) != dest_name:
                     dest_path = _cache_output_path(cache_dir, dest_name, label="vm_file dest")
-                    import shutil as _shutil
                     # File copy can be large (GB xlsx/pptx); offload to thread.
-                    await asyncio.to_thread(_shutil.copy2, local, dest_path)
+                    await asyncio.to_thread(shutil.copy2, local, dest_path)
                     local = dest_path
                 if local and local.endswith((".xlsx", ".xls")):
                     # openpyxl load_workbook + iter_rows is CPU-heavy — offload.
@@ -1468,11 +1787,14 @@ async def _get_result(computer, config: dict, cache_dir: str):
             dests = config.get("dest", [])
             paths = []
             for i, (u, d) in enumerate(zip(url, dests if isinstance(dests, list) else [dests])):
-                local = _download_url(u, cache_dir, d)
+                # to_thread for the same reason _get_expected's copy documents: this is a
+                # network fetch, and running it inline stalls the loop for every concurrent
+                # rollout, so it is bounded rather than left to the socket default.
+                local = await asyncio.to_thread(_download_url, u, cache_dir, d)
                 if i in gives:
                     paths.append(local)
             return paths[0] if len(paths) == 1 else paths
-        return _download_url(url, cache_dir, dest)
+        return await asyncio.to_thread(_download_url, url, cache_dir, dest)
 
     # --- URL extraction ---
     if result_type == "url_dashPart":
@@ -1723,7 +2045,6 @@ sock.close()
         if local:
             final_path = _cache_output_path(cache_dir, dest, label="pdf dest")
             if local != final_path:
-                import shutil
                 await asyncio.to_thread(shutil.move, local, final_path)
             return final_path
     return None
@@ -1794,11 +2115,12 @@ else:
 # ---------------------------------------------------------------------------
 
 async def _get_expected(computer, config: dict, cache_dir: str):
+    """Fetch the gold side of one metric into ``cache_dir``."""
     if not config:
         return None
     t = config.get("type", "")
     if t == "cloud_file":
-        # _download_url is sync (requests.get); _ensure_csv_exports is sync
+        # _download_url is sync (urllib.request); _ensure_csv_exports is sync
         # openpyxl. Both must run in a thread to avoid stalling the 32-way
         # concurrent rollout event loop.
         if config.get("multi", False):
@@ -2158,9 +2480,14 @@ async def _download_from_container(computer, remote_path: str, cache_dir: str, p
 
     Single-line base64 payload, bounded by the host-side ``_STREAM_LIMIT``
     (64 MiB) in ``lite/gym/sandbox/exec_stdio/client.py``. Falls back to
-    ``run_command("base64 -w0 <path>")`` (also exec-stdio) if the
-    primary op raises a transient error; final return is ``None`` if
-    both fail.
+    ``run_command("base64 -w0 <path>")`` (also exec-stdio) if the primary op
+    raises — a missing file and a sick session both surface as an
+    ``ExecStdioError`` there, so the fallback is what tells them apart.
+
+    ``None`` means one thing only: the container answered and had no bytes for
+    us, i.e. the file the agent was supposed to produce is absent or empty. A
+    transport that cannot answer at all RAISES, because "we could not look"
+    must not be spelled the same way as "there was nothing there".
     """
     if not remote_path:
         return None
@@ -2185,24 +2512,27 @@ async def _download_from_container(computer, remote_path: str, cache_dir: str, p
     # base64 path rides the same exec-stdio session through run_command,
     # which has a different retry surface (one extra round-trip is cheap).
     import shlex as _shlex
-    try:
-        r = await computer.interface.run_command(
-            f"base64 -w0 {_shlex.quote(remote_path)}"
-        )
-        b64 = r.stdout.strip()
-        if b64:
-            data = base64.b64decode(b64)
-            if data:
-                with open(local_path, "wb") as f:
-                    f.write(data)
-                return local_path
-    except Exception as e:
-        logger.warning("base64 download failed for %s: %s", remote_path, e)
-
+    r = await computer.interface.run_command(f"base64 -w0 {_shlex.quote(remote_path)}")
+    b64 = r.stdout.strip()
+    if b64:
+        data = base64.b64decode(b64)
+        if data:
+            with open(local_path, "wb") as f:
+                f.write(data)
+            return local_path
     return None
 
 
 def _download_url(url: str, cache_dir: str, dest: str = "") -> str | None:
+    """Fetch one file from ``url`` into ``cache_dir``. Raises ``EnvBlocked`` if it cannot.
+
+    Called by both sides — ``_get_expected`` for the gold and ``_get_result`` for a
+    ``cloud_file`` result — into the same per-episode scratch dir, so the caller's ``dest``
+    (or, without one, a hash of the url) is what keeps the two apart. An existing non-empty
+    target under that name is returned unfetched.
+
+    ``None`` only for an empty ``url``: a config that names no file.
+    """
     if not url:
         return None
     if dest:
@@ -2216,12 +2546,21 @@ def _download_url(url: str, cache_dir: str, dest: str = "") -> str | None:
         )
     if os.path.exists(local) and os.path.getsize(local) > 0:
         return local
-    import time
+    # ``urlretrieve`` takes no timeout and there is no global socket default, so a peer that
+    # accepts and then stalls would hang here forever -- unbounded even once this runs in a
+    # thread, since a parked pool slot is still a resource the server needs back. ``urlopen``
+    # does take one, and the retry budget is bounded so the whole call cannot outlive the step.
+    deadline = time.monotonic() + _DOWNLOAD_TOTAL_BUDGET_S
     delay = 3
     for attempt in range(1, 6):
+        if time.monotonic() > deadline:
+            logger.warning("Download budget exhausted for %s after %d attempt(s)", url, attempt - 1)
+            break
         try:
             tmp = local + ".tmp"
-            urllib.request.urlretrieve(url, tmp)
+            with urllib.request.urlopen(url, timeout=_DOWNLOAD_TIMEOUT_S) as resp, \
+                    open(tmp, "wb") as fh:
+                shutil.copyfileobj(resp, fh)
             if os.path.getsize(tmp) > 0:
                 os.replace(tmp, local)
                 return local
@@ -2229,7 +2568,12 @@ def _download_url(url: str, cache_dir: str, dest: str = "") -> str | None:
         except Exception as e:
             logger.warning("Download attempt %d/5 failed %s: %s", attempt, url, e)
         if attempt < 5:
-            time.sleep(delay)
+            time.sleep(min(delay, max(0.0, deadline - time.monotonic())))
             delay = min(delay * 2, 30)
-    logger.warning("All 5 download attempts failed: %s", url)
-    return None
+    # Returning ``None`` here handed the metric a gold of ``None`` and let it score the
+    # episode 0.0 (or, for a pair of absent files, 1.0) on a file nobody ever fetched. A
+    # gold we could not obtain is an unscoreable episode, not a verdict.
+    raise EnvBlocked(what=(
+        f"lite.osworld eval could not fetch the gold file within "
+        f"{_DOWNLOAD_TOTAL_BUDGET_S:.0f}s / 5 attempts: {url}"
+    ))

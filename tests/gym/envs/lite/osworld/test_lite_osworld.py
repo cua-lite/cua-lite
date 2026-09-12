@@ -28,6 +28,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import inspect
+import io
 import json
 import re
 from pathlib import Path
@@ -1030,10 +1031,12 @@ class TestEvalPull:
     def test_download_url_allows_nested_dest_inside_cache(self, monkeypatch, tmp_path):
         from lite.gym.envs.lite.osworld.src.eval import runner
 
-        def fake_urlretrieve(_url, filename):
-            Path(filename).write_bytes(b"payload")
 
-        monkeypatch.setattr(runner.urllib.request, "urlretrieve", fake_urlretrieve)
+        def fake_urlopen(_url, timeout=None):
+            assert timeout, "the download must carry a socket timeout, not block forever"
+            return io.BytesIO(b"payload")
+
+        monkeypatch.setattr(runner.urllib.request, "urlopen", fake_urlopen)
 
         result = runner._download_url(
             "https://example.test/file.txt",
@@ -1469,7 +1472,6 @@ class TestEvalMetricCalling:
         self, monkeypatch, conj, scores, expected
     ):
         """OSWorld aggregation keeps raw partial scores; it is not thresholded."""
-        from lite.gym.envs.lite.osworld.src.eval import metrics as custom_metrics
         from lite.gym.envs.lite.osworld.src.eval import runner
 
         async def fake_result(_computer, _config, _cache_dir):
@@ -1478,17 +1480,21 @@ class TestEvalMetricCalling:
         async def fake_expected(_computer, _config, _cache_dir):
             return "expected"
 
-        def unit_score(_result, _expected, *, value):
-            return value
-
         monkeypatch.setattr(runner, "_get_result", fake_result)
         monkeypatch.setattr(runner, "_get_expected", fake_expected)
-        monkeypatch.setattr(custom_metrics, "_unit_score", unit_score, raising=False)
+        # The metric resolves BY NAME inside the isolation child, which re-imports clean and
+        # cannot see a patch made in this process -- point it at a real importable module.
+        # ``_metric_ctx`` bakes ``_METRIC_MODULES`` into the forkserver preload once, so the
+        # cached context has to be dropped too.
+        monkeypatch.setattr(
+            runner, "_METRIC_MODULES", ("tests.gym.envs.lite.osworld.metric_fixtures",)
+        )
+        monkeypatch.setattr(runner, "_metric_ctx_cached", None)
 
         evaluator = {
             "_postconfig_done": True,
             "conj": conj,
-            "func": ["_unit_score"] * len(scores),
+            "func": ["unit_score"] * len(scores),
             "result": [{}] * len(scores),
             "expected": [{}] * len(scores),
             "options": [{"value": score} for score in scores],
