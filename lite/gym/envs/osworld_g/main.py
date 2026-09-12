@@ -99,7 +99,7 @@ CFG = env_config.load(ENV_DIR)
 # ============================================================================
 # --- env_kwargs (per-instance) ---
 _INSTRUCTION_STYLE = CFG.env_kwargs["instruction_style"]
-_BINARY_REWARD     = CFG.env_kwargs["binary_reward"]
+_REWARD_SHAPING    = CFG.env_kwargs["reward_shaping"]
 _VALID_ACTIONS     = resolve_valid_actions(  # ⚠ advanced — defines the action enum
     CFG.env_kwargs["valid_actions"],
     env_name="osworld_g", platform="desktop", task_type="grounding.point",
@@ -217,7 +217,7 @@ class OSWorldGEnv(LiteBaseEnv):
         images_dir: Path,
         task_id: str = "",
         instruction_style: str = _INSTRUCTION_STYLE,
-        binary_reward: bool = _BINARY_REWARD,
+        reward_shaping: bool = _REWARD_SHAPING,
         valid_actions: list[str] | None = _VALID_ACTIONS,
         extra_tools: list[str] | None = _EXTRA_TOOLS,
         **kwargs: Any,
@@ -236,7 +236,7 @@ class OSWorldGEnv(LiteBaseEnv):
         self._images_dir = images_dir
         self._task_id = task_id
         self._instruction_style = instruction_style
-        self._binary_reward = binary_reward
+        self._reward_shaping = reward_shaping
         # Unconditional assignment through the shared resolver: the signature
         # default (yaml-sourced) is the single source of truth for "omitted",
         # ``None`` means no filtering, ``[]`` deliberately strips the grounding
@@ -529,7 +529,7 @@ class OSWorldGEnv(LiteBaseEnv):
             inside = (x1 <= px <= x2) and (y1 <= py <= y2)
             if inside:
                 return 1.0
-            if self._binary_reward:
+            if not self._reward_shaping:
                 return 0.0
             # Distance-based reward (same shape as screenspot_pro): max=0
             # at corners, 1.0 inside.

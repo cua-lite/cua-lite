@@ -6,7 +6,9 @@ env_var_prefix: OSWORLD_G
 
 env_kwargs:
   instruction_style: original   # "original" (short label) or "refined" (verbose)
-  binary_reward: true           # inside box -> 1.0, else 0.0 (false -> distance reward)
+  reward_shaping: false         # false = the benchmark metric (inside box -> 1.0, else 0.0).
+                                # true adds a distance-decayed signal where the metric is 0,
+                                # strictly below 1.0 so the argmax is unchanged (RL only).
   valid_actions: ["point"]      # ⚠ advanced — defines the action enum (single-step grounding click)
   extra_tools: []               # opt-in (e.g. report_infeasible); refusal tasks
                                 # are FILTERED via exclude_reason, so [] is the default.

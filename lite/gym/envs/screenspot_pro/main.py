@@ -71,7 +71,7 @@ CFG = env_config.load(ENV_DIR)
 # override per run; these are only registration defaults.
 # ============================================================================
 # --- env_kwargs (per-instance) ---
-_BINARY_REWARD = CFG.env_kwargs["binary_reward"]
+_REWARD_SHAPING = CFG.env_kwargs["reward_shaping"]
 _VALID_ACTIONS = resolve_valid_actions(  # ⚠ advanced — defines the action enum
     CFG.env_kwargs["valid_actions"],
     env_name="screenspot_pro", platform="desktop", task_type="grounding.point",
@@ -184,7 +184,7 @@ class ScreenSpotProEnv(LiteBaseEnv):
         *,
         annotation: dict[str, Any],
         images_dir: Path,
-        binary_reward: bool = _BINARY_REWARD,
+        reward_shaping: bool = _REWARD_SHAPING,
         valid_actions: list[str] | None = _VALID_ACTIONS,
         extra_tools: list[str] | None = _EXTRA_TOOLS,
         **kwargs: Any,
@@ -196,7 +196,7 @@ class ScreenSpotProEnv(LiteBaseEnv):
         # copy, don't alias (step() also hands it to the observation info).
         self._annotation = dict(annotation)
         self._images_dir = images_dir
-        self._binary_reward = binary_reward
+        self._reward_shaping = reward_shaping
         # Unconditional assignment through the shared resolver: ``None`` means
         # no filtering, ``[]`` deliberately strips the grounding tool, and an
         # unknown name fails at the config boundary instead of becoming a
@@ -242,7 +242,7 @@ class ScreenSpotProEnv(LiteBaseEnv):
 
     def _runtime_metadata(self) -> LiteCUAMetadata:
         # env_kwargs amendments: valid_actions / extra_tools resolved at
-        # construction. (binary_reward only shapes the reward.)
+        # construction. (reward_shaping only shapes the reward.)
         md = self._task_metadata(self._annotation)
         return dataclasses.replace(
             md,
@@ -399,8 +399,9 @@ class ScreenSpotProEnv(LiteBaseEnv):
         CUA-Lite coordinates are in [0, 1000] range.
         Ground-truth bbox is in pixel coordinates: [x1, y1, x2, y2].
 
-        If ``binary_reward=True`` (default): 1.0 if inside bbox, else 0.0.
-        If ``binary_reward=False``: 1.0 if inside bbox, otherwise a distance-based
+        If ``reward_shaping=False`` (default): 1.0 if inside bbox, else 0.0 --
+        the benchmark's own metric, which is what eval must report.
+        If ``reward_shaping=True``: 1.0 if inside bbox, otherwise a distance-based
         reward that decays from 1.0 to 0.0 as the click moves away from the bbox
         center, using ``reward = max(0, 1 - dist / max_dist)`` where max_dist is
         half the image diagonal (so clicks at the image edge get ~0).
@@ -437,7 +438,7 @@ class ScreenSpotProEnv(LiteBaseEnv):
         if norm_bbox[0] <= click_x <= norm_bbox[2] and norm_bbox[1] <= click_y <= norm_bbox[3]:
             return 1.0
 
-        if self._binary_reward:
+        if not self._reward_shaping:
             return 0.0
 
         # Distance-based reward: compute distance from click to bbox center,
