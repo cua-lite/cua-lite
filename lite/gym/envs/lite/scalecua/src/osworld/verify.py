@@ -18,6 +18,7 @@ import shlex
 import statistics
 import tempfile
 import xml.etree.ElementTree as ET
+import shutil
 from datetime import datetime
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse, urlsplit
@@ -32,6 +33,7 @@ from lite.gym.envs.lite.osworld.src.eval import runner as base_runner
 from lite.gym.envs.lite.scalecua.src.osworld import judges
 from lite.gym.envs.lite.scalecua.src.osworld.setup import dispatch_strict
 from lite.gym.sandbox.types import SandboxTaskConfig
+from lite.gym.errors import EnvBlocked
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +220,31 @@ async def evaluate_final_fn(
     actions: list | None = None,
     debug: bool = False,
 ) -> float | tuple[float, dict]:
+    """Remove the postconfig scratch dir this call creates, on every exit path.
+
+    The ``mkdtemp`` below is passed DOWN to ``evaluate_scalecua_task``, which therefore
+    sees it as caller-supplied and leaves it alone — so it has to be cleaned up here or
+    not at all. A ``debug`` run keeps its artifacts.
+    """
+    _created: list[str] = []
+    try:
+        return await _evaluate_final_fn(
+            task, computer, actions, debug=debug, _created=_created
+        )
+    finally:
+        if not debug:
+            for _d in _created:
+                shutil.rmtree(_d, ignore_errors=True)
+
+
+async def _evaluate_final_fn(
+    task: SandboxTaskConfig,
+    computer,
+    actions: list | None = None,
+    *,
+    debug: bool,
+    _created: list[str],
+) -> float | tuple[float, dict]:
     evaluator = copy.deepcopy(task.metadata.get("evaluator", {}))
     if not evaluator:
         return (0.0, {"error": "no evaluator"}) if debug else 0.0
@@ -228,6 +255,7 @@ async def evaluate_final_fn(
     postconfig_done = bool(evaluator.get("_postconfig_done"))
     if evaluator.get("postconfig"):
         cache_dir = tempfile.mkdtemp(prefix="scalecua_eval_")
+        _created.append(cache_dir)
         os.makedirs(cache_dir, exist_ok=True)
         if not postconfig_done:
             try:
@@ -393,8 +421,41 @@ async def evaluate_scalecua_task(
     reference_sources: dict[str, list[str]] | None = None,
     debug: bool = False,
 ) -> float | tuple[float, dict]:
-    if cache_dir is None:
+    """Own the scratch dir when the caller did not bring one, then delegate.
+
+    Whoever creates the dir removes it: a caller-supplied ``cache_dir`` is left for its
+    owner. A ``debug`` run keeps its artifacts.
+    """
+    owned = cache_dir is None
+    if owned:
         cache_dir = tempfile.mkdtemp(prefix="scalecua_eval_")
+    try:
+        return await _evaluate_scalecua_task(
+            computer,
+            evaluator,
+            runtime_split=runtime_split,
+            cache_dir=cache_dir,
+            run_postconfig=run_postconfig,
+            pre_postconfig_state=pre_postconfig_state,
+            reference_sources=reference_sources,
+            debug=debug,
+        )
+    finally:
+        if owned and not debug:
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
+
+async def _evaluate_scalecua_task(
+    computer,
+    evaluator: dict[str, Any],
+    *,
+    runtime_split: str,
+    cache_dir: str,
+    run_postconfig: bool = True,
+    pre_postconfig_state: str | None = None,
+    reference_sources: dict[str, list[str]] | None = None,
+    debug: bool = False,
+) -> float | tuple[float, dict]:
     os.makedirs(cache_dir, exist_ok=True)
     eval_env = judges.make_eval_env(computer, cache_dir)
     if reference_sources:
@@ -478,6 +539,7 @@ async def evaluate_scalecua_task(
                 metric_result,
                 metric_expected,
                 opts,
+                fn_name=str(fn_name),
             )
             score = _coerce_score(raw_score)
             scores.append(score)
@@ -506,6 +568,11 @@ async def evaluate_scalecua_task(
                 return _format_result(
                     1.0, conj, scores, details, debug, flush_stats=_flush_stats_snapshot(eval_env)
                 )
+        except EnvBlocked:
+            # The getters reach into ``base_runner``, which raises ``EnvBlocked`` when it
+            # cannot read the artifact at all. Scoring that 0.0 would make "the agent
+            # failed" and "we could not tell" the same signal on the path GRPO trains on.
+            raise
         except Exception as exc:
             # A judge that CRASHED and an agent that genuinely earned nothing both
             # land on 0.0, and outside --debug this branch used to leave no trace at

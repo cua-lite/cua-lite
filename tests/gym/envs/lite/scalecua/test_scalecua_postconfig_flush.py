@@ -258,7 +258,7 @@ async def test_scalecua_evaluate_debug_includes_flush_fired_counters(
     async def fake_get_expected(eval_env, config, cache_dir, runtime_split):
         return "ok"
 
-    async def fake_call_metric(metric_fn, eval_env, result, expected, opts):
+    async def fake_call_metric(metric_fn, eval_env, result, expected, opts, fn_name=None):
         return 1.0
 
     monkeypatch.setattr(scalecua_verify.base_runner, "_get_result", fake_base_get_result)

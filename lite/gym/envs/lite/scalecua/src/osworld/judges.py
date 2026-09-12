@@ -30,6 +30,7 @@ from types import ModuleType
 from typing import Any
 
 from lite.gym.envs.lite.scalecua.src.utils import assets
+from lite.gym.errors import EnvBlocked
 
 OVERLAY_SPLITS = {"train", "rl"}
 logger = logging.getLogger(__name__)
@@ -180,10 +181,15 @@ class JudgeResolverError(RuntimeError):
     """Raised when a ScaleCUA metric/getter cannot be resolved."""
 
 
+def overlay_root() -> Path:
+    """Directory holding the generated judge overlay, one subdirectory per split."""
+    return assets.CACHE_DIR / "judge_functions"
+
+
 def overlay_dir(runtime_split: str) -> Path | None:
     if runtime_split not in OVERLAY_SPLITS:
         return None
-    return assets.CACHE_DIR / "judge_functions" / runtime_split
+    return overlay_root() / runtime_split
 
 
 @lru_cache(maxsize=None)
@@ -5367,43 +5373,96 @@ def _overlay_getter_args(
     )
 
 
+async def _is_isolatable_metric(fn_name: str, fn) -> bool:
+    """Whether the osworld metric child would run THIS function, not a different one.
+
+    The child resolves by name, so identity — not name equality — is the test: a
+    generated overlay shard may shadow an upstream name, and running the upstream one
+    instead would silently score a different thing.
+
+    In a thread for the same reason ``runner._lookup_metric``'s own caller uses one: the
+    first call imports ``desktop_env.evaluators.metrics``, seconds on a cold page cache.
+    Inline here it would freeze the loop this isolation exists to keep free.
+    """
+    from lite.gym.envs.lite.osworld.src.eval import runner as _osworld_runner
+
+    return await asyncio.to_thread(_osworld_runner._lookup_metric, fn_name) is fn
+
+
 async def call_metric(
     fn,
     eval_env: EvalEnvShim,
     result_data,
     expected_data,
     options: dict[str, Any],
+    fn_name: str | None = None,
 ):
+    """Run one metric, in an isolated child process when that is possible.
+
+    A metric that takes only file paths can run in the ``lite.osworld`` metric child (see
+    that module's "Metric isolation" header): it holds the GIL of its own process, so a
+    runaway ``compare_audios`` cannot stall the env-server's loop. A metric that needs
+    ``env=`` holds a live container handle that cannot cross a process boundary, so it
+    stays in-thread; the same is true of anything the osworld resolver does not own,
+    because the child resolves by NAME through that resolver.
+    """
     opts = dict(options or {})
+    # ONE signature read, and both paths obey what it says. The child calls
+    # ``fn(result, expected)`` whenever ``expected`` is not None, so a metric that takes a
+    # single positional has to reach it with ``expected=None`` or it dies on arity —
+    # scored as the agent's 0.0, which is the opposite of what isolation is for.
+    drop_expected = False
     try:
         sig = inspect.signature(fn)
+        params = list(sig.parameters.values())
         if "env" in sig.parameters or any(
-            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in params
         ):
             opts.setdefault("env", eval_env)
-    except (TypeError, ValueError):
-        pass
-
-    args = (result_data, expected_data) if expected_data is not None else (result_data,)
-    try:
-        sig = inspect.signature(fn)
         positional = [
             p
-            for p in sig.parameters.values()
+            for p in params
             if p.kind
             in (
                 inspect.Parameter.POSITIONAL_ONLY,
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
             )
         ]
-        has_varargs = any(
-            p.kind == inspect.Parameter.VAR_POSITIONAL
-            for p in sig.parameters.values()
-        )
-        if not has_varargs and len(positional) <= 1:
-            args = (result_data,)
+        has_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+        drop_expected = not has_varargs and len(positional) <= 1
     except (TypeError, ValueError):
         pass
+
+    if fn_name and "env" not in opts and await _is_isolatable_metric(str(fn_name), fn):
+        from lite.gym.envs.lite.osworld.src.eval import runner as _osworld_runner
+
+        try:
+            return await _osworld_runner._run_metric_isolated(
+                str(fn_name),
+                result_data,
+                None if drop_expected else expected_data,
+                opts,
+            )
+        except _osworld_runner.MetricRaised:
+            # The metric RAN and threw on the artifacts it was handed. That is a verdict
+            # on the episode, and the caller's handler scores it 0.0 -- same as in-thread.
+            raise
+        except EnvBlocked:
+            raise
+        except Exception as exc:
+            # Deadline kill, a dead child, a failed spawn: the metric never reached a
+            # verdict. Routing a metric into a child introduced these failure modes, so
+            # they are normalised HERE rather than left for the caller's generic handler,
+            # which would score them 0.0 and train on an infrastructure failure.
+            raise EnvBlocked(what=(
+                f"lite.scalecua could not score {fn_name}: "
+                f"{type(exc).__name__}: {exc}"
+            )) from exc
+
+    if drop_expected or expected_data is None:
+        args = (result_data,)
+    else:
+        args = (result_data, expected_data)
     return await _call_sync_maybe_await(eval_env, fn, *args, **opts)
 
 
@@ -5482,11 +5541,31 @@ def _install_shared_requests_router() -> None:
                 return active_env.request_in_container(method, str(url), **kwargs)
             return orig_request(method, url, **kwargs)
 
-        def _make_verb(verb):
-            def _verb(url, **kwargs):
-                return routed_request(verb, url, **kwargs)
+        # Mirror ``requests.api`` exactly: the verb shorthands are part of the
+        # public signature every other library in the process calls against, so
+        # ``get(url, params)`` positionally and ``head``'s allow_redirects=False
+        # default must survive the patch.
+        def routed_get(url, params=None, **kwargs):
+            return routed_request("GET", url, params=params, **kwargs)
 
-            return _verb
+        def routed_options(url, **kwargs):
+            return routed_request("OPTIONS", url, **kwargs)
+
+        def routed_head(url, **kwargs):
+            kwargs.setdefault("allow_redirects", False)
+            return routed_request("HEAD", url, **kwargs)
+
+        def routed_post(url, data=None, json=None, **kwargs):
+            return routed_request("POST", url, data=data, json=json, **kwargs)
+
+        def routed_put(url, data=None, **kwargs):
+            return routed_request("PUT", url, data=data, **kwargs)
+
+        def routed_patch(url, data=None, **kwargs):
+            return routed_request("PATCH", url, data=data, **kwargs)
+
+        def routed_delete(url, **kwargs):
+            return routed_request("DELETE", url, **kwargs)
 
         def routed_session_request(self, method, url, **kwargs):
             active_env = _active_requests_env()
@@ -5495,8 +5574,13 @@ def _install_shared_requests_router() -> None:
             return orig_session_request(self, method, url, **kwargs)
 
         requests.request = routed_request
-        for verb in ("get", "post", "put", "delete", "head", "patch", "options"):
-            setattr(requests, verb, _make_verb(verb.upper()))
+        requests.get = routed_get
+        requests.post = routed_post
+        requests.put = routed_put
+        requests.delete = routed_delete
+        requests.head = routed_head
+        requests.patch = routed_patch
+        requests.options = routed_options
         # Patch at the class level so ``requests.Session().get(...)`` and every
         # other session verb (which all funnel through ``Session.request``) are
         # routed too, without wrapping the session object.

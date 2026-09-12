@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from types import SimpleNamespace
 
 import pytest
 
 from lite.gym.envs.lite.scalecua.src.osworld import judges
 from lite.gym.envs.lite.scalecua.src.osworld import verify as scalecua_verify
+from lite.gym.errors import EnvBlocked
 
 
 class _FakeInterface:
@@ -354,6 +357,185 @@ async def test_scalecua_evaluate_uses_official_score_aggregation(monkeypatch):
     assert or_score == 0.5
 
 
+@pytest.mark.asyncio
+async def test_scalecua_eval_scratch_dir_is_removed_by_whoever_created_it(
+    monkeypatch, tmp_path
+):
+    """Every episode used to leave a ``/tmp/scalecua_eval_*`` dir behind forever.
+
+    Cleanup follows OWNERSHIP: a dir this function created is removed on the way
+    out, a caller-supplied one is left alone (``evaluate_final_fn`` keeps using
+    its own after the call and removes it itself), and a ``debug`` run keeps the
+    artifacts so a failure can still be inspected.
+    """
+    created: list[str] = []
+    real_mkdtemp = tempfile.mkdtemp
+
+    def tracking_mkdtemp(*args, **kwargs):
+        # Rooted under tmp_path so an artifact this test deliberately keeps is
+        # still cleaned up by pytest.
+        path = real_mkdtemp(*args, **{**kwargs, "dir": str(tmp_path)})
+        created.append(path)
+        return path
+
+    monkeypatch.setattr(tempfile, "mkdtemp", tracking_mkdtemp)
+
+    async def fake_get_result(eval_env, config, cache_dir, runtime_split):
+        return "result"
+
+    async def fake_get_expected(eval_env, config, cache_dir, runtime_split):
+        return "result"
+
+    monkeypatch.setattr(scalecua_verify, "_get_result", fake_get_result)
+    monkeypatch.setattr(scalecua_verify, "_get_expected", fake_get_expected)
+    monkeypatch.setattr(
+        judges,
+        "resolve_metric",
+        lambda name, runtime_split: lambda result, expected=None: 1.0,
+    )
+    evaluator = {"func": "score_metric", "result": {}, "expected": {}}
+
+    assert await scalecua_verify.evaluate_scalecua_task(
+        _FakeComputer(), dict(evaluator), runtime_split="train"
+    ) == 1.0
+    assert len(created) == 1
+    assert not os.path.exists(created[0])
+
+    # A caller-supplied dir belongs to the caller.
+    caller_dir = tmp_path / "caller"
+    caller_dir.mkdir()
+    assert await scalecua_verify.evaluate_scalecua_task(
+        _FakeComputer(), dict(evaluator), runtime_split="train", cache_dir=str(caller_dir)
+    ) == 1.0
+    assert len(created) == 1
+    assert caller_dir.is_dir()
+
+    # --debug keeps what it collected.
+    await scalecua_verify.evaluate_scalecua_task(
+        _FakeComputer(), dict(evaluator), runtime_split="train", debug=True
+    )
+    assert len(created) == 2
+    assert os.path.isdir(created[1])
+
+
+@pytest.mark.asyncio
+async def test_scalecua_final_fn_removes_the_postconfig_scratch_dir(monkeypatch, tmp_path):
+    """``evaluate_final_fn`` owns the dir it opens for postconfig, on every exit."""
+    created: list[str] = []
+    real_mkdtemp = tempfile.mkdtemp
+
+    def tracking_mkdtemp(*args, **kwargs):
+        # Rooted under tmp_path so an artifact this test deliberately keeps is
+        # still cleaned up by pytest.
+        path = real_mkdtemp(*args, **{**kwargs, "dir": str(tmp_path)})
+        created.append(path)
+        return path
+
+    monkeypatch.setattr(tempfile, "mkdtemp", tracking_mkdtemp)
+
+    seen_cache_dirs: list[str | None] = []
+
+    async def fake_run_postconfig(computer, evaluator, cache_dir):
+        return None
+
+    async def fake_evaluate(computer, evaluator, *, cache_dir=None, **kwargs):
+        seen_cache_dirs.append(cache_dir)
+        return 1.0
+
+    monkeypatch.setattr(scalecua_verify, "_run_postconfig", fake_run_postconfig)
+    monkeypatch.setattr(scalecua_verify, "evaluate_scalecua_task", fake_evaluate)
+    task = SimpleNamespace(
+        metadata={
+            "evaluator": {"func": "rule", "postconfig": [{"type": "launch"}]},
+            "scalecua": {"runtime_split": "train"},
+        }
+    )
+
+    assert await scalecua_verify.evaluate_final_fn(task, None) == 1.0
+
+    assert len(created) == 1
+    assert seen_cache_dirs == [created[0]]
+    assert not os.path.exists(created[0])
+
+    # The metric path raising must not turn the scratch dir into a leak.
+    async def boom(*args, **kwargs):
+        raise RuntimeError("metric exploded")
+
+    monkeypatch.setattr(scalecua_verify, "evaluate_scalecua_task", boom)
+    with pytest.raises(RuntimeError):
+        await scalecua_verify.evaluate_final_fn(task, None)
+
+    assert len(created) == 2
+    assert not os.path.exists(created[1])
+
+
+@pytest.mark.parametrize("failing_getter", ["_get_result", "_get_expected"])
+@pytest.mark.asyncio
+async def test_scalecua_unscoreable_episode_does_not_become_a_score(
+    monkeypatch, failing_getter
+):
+    """An env-side failure must leave the loop as a VOID EPISODE, not as a reward.
+
+    The getters reach into ``base_runner``, which raises ``EnvBlocked`` when it cannot
+    read the artifact at all. ``EnvBlocked`` is the drop-the-trajectory signal
+    (lite/gym/errors.py): rollout writes the reason and excludes the sample from the
+    denominator. Degrading it to 0.0 instead would teach the model that infrastructure
+    failures are its own fault -- on the path GRPO trains on.
+    """
+
+    async def blocked(eval_env, config, cache_dir, runtime_split):
+        raise EnvBlocked(what="osworld container stopped answering")
+
+    async def fine(eval_env, config, cache_dir, runtime_split):
+        return "artifact"
+
+    monkeypatch.setattr(scalecua_verify, "_get_result", fine)
+    monkeypatch.setattr(scalecua_verify, "_get_expected", fine)
+    monkeypatch.setattr(scalecua_verify, failing_getter, blocked)
+    monkeypatch.setattr(
+        judges,
+        "resolve_metric",
+        lambda name, runtime_split: lambda result, expected=None: 1.0,
+    )
+
+    with pytest.raises(EnvBlocked):
+        await scalecua_verify.evaluate_scalecua_task(
+            _FakeComputer(),
+            {"func": "score_metric", "result": {}, "expected": {}},
+            runtime_split="train",
+        )
+
+
+@pytest.mark.asyncio
+async def test_scalecua_metric_that_ran_and_threw_still_scores_zero(monkeypatch):
+    """The other half of the split: a judge that looked at the artifacts and threw.
+
+    That IS a verdict, however crude, so it degrades to 0.0 as before -- the generated
+    overlay metrics that call helpers this overlay never defines must not start voiding
+    episodes.
+    """
+
+    async def fine(eval_env, config, cache_dir, runtime_split):
+        return "artifact"
+
+    def exploding_metric(result, expected=None):
+        raise NameError("_verify_single_check__7767eef2")
+
+    monkeypatch.setattr(scalecua_verify, "_get_result", fine)
+    monkeypatch.setattr(scalecua_verify, "_get_expected", fine)
+    monkeypatch.setattr(
+        judges, "resolve_metric", lambda name, runtime_split: exploding_metric
+    )
+
+    score = await scalecua_verify.evaluate_scalecua_task(
+        _FakeComputer(),
+        {"func": "score_metric", "result": {}, "expected": {}},
+        runtime_split="train",
+    )
+
+    assert score == 0.0
+
+
 def test_scalecua_score_coercion_clamps_generated_metric_noise():
     assert scalecua_verify._coerce_score(0.25) == 0.25
     assert scalecua_verify._coerce_score(0.9999999999999999) == 1.0
@@ -575,3 +757,129 @@ async def test_scalecua_generated_thunderbird_prefs_metric_does_not_leak_injecte
 
     assert await judges.call_metric(metric, env, str(good_path), expected, {}) == 1.0
     assert await judges.call_metric(metric, env, str(wrong_path), expected, {}) == 0.0
+
+
+async def _always_isolatable(*_a) -> bool:
+    return True
+
+
+@pytest.mark.asyncio
+async def test_a_single_positional_metric_reaches_the_child_with_the_same_arity(monkeypatch):
+    """The in-thread path drops ``expected`` for a 1-positional metric; the child must too.
+
+    The child calls ``fn(result, expected)`` whenever ``expected`` is not None, so sending
+    one of these in unchanged kills it on arity -- and a ``TypeError`` comes back as
+    ``MetricRaised``, which the caller scores as the agent's 0.0.
+    """
+    from lite.gym.envs.lite.osworld.src.eval import runner as osworld_runner
+
+    seen = {}
+
+    async def _record(fn_name, result_data, expected_data, opts):
+        seen["expected"] = expected_data
+        return 1.0
+
+    one_positional = lambda only: 1.0  # noqa: E731
+    monkeypatch.setattr(osworld_runner, "_run_metric_isolated", _record)
+    monkeypatch.setattr(osworld_runner, "_lookup_metric", lambda _n: one_positional)
+
+    score = await judges.call_metric(
+        one_positional,
+        SimpleNamespace(run_sync=lambda fn, *a, **k: fn(*a, **k)),
+        "/result",
+        "/gold",
+        {},
+        fn_name="one_positional",
+    )
+    assert score == 1.0
+    assert seen["expected"] is None
+
+
+@pytest.mark.asyncio
+async def test_isolatable_is_identity_not_name(monkeypatch):
+    """The child resolves by NAME, so the classifier has to compare the FUNCTION.
+
+    A generated overlay shard that shadows an upstream metric name keeps the same
+    ``fn_name``; sending it to the child would score the upstream function instead.
+    """
+    from lite.gym.envs.lite.osworld.src.eval import runner as osworld_runner
+
+    upstream = lambda a, b=None: 1.0  # noqa: E731
+    overlay = lambda a, b=None: 0.0  # noqa: E731
+    monkeypatch.setattr(osworld_runner, "_lookup_metric", lambda _n: upstream)
+
+    assert await judges._is_isolatable_metric("m", upstream) is True
+    assert await judges._is_isolatable_metric("m", overlay) is False
+
+
+@pytest.mark.asyncio
+async def test_an_overlay_shadowed_metric_is_never_sent_to_the_child(monkeypatch):
+    """End to end: the classifier says no, so ``_run_metric_isolated`` is not reached."""
+    from lite.gym.envs.lite.osworld.src.eval import runner as osworld_runner
+
+    async def _must_not_run(*_a, **_k):
+        raise AssertionError("an overlay-shadowed metric reached the child")
+
+    monkeypatch.setattr(osworld_runner, "_run_metric_isolated", _must_not_run)
+    monkeypatch.setattr(osworld_runner, "_lookup_metric", lambda _n: (lambda a, b=None: 1.0))
+
+    overlay = lambda a, b=None: 0.5  # noqa: E731
+    score = await judges.call_metric(
+        overlay,
+        SimpleNamespace(run_sync=lambda fn, *a, **k: fn(*a, **k)),
+        "/a",
+        "/b",
+        {},
+        fn_name="shadowed",
+    )
+    assert score == 0.5
+
+
+@pytest.mark.asyncio
+async def test_scalecua_isolated_metric_timeout_is_not_a_score(monkeypatch):
+    """A metric killed on its deadline never produced a verdict, so it must not score.
+
+    Routing env-free metrics into the osworld metric child added two failure modes that
+    the in-thread path never had -- a deadline kill and a dead child. Neither is a
+    statement about the episode, and the caller's generic handler would degrade both to
+    0.0 and train GRPO on an infrastructure failure.
+    """
+    from lite.gym.envs.lite.osworld.src.eval import runner as osworld_runner
+
+    async def _timeout(*_a, **_k):
+        raise osworld_runner.MetricTimeout("spin exceeded 90s")
+
+    monkeypatch.setattr(osworld_runner, "_run_metric_isolated", _timeout)
+    monkeypatch.setattr(judges, "_is_isolatable_metric", _always_isolatable)
+
+    with pytest.raises(EnvBlocked):
+        await judges.call_metric(
+            lambda a, b=None: 1.0,
+            SimpleNamespace(run_sync=lambda fn, *a, **k: fn(*a, **k)),
+            "/a",
+            "/b",
+            {},
+            fn_name="spin",
+        )
+
+
+@pytest.mark.asyncio
+async def test_scalecua_isolated_metric_that_threw_is_still_the_agents_zero(monkeypatch):
+    """The other half: a metric that RAN and threw is a verdict and stays a 0.0."""
+    from lite.gym.envs.lite.osworld.src.eval import runner as osworld_runner
+
+    async def _raised(*_a, **_k):
+        raise osworld_runner.MetricRaised("ValueError: bad artifact")
+
+    monkeypatch.setattr(osworld_runner, "_run_metric_isolated", _raised)
+    monkeypatch.setattr(judges, "_is_isolatable_metric", _always_isolatable)
+
+    with pytest.raises(osworld_runner.MetricRaised):
+        await judges.call_metric(
+            lambda a, b=None: 1.0,
+            SimpleNamespace(run_sync=lambda fn, *a, **k: fn(*a, **k)),
+            "/a",
+            "/b",
+            {},
+            fn_name="boom",
+        )

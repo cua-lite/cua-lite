@@ -46,18 +46,28 @@ def test_scalecua_request_in_container_script_compiles():
     assert '"status_code": resp.status_code' in script
 
 
+_ROUTED_VERBS = ("get", "post", "put", "delete", "head", "patch", "options")
+
+
 @contextlib.contextmanager
 def _shared_requests_router_with_passthrough_originals():
-    """Install the shared-module router with observable passthrough sentinels."""
+    """Install the shared-module router with observable passthrough sentinels.
+
+    Yields ``(requests, unrouted)`` where ``unrouted`` records the kwargs each
+    non-routed call handed to the captured original -- the patch replaces the
+    real ``requests`` callables permanently, so every one of them is restored on
+    exit.
+    """
     import requests
 
     saved_installed = judges._REQUESTS_PATCH_INSTALLED
     saved_request = requests.request
-    saved_get = requests.get
-    saved_post = requests.post
+    saved_verbs = {verb: getattr(requests, verb) for verb in _ROUTED_VERBS}
     saved_session_request = requests.sessions.Session.request
+    unrouted: list[dict] = []
 
     def passthrough_request(method, url, **kwargs):
+        unrouted.append({"method": method, "url": url, **kwargs})
         return f"passthrough:{method}:{url}"
 
     def passthrough_session_request(session, method, url, **kwargs):
@@ -68,12 +78,12 @@ def _shared_requests_router_with_passthrough_originals():
     judges._REQUESTS_PATCH_INSTALLED = False
     judges._install_shared_requests_router()
     try:
-        yield requests
+        yield requests, unrouted
     finally:
         judges._REQUESTS_PATCH_INSTALLED = saved_installed
         requests.request = saved_request
-        requests.get = saved_get
-        requests.post = saved_post
+        for verb, original in saved_verbs.items():
+            setattr(requests, verb, original)
         requests.sessions.Session.request = saved_session_request
         with contextlib.suppress(AttributeError):
             delattr(judges._REQUESTS_ROUTER_LOCAL, "eval_env")
@@ -95,7 +105,7 @@ class _FakeRoutingEnv:
 def test_scalecua_requests_router_is_thread_local():
     # The shared-module router patches ``requests`` itself, so a module-global
     # import routes without rebinding a generated getter's globals.
-    with _shared_requests_router_with_passthrough_originals():
+    with _shared_requests_router_with_passthrough_originals() as (_requests, _unrouted):
         module_globals = {"requests": __import__("requests")}
         exec(
             """
@@ -159,7 +169,7 @@ def generated_getter():
 
 
 def test_scalecua_router_survives_function_local_import_and_spares_external():
-    with _shared_requests_router_with_passthrough_originals():
+    with _shared_requests_router_with_passthrough_originals() as (_requests, _unrouted):
         module_globals: dict = {}
         exec(
             "def get_local():\n"
@@ -184,6 +194,34 @@ def test_scalecua_router_survives_function_local_import_and_spares_external():
             "passthrough:GET:http://localhost:9222/json",
             "passthrough:POST:https://example.com/outside",
         )
+
+
+def test_scalecua_router_verbs_keep_the_requests_api_signatures():
+    """The patch is permanent and process-wide, so it must BE ``requests.api``.
+
+    ``requests.get(url, params)`` is a legal positional call and ``requests.head``
+    defaults ``allow_redirects`` to False; a collapsed ``(url, **kwargs)``
+    replacement broke both for every library in the env-server process.
+    """
+    import inspect
+
+    import requests.api as requests_api
+
+    with _shared_requests_router_with_passthrough_originals() as (requests, unrouted):
+        for verb in _ROUTED_VERBS:
+            assert inspect.signature(getattr(requests, verb)) == inspect.signature(
+                getattr(requests_api, verb)
+            ), verb
+
+        # ``params`` positionally is a legal call and must reach the request.
+        assert (
+            requests.get("https://example.com/outside", {"a": 1})
+            == "passthrough:GET:https://example.com/outside"
+        )
+        assert unrouted[-1]["params"] == {"a": 1}
+
+        requests.head("https://example.com/outside")
+        assert unrouted[-1]["allow_redirects"] is False
 
 
 def test_scalecua_no_getter_relies_on_unrouted_local_requests_import():
