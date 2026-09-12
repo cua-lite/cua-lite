@@ -97,9 +97,10 @@ this file never branches on env_id, never reads env-specific config.
                                         admission_503_total by layer,
                                         host_ram_percent / load_per_cpu,
                                         per-env-id live counts.
-  GET    /host_status                -> CPU / memory / disk / process metrics
-                                        (bearer-gated like /metrics: operator
-                                        surface, same audience).
+  GET    /host_status                -> CPU / memory / disk / process metrics,
+                                        plus ``loop`` (worst event-loop stall
+                                        seen this lifetime). Bearer-gated like
+                                        /metrics: operator surface, same audience.
 
 Sibling :mod:`lite.gym.remote.client` is wire-compatible with this
 module.
@@ -350,6 +351,10 @@ class State:
         # Single lock guards env table mutations (create / close / reap).
         # Per-env step/reset run unlocked — multiple envs progress concurrently.
         self.lock = asyncio.Lock()
+        #: Worst event-loop stall observed this lifetime, written by
+        #: :func:`_watch_loop_stalls` and surfaced via ``GET /host_status``.
+        self.loop_stall_max_s: float = 0.0
+        self.loop_stall_max_at: float | None = None
         #: --warm-singleton: background pre-warm of served SINGLETON backends at
         #: startup (non-blocking). It is what makes ``available`` flip true on its own
         #: (lazy never would — health() only probes), so a launcher can wait-for-hot;
@@ -1443,6 +1448,42 @@ def _collect_stale(
     return stale
 
 
+_STALL_POLL_S = 1.0
+_STALL_WARN_S = 5.0
+
+
+async def _watch_loop_stalls(state: State) -> None:
+    """Background task: log when the event loop stops running.
+
+    A wedged env-server reports healthy CPU, RAM and thread counts; the loop not
+    running is the one thing wrong, and while it is not running ``/host_status``
+    cannot answer either. So this sleeps ``_STALL_POLL_S`` and measures the
+    overshoot: the task cannot run *during* a stall, and the WARNING lands after
+    the loop recovers, reporting how long it was gone.
+
+    A cycle exception is logged rather than fatal — a dead watchdog would leave
+    ``loop_stall_max_seconds`` frozen at a stale value rather than absent.
+    """
+    while True:
+        try:
+            before = time.monotonic()
+            await asyncio.sleep(_STALL_POLL_S)
+            lag = time.monotonic() - before - _STALL_POLL_S
+            if lag > state.loop_stall_max_s:
+                state.loop_stall_max_s = lag
+                state.loop_stall_max_at = time.time()
+            if lag >= _STALL_WARN_S:
+                logger.warning(
+                    "event loop stalled for %.1fs (ending now) — every request in "
+                    "flight was frozen for that long; blocking work ran on the "
+                    "loop or held the GIL",
+                    lag,
+                )
+        except Exception:
+            logger.exception("stall watchdog cycle failed")
+            await asyncio.sleep(_STALL_POLL_S)
+
+
 async def _reap_idle(state: State) -> None:
     """Background task: periodically close in-use envs whose TTL has
     expired. See :func:`_collect_stale` for the policy.
@@ -1716,6 +1757,9 @@ def make_app(
             n_recovered, state.scope.server_port,
         )
         idle_task = asyncio.create_task(_reap_idle(state), name="idle-reaper")
+        stall_task = asyncio.create_task(
+            _watch_loop_stalls(state), name="stall-watch",
+        )
         # Polymorphic drift reaper — runs periodic reconciliation (orphan +
         # ghost) via the framework reconcile loop (each env's ``live_ids``/
         # ``reap``). The dispatcher body is :func:`_reap_drift_dispatcher` below.
@@ -1734,7 +1778,7 @@ def make_app(
         try:
             yield
         finally:
-            for t in (idle_task, drift_task, warm_task):
+            for t in (idle_task, drift_task, warm_task, stall_task):
                 if t is None:
                     continue
                 t.cancel()
@@ -2613,6 +2657,13 @@ def make_app(
                 "cpu_percent": proc_cpu,
                 "num_fds": num_fds,
                 "num_threads": num_threads,
+            },
+            # Worst event-loop stall this lifetime. A non-trivial value is the
+            # signature of blocking work on the loop: every request in flight
+            # was frozen for that long. See :func:`_watch_loop_stalls`.
+            "loop": {
+                "stall_max_seconds": state.loop_stall_max_s,
+                "stall_max_at": state.loop_stall_max_at,
             },
         }
 

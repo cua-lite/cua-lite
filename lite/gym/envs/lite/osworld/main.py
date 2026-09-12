@@ -712,7 +712,10 @@ class LiteOsworldEnv(SandboxBaseEnv):
         image = _IMAGE
         if self._computer_config is not None:
             image = str(self._computer_config.get("image", _IMAGE))
-        _check_docker_image(image)
+        # Off the loop: this shells out to ``docker image inspect`` and runs on EVERY episode's
+        # reset, so inline it serializes a 64-way reset burst — and is unbounded against a
+        # wedged daemon, with ``reset_timeout`` unable to cancel a synchronous frame.
+        await asyncio.to_thread(_check_docker_image, image)
         from lite.gym.errors import EnvDesktopCrashed
         # Cold-vs-existing signal for the post-boot liveness check below:
         # ``self._computer`` is None until ``SandboxBaseEnv.boot()`` (called

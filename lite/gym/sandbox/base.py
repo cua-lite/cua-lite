@@ -686,7 +686,15 @@ class SandboxBaseEnv(EnvServerPoolable, EnvServerResource):
                 )
 
                 try:
-                    image_for(self._env_id, tag=str(image_tag)).ensure_runnable()
+                    # In a thread: ``ensure_runnable`` shells out to ``docker image
+                    # inspect``, and every env's boot comes through here. Inline, a slow
+                    # or hung daemon blocks the env-server's loop for the whole
+                    # ``_INSPECT_TIMEOUT_S`` -- and a rollout boots 64 envs at once.
+                    # ``image_for`` is inside the hop too: for lite.cuaworld it hashes the
+                    # whole local materials tree, which is the same kind of blocking work.
+                    await asyncio.to_thread(
+                        lambda: image_for(self._env_id, tag=str(image_tag)).ensure_runnable()
+                    )
                 except UnknownImageFreshnessProvider:
                     # Generic sandbox tasks may point at non-CUA-Lite images.
                     pass

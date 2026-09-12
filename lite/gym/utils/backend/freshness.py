@@ -39,6 +39,11 @@ from lite.utils.path import project_root
 # Do not "fix" the duplication by exporting this constant; bash cannot import it.
 _LABEL_KEY = "lite.src_hash"
 
+#: Ceiling on one ``docker image inspect``, which runs on every episode's reset path.
+#: Every caller now threads it, so the ceiling is what stops a wedged daemon from holding a
+#: pool thread forever rather than returning. ``subprocess.run`` reaps the child.
+_INSPECT_TIMEOUT_S = 20.0
+
 # Repo root by marker lookup (pyproject.toml + lite/), not __file__-depth
 # counting — depth counting silently breaks the moment this module moves.
 _REPO_ROOT = project_root()
@@ -302,11 +307,21 @@ def _image_label(image: str, key: str) -> str | None:
     daemon/CLI failure.
     """
     try:
+        # ``timeout`` is not optional here: this runs on the reset path of every episode, and a
+        # wedged dockerd would otherwise hang the caller with nothing above it able to cancel a
+        # synchronous frame.
         r = subprocess.run(
             ["docker", "image", "inspect", "--format",
              f"{{{{index .Config.Labels \"{key}\"}}}}", image],
             capture_output=True, text=True, check=True,
+            timeout=_INSPECT_TIMEOUT_S,
         )
+    except subprocess.TimeoutExpired as exc:
+        # Transient, not terminal: the caller turns this into CapacityExhausted(retry_after_s),
+        # which is what a momentarily wedged daemon deserves — not "image is missing".
+        raise _ImageInspectTransientError(
+            f"docker image inspect timed out after {_INSPECT_TIMEOUT_S:.0f}s for {image!r}"
+        ) from exc
     except FileNotFoundError as exc:
         raise _DockerCliMissing("docker CLI not found") from exc
     except subprocess.CalledProcessError as exc:
