@@ -183,7 +183,11 @@ class JudgeResolverError(RuntimeError):
 def overlay_dir(runtime_split: str) -> Path | None:
     if runtime_split not in OVERLAY_SPLITS:
         return None
-    return assets.CACHE_DIR / "judge_functions" / runtime_split
+    return overlay_root() / runtime_split
+
+
+def overlay_root() -> Path:
+    return assets.CACHE_DIR / "judge_functions"
 
 
 @lru_cache(maxsize=None)
@@ -5482,11 +5486,27 @@ def _install_shared_requests_router() -> None:
                 return active_env.request_in_container(method, str(url), **kwargs)
             return orig_request(method, url, **kwargs)
 
-        def _make_verb(verb):
-            def _verb(url, **kwargs):
-                return routed_request(verb, url, **kwargs)
+        def get(url, params=None, **kwargs):
+            return routed_request("GET", url, params=params, **kwargs)
 
-            return _verb
+        def options(url, **kwargs):
+            return routed_request("OPTIONS", url, **kwargs)
+
+        def head(url, **kwargs):
+            kwargs.setdefault("allow_redirects", False)
+            return routed_request("HEAD", url, **kwargs)
+
+        def post(url, data=None, json=None, **kwargs):
+            return routed_request("POST", url, data=data, json=json, **kwargs)
+
+        def put(url, data=None, **kwargs):
+            return routed_request("PUT", url, data=data, **kwargs)
+
+        def patch(url, data=None, **kwargs):
+            return routed_request("PATCH", url, data=data, **kwargs)
+
+        def delete(url, **kwargs):
+            return routed_request("DELETE", url, **kwargs)
 
         def routed_session_request(self, method, url, **kwargs):
             active_env = _active_requests_env()
@@ -5495,8 +5515,13 @@ def _install_shared_requests_router() -> None:
             return orig_session_request(self, method, url, **kwargs)
 
         requests.request = routed_request
-        for verb in ("get", "post", "put", "delete", "head", "patch", "options"):
-            setattr(requests, verb, _make_verb(verb.upper()))
+        requests.get = get
+        requests.options = options
+        requests.head = head
+        requests.post = post
+        requests.put = put
+        requests.patch = patch
+        requests.delete = delete
         # Patch at the class level so ``requests.Session().get(...)`` and every
         # other session verb (which all funnel through ``Session.request``) are
         # routed too, without wrapping the session object.
