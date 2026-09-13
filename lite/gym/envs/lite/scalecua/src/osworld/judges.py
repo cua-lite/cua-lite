@@ -30,6 +30,7 @@ from types import ModuleType
 from typing import Any
 
 from lite.gym.envs.lite.scalecua.src.utils import assets
+from lite.gym.errors import EnvBlocked
 
 OVERLAY_SPLITS = {"train", "rl"}
 logger = logging.getLogger(__name__)
@@ -4564,7 +4565,19 @@ class _ResponseShim:
 
     def raise_for_status(self) -> None:
         if not self.ok:
-            raise RuntimeError(f"HTTP {self.status_code}: {self.text[:200]}")
+            raise EnvBlocked(
+                what=(
+                    "scalecua evaluator HTTP request failed "
+                    f"with status {self.status_code}: {self.text[:200]}"
+                )
+            )
+
+
+def _is_missing_vm_file_error(exc: BaseException) -> bool:
+    if isinstance(exc, FileNotFoundError):
+        return True
+    message = str(exc)
+    return message.startswith("read_bytes failed: FileNotFoundError:")
 
 
 class _LazyVmFilePath:
@@ -4617,16 +4630,26 @@ class _ControllerShim:
         file_path = _alias_chrome_profile_path(file_path)
         try:
             return self._run(self._computer.interface.read_bytes(file_path), timeout=120)
+        except EnvBlocked:
+            raise
         except Exception as exc:
+            if _is_missing_vm_file_error(exc):
+                return None
             logger.warning("ScaleCUA controller.get_file failed for %s: %s", file_path, exc)
-            return None
+            raise EnvBlocked(
+                what=f"scalecua evaluator file could not be read from {file_path}: {exc}"
+            ) from exc
 
     def get_screenshot(self) -> bytes | None:
         try:
             return self._run(self._computer.interface.screenshot(), timeout=30)
+        except EnvBlocked:
+            raise
         except Exception as exc:
             logger.warning("ScaleCUA controller.get_screenshot failed: %s", exc)
-            return None
+            raise EnvBlocked(
+                what=f"scalecua evaluator screenshot could not be captured: {exc}"
+            ) from exc
 
     def run_bash_script(
         self,
@@ -4968,10 +4991,17 @@ class EvalEnvShim:
         try:
             data = json.loads(str(result))
         except Exception:
-            return _ResponseShim(status_code=599, text=str(result))
+            raise EnvBlocked(
+                what=f"scalecua evaluator HTTP request returned invalid JSON: {result}"
+            )
+        status_code = int(data.get("status_code", 599))
+        if status_code == 599:
+            raise EnvBlocked(
+                what=f"scalecua evaluator HTTP request transport failed: {data.get('text', '')}"
+            )
         content = base64.b64decode(data.get("content_b64") or b"")
         return _ResponseShim(
-            status_code=int(data.get("status_code", 599)),
+            status_code=status_code,
             text=data.get("text", ""),
             content=content,
             headers=data.get("headers") or {},
@@ -5295,13 +5325,19 @@ async def _download_vm_path(
     aliased_path = _alias_chrome_profile_path(remote_path)
     try:
         data = await eval_env.computer.interface.read_bytes(aliased_path)
+    except EnvBlocked:
+        raise
     except Exception as exc:
+        if _is_missing_vm_file_error(exc):
+            return None
         logger.warning(
             "ScaleCUA overlay could not materialize VM file %s: %s",
             remote_path,
             exc,
         )
-        return None
+        raise EnvBlocked(
+            what=f"scalecua evaluator file could not be materialized from {remote_path}: {exc}"
+        ) from exc
     if data is None:
         return None
 

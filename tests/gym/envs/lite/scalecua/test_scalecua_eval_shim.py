@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,6 +11,7 @@ import pytest
 
 from lite.gym.envs.lite.scalecua.src.osworld import judges
 from lite.gym.envs.lite.scalecua.src.osworld import verify as scalecua_verify
+from lite.gym.errors import EnvBlocked
 
 
 class _FakeInterface:
@@ -597,8 +600,6 @@ async def test_scalecua_final_fn_keeps_owned_postconfig_cache_dir_in_debug(
 
 @pytest.mark.asyncio
 async def test_scalecua_env_blocked_from_getter_bubbles(monkeypatch):
-    from lite.gym.errors import EnvBlocked
-
     blocked = EnvBlocked(what="download transport failed")
 
     async def blocked_result(eval_env, config, cache_dir, runtime_split):
@@ -613,6 +614,44 @@ async def test_scalecua_env_blocked_from_getter_bubbles(monkeypatch):
             runtime_split="train",
         )
     assert exc_info.value is blocked
+
+
+@pytest.mark.asyncio
+async def test_scalecua_result_getter_infrastructure_failure_raises_env_blocked(
+    monkeypatch,
+):
+    async def broken_result(eval_env, config, cache_dir, runtime_split):
+        raise RuntimeError("container stopped answering")
+
+    monkeypatch.setattr(scalecua_verify, "_get_result", broken_result)
+
+    with pytest.raises(EnvBlocked, match="result getter failed"):
+        await scalecua_verify.evaluate_scalecua_task(
+            _FakeComputer(),
+            {"func": "score_metric", "result": {}, "expected": {}},
+            runtime_split="train",
+        )
+
+
+@pytest.mark.asyncio
+async def test_scalecua_expected_getter_infrastructure_failure_raises_env_blocked(
+    monkeypatch,
+):
+    async def fake_get_result(eval_env, config, cache_dir, runtime_split):
+        return "result"
+
+    async def broken_expected(eval_env, config, cache_dir, runtime_split):
+        raise RuntimeError("gold could not be read")
+
+    monkeypatch.setattr(scalecua_verify, "_get_result", fake_get_result)
+    monkeypatch.setattr(scalecua_verify, "_get_expected", broken_expected)
+
+    with pytest.raises(EnvBlocked, match="expected getter failed"):
+        await scalecua_verify.evaluate_scalecua_task(
+            _FakeComputer(),
+            {"func": "score_metric", "result": {}, "expected": {}},
+            runtime_split="train",
+        )
 
 
 @pytest.mark.asyncio
@@ -641,6 +680,154 @@ async def test_scalecua_metric_exception_still_scores_zero(monkeypatch):
     assert detail["details"] == [
         {"func": "score_metric", "error": "metric crashed", "score": 0.0}
     ]
+
+
+@pytest.mark.asyncio
+async def test_scalecua_metric_env_blocked_bubbles(monkeypatch):
+    async def fake_get_result(eval_env, config, cache_dir, runtime_split):
+        return "result"
+
+    async def fake_get_expected(eval_env, config, cache_dir, runtime_split):
+        return "expected"
+
+    blocked = EnvBlocked(what="metric transport failed")
+
+    def blocked_metric(result, expected):
+        raise blocked
+
+    monkeypatch.setattr(scalecua_verify, "_get_result", fake_get_result)
+    monkeypatch.setattr(scalecua_verify, "_get_expected", fake_get_expected)
+    monkeypatch.setattr(judges, "resolve_metric", lambda name, runtime_split: blocked_metric)
+
+    with pytest.raises(EnvBlocked) as exc_info:
+        await scalecua_verify.evaluate_scalecua_task(
+            _FakeComputer(),
+            {"func": "score_metric", "result": {}, "expected": {}},
+            runtime_split="train",
+        )
+    assert exc_info.value is blocked
+
+
+@pytest.mark.asyncio
+async def test_scalecua_postconfig_failure_raises_env_blocked(monkeypatch):
+    async def broken_postconfig(computer, evaluator, cache_dir):
+        raise RuntimeError("save command failed")
+
+    async def should_not_evaluate(*args, **kwargs):
+        raise AssertionError("postconfig failure should block evaluation")
+
+    monkeypatch.setattr(scalecua_verify, "_run_postconfig", broken_postconfig)
+    monkeypatch.setattr(scalecua_verify, "evaluate_scalecua_task", should_not_evaluate)
+    task = SimpleNamespace(
+        metadata={
+            "evaluator": {
+                "func": "score_metric",
+                "postconfig": [{"type": "sleep", "parameters": {"seconds": 0}}],
+            },
+            "scalecua": {"runtime_split": "train"},
+        }
+    )
+
+    with pytest.raises(EnvBlocked, match="postconfig failed"):
+        await scalecua_verify.evaluate_final_fn(task, _FakeComputer())
+
+
+@pytest.mark.asyncio
+async def test_scalecua_task_postconfig_failure_raises_env_blocked(monkeypatch):
+    async def broken_postconfig(computer, evaluator, cache_dir):
+        raise RuntimeError("save command failed")
+
+    monkeypatch.setattr(scalecua_verify, "_run_postconfig", broken_postconfig)
+
+    with pytest.raises(EnvBlocked, match="postconfig failed"):
+        await scalecua_verify.evaluate_scalecua_task(
+            _FakeComputer(),
+            {
+                "func": "score_metric",
+                "result": {},
+                "expected": {},
+                "postconfig": [{"type": "sleep", "parameters": {"seconds": 0}}],
+            },
+            runtime_split="train",
+        )
+
+
+class _ReadFailureInterface(_FakeInterface):
+    def __init__(self, exc: BaseException):
+        super().__init__()
+        self.exc = exc
+
+    async def read_bytes(self, path: str) -> bytes:
+        raise self.exc
+
+
+@pytest.mark.asyncio
+async def test_scalecua_controller_missing_file_returns_none(tmp_path):
+    env = judges.make_eval_env(
+        SimpleNamespace(interface=_ReadFailureInterface(FileNotFoundError("missing"))),
+        str(tmp_path),
+    )
+
+    assert await asyncio.to_thread(
+        env.controller.get_file,
+        "/home/user/Desktop/missing.txt",
+    ) is None
+
+
+@pytest.mark.asyncio
+async def test_scalecua_controller_file_transport_failure_raises_env_blocked(tmp_path):
+    env = judges.make_eval_env(
+        SimpleNamespace(interface=_ReadFailureInterface(RuntimeError("exec pipe closed"))),
+        str(tmp_path),
+    )
+
+    with pytest.raises(EnvBlocked, match="file could not be read"):
+        await asyncio.to_thread(
+            env.controller.get_file,
+            "/home/user/Desktop/result.txt",
+        )
+
+
+@pytest.mark.asyncio
+async def test_scalecua_direct_file_materialization_transport_failure_is_env_blocked(
+    tmp_path,
+):
+    env = judges.make_eval_env(
+        SimpleNamespace(interface=_ReadFailureInterface(RuntimeError("exec pipe closed"))),
+        str(tmp_path),
+    )
+
+    with pytest.raises(EnvBlocked, match="file could not be materialized"):
+        await judges._download_vm_path(env, "/home/user/Desktop/result.xlsx", str(tmp_path))
+
+
+def test_scalecua_response_raise_for_status_is_env_blocked():
+    response = judges._ResponseShim(status_code=599, text="connection refused")
+
+    with pytest.raises(EnvBlocked, match="HTTP request failed"):
+        response.raise_for_status()
+
+
+@pytest.mark.asyncio
+async def test_scalecua_request_in_container_transport_599_is_env_blocked(tmp_path):
+    computer = _FakeComputer(
+        stdout=json.dumps(
+            {
+                "status_code": 599,
+                "headers": {},
+                "text": "connection refused",
+                "content_b64": "",
+            }
+        )
+    )
+    env = judges.make_eval_env(computer, str(tmp_path))
+
+    with pytest.raises(EnvBlocked, match="HTTP request transport failed"):
+        await asyncio.to_thread(
+            env.request_in_container,
+            "GET",
+            "http://lite-scalecua-vm:5000/state",
+        )
 
 
 def test_scalecua_score_coercion_clamps_generated_metric_noise():
