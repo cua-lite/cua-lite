@@ -65,7 +65,7 @@ It is all text: `i1` re-renders the full turn history once per step, `i4` once p
 ### Export
 
 ```bash
-# --- TRAIN HOST ---  (its .data/ is what the Slime container mounts)
+# --- TRAIN HOST ---  (the Slime container mounts the repo root, so its .data/ is what Train reads)
 DS=webgym_1k                             # dataset recipe: source + row cap
 DL=.data/huggingface-webgym              # per-teacher roots: $DL/$T/cua-lite/...
 OUT=.data/sft/qwen3_5/browser.use
@@ -101,7 +101,7 @@ while read -r P T; do
     --data-paths "$DL/$T/cua-lite/WebGym" \
     --image-root "$DL/$T" \
     --filter "$FILTER" --sample 1000 --seed 42 --no-strict \
-    -o "$OUT/$P.$DS.$T.parquet"
+    -o "$OUT/$P.$DS.$T.parquet" < /dev/null   # or the child eats the rest of the cell list
 done <<< "$(cells)"
 
 # --no-strict makes a conversion failure a SKIP, not an error, so a wrong --image-root writes
@@ -115,7 +115,7 @@ while read -r P T; do
 import sys, pyarrow.parquet as pq
 n, want = pq.read_metadata(sys.argv[1]).num_rows, int(sys.argv[2])
 print(('OK   ' if n == want else 'SHORT'), n, f'(want {want})', sys.argv[1])
-" "$OUT/$P.$DS.$T.parquet" "$N"
+" "$OUT/$P.$DS.$T.parquet" "$N" < /dev/null
 done <<< "$(cells)"
 ```
 
@@ -170,7 +170,7 @@ while read -r P T; do
     SAVE_HF_DIR=/workspaces/cua-lite/.ckpts/qwen3_5-4b/sft.$P.$DS.$T/iter_{rollout_id} \
     SAVE_DIR=/root/checkpoints/qwen3_5-4b/sft.$P.$DS.$T/megatron \
     WANDB_GROUP_SUFFIX=".$P.$DS.$T" \
-    bash /workspaces/cua-lite/scripts/train/run_sft.sh
+    bash /workspaces/cua-lite/scripts/train/run_sft.sh < /dev/null
 done <<< "$(cells)"
 ```
 
@@ -212,7 +212,7 @@ cells() {
 MISSING=
 while read -r P T; do
   uv run hf download "ZHZisZZ/qwen3_5-4b.sft.$P.$DS.$T" \
-    --include "$EPOCH/*" --local-dir "$PULL/sft.$P.$DS.$T@$RUN"
+    --include "$EPOCH/*" --local-dir "$PULL/sft.$P.$DS.$T@$RUN" < /dev/null
   for f in config.json tokenizer_config.json preprocessor_config.json; do
     [ -e "$PULL/sft.$P.$DS.$T@$RUN/$EPOCH/$f" ] || MISSING="$MISSING $P.$T:$f"
   done
@@ -227,7 +227,7 @@ score() {  # $1 = config stem, $2 = --model-path ("" = base), $3 = log slug
     --model-id Qwen/Qwen3.5-4B ${2:+--model-path "$2"} \
     --env-id webgym --splits eval --sample "$EVAL_N" --seed 42 --concurrency 16 \
     --config-path "$CFG/$1.yaml" \
-    --log-root "$LOGS/$3" &
+    --log-root "$LOGS/$3" < /dev/null &
   gpu=$((gpu + 1))
 }
 
@@ -254,9 +254,9 @@ gives the `<think>` effect; across the two columns is the image-count effect.
 
 ### Record the scores
 
-Commit the numbers as `devs/exps/train/browser/logs/$RUN.md`, the running-snapshot convention
-[`/devs/exps/eval/AGENTS.md`](/devs/exps/eval/AGENTS.md#snapshot-template) uses — one file per
-campaign, edited as runs land.
+Commit the numbers as `devs/exps/train/browser/logs/$RUN.md` — flat here, where
+[`/devs/exps/eval/AGENTS.md`](/devs/exps/eval/AGENTS.md#snapshot-template) nests under a
+per-commit directory, but the same idea: one file per campaign, edited as runs land.
 
 ```markdown
 # browser.use @ <run>

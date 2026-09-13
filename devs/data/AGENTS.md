@@ -25,6 +25,23 @@ promoted dataset batch. The row must include:
 Use one table or log block per batch; do not replace real evidence with the
 synthetic smoke matrix in `lite/data/preproc/AGENTS.md`.
 
+Run [devs/data/prestage_check.py](/devs/data/prestage_check.py) over the same
+log-roots first. `stage` validates each row as it emits it and raises on the
+first bad one — but only after copying that root's screenshots into the image
+store, so one unpublishable trajectory ends the run tens of minutes and tens of
+GB in, with nothing staged. The check calls `stage`'s own
+`validate_canonical_rows` in parallel and names every row that would fail, so
+the offenders can be set aside in one pass instead of one per restart:
+
+```bash
+uv run python devs/data/prestage_check.py --log-roots <the stage command's roots>
+```
+
+It owns no rules of its own — if it and `stage` ever disagree, `stage` is right.
+A row it rejects is not necessarily a bad trajectory: a malformed tool call the
+env rejected visibly, and the model then corrected, still makes the whole row
+unpublishable.
+
 Upload and download are transport/layout checks only. They prove the staged tree
 can be packaged, pushed, tagged, and read back; they do not replace the stage
 gate, migration `--verify`, filter tests, or `export_sft` conversion smoke.

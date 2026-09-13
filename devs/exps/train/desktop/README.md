@@ -81,17 +81,9 @@ the dataset, change `DS=` **and** `--sample` together; the cap is in the name.
 
 One parquet per cell — the config decides what the model sees, so no two cells can share one.
 
-> **`qwen3_5_27b` is not on the Hub yet.** `Lite.ScaleCUA` publishes
-> `desktop.use.train.{gpt5_5,qwen3_8_27b}` today; the third teacher has a collection runbook
-> ([`/devs/data/lite.scalecua/qwen3_5_27b/AGENTS.md`](/devs/data/lite.scalecua/qwen3_5_27b/AGENTS.md))
-> but no published shard, so its six cells cannot be exported until that lands. To run the other
-> nine today, drop `qwen3_5_27b` from both `for T in` lists in `cells()` (all four copies). When
-> the shard lands, the edit is the opposite and in a third place: ADD it to the download loop
-> below, which is deliberately one teacher short of `cells()` right now.
-
 ```bash
-# --- TRAIN HOST ---  (its .data/ is what the Slime container mounts; exporting on
-# the eval host leaves Train with no parquet to read)
+# --- TRAIN HOST ---  (the Slime container mounts the repo root, so its .data/ is what Train
+# reads; exporting on the eval host leaves Train with no parquet to read)
 DS=scalecua_5k                           # dataset recipe: source + row cap
 DL=.data/huggingface                     # per-teacher roots: $DL/$T/cua-lite/...
 OUT=.data/sft/qwen3_5/desktop.use
@@ -115,8 +107,9 @@ cells() {
 # would pool them. --allow-patterns bounds the walk as well as the fetch, so a warm HF cache
 # cannot drag in the `rl` variant (which lives in this same directory). --overwrite makes this
 # re-runnable. KEEP THIS LIST IN SYNC WITH cells(): a teacher in cells() but not here exports
-# against a data root that was never downloaded.
-for T in gpt5_5 qwen3_8_27b; do   # add qwen3_5_27b here once its shard is published
+# against a data root that was never downloaded -- and cells() is defined FOUR times below, so a
+# teacher edit touches all four. How each teacher is collected: devs/data/lite.scalecua/<T>/AGENTS.md
+for T in gpt5_5 qwen3_5_27b qwen3_8_27b; do
   uv run python -m lite.data.hf.download Lite.ScaleCUA \
     --allow-patterns "desktop/use/train/desktop.use.train.$T/*" \
     --out "$DL/$T/cua-lite/Lite.ScaleCUA" --overwrite
@@ -135,7 +128,7 @@ while read -r P T; do
     --data-paths "$DL/$T/cua-lite/Lite.ScaleCUA" \
     --image-root "$DL/$T" \
     --filter "$FILTER" --sample 5000 --seed 42 --no-strict \
-    -o "$OUT/$P.$DS.$T.parquet"
+    -o "$OUT/$P.$DS.$T.parquet" < /dev/null   # or the child eats the rest of the cell list
 done <<< "$(cells)"
 
 # `--no-strict` makes a conversion failure a SKIP, not an error: a wrong --image-root
@@ -148,7 +141,7 @@ while read -r P T; do
 import sys, pyarrow.parquet as pq
 n = pq.read_metadata(sys.argv[1]).num_rows
 print(('OK   ' if n == 5000 else 'SHORT'), n, sys.argv[1])
-" "$OUT/$P.$DS.$T.parquet"
+" "$OUT/$P.$DS.$T.parquet" < /dev/null
 done <<< "$(cells)"
 ```
 
@@ -199,7 +192,7 @@ while read -r P T; do
     SAVE_HF_DIR=/workspaces/cua-lite/.ckpts/qwen3_5-4b/sft.$P.$DS.$T/iter_{rollout_id} \
     SAVE_DIR=/root/checkpoints/qwen3_5-4b/sft.$P.$DS.$T/megatron \
     WANDB_GROUP_SUFFIX=".$P.$DS.$T" \
-    bash /workspaces/cua-lite/scripts/train/run_sft.sh
+    bash /workspaces/cua-lite/scripts/train/run_sft.sh < /dev/null   # else it eats the cell list
 done <<< "$(cells)"
 ```
 
@@ -270,7 +263,7 @@ while read -r P T; do
   # NOTE: this runs before the per-file check below, so a cell whose FIRST epoch dir is
   # incomplete still leaves an empty public repo. The count gate above is what prevents that
   # for a cell that never trained at all.
-  uv run hf repos create "$REPO" --repo-type model --exist-ok
+  uv run hf repos create "$REPO" --repo-type model --exist-ok < /dev/null
 
   ep=0
   for D in $DIRS; do
@@ -285,18 +278,20 @@ while read -r P T; do
     done
     [ "$ep" = "-1" ] && break
     uv run hf upload "$REPO" "$D" "epoch_$ep" \
-      --repo-type model --commit-message "$COMMIT: epoch $ep (from $(basename "$D"))"
+      --repo-type model --commit-message "$COMMIT: epoch $ep (from $(basename "$D"))" \
+      < /dev/null \
+      || { echo "SKIP $REPO: upload of $D failed -- not tagging"; ep=-1; break; }
   done
-  # The break above escapes the `for D` loop ONLY; without this, a half-uploaded cell falls
+  # Both breaks above escape the `for D` loop ONLY; without this, a half-uploaded cell falls
   # through and gets tagged as if complete. Pushed epoch dirs stay on main, untagged.
   [ "$ep" = "-1" ] && continue
 
   # Tag the commit that produced these weights. Eval pulls `main` and never needs this; it is
   # here so an old campaign stays reproducible -- `--revision <tag>` on the download.
   # create-or-move; the Hub has no move, so it is delete-then-create.
-  uv run hf repos tag delete "$REPO" "$COMMIT" --repo-type model --yes \
+  uv run hf repos tag delete "$REPO" "$COMMIT" --repo-type model --yes < /dev/null \
     || echo "note: no existing '$COMMIT' tag on $REPO (expected on a first upload)"
-  uv run hf repos tag create "$REPO" "$COMMIT" --repo-type model -m "$COMMIT" \
+  uv run hf repos tag create "$REPO" "$COMMIT" --repo-type model -m "$COMMIT" < /dev/null \
     || echo "ERROR $REPO has NO '$COMMIT' tag now; weights are on main -- re-tag by hand"
 done <<< "$(cells)"
 ```
@@ -339,7 +334,6 @@ EPOCH=epoch_2                            # epoch_1 = after 1 epoch
 DS=scalecua_5k
 CFG=devs/exps/train/desktop/configs/qwen3_5
 PULL=.ckpts/pulled
-MISSING=
 LOGS=.logs/rollout/Qwen_Qwen3.5-4B/lite.osworld
 # The fifteen cells as "<config stem> <teacher>". The <think> arm skips qwen3_8_27b.
 cells() {
@@ -354,10 +348,11 @@ cells() {
   done
 }
 
+MISSING=
 while read -r P T; do
   uv run hf download "ZHZisZZ/qwen3_5-4b.sft.$P.$DS.$T" \
     --include "$EPOCH/*" \
-    --local-dir "$PULL/sft.$P.$DS.$T@$RUN"
+    --local-dir "$PULL/sft.$P.$DS.$T@$RUN" < /dev/null
   # snapshot_download has no empty-match guard: a wrong $EPOCH yields an empty dir, silently.
   # All three, not just config.json: a dir with config.json but no processor files passes a
   # one-file check, then dies inside a backgrounded score job at AutoProcessor.from_pretrained.
@@ -384,7 +379,7 @@ score() {
     --env-id lite.osworld --splits eval --concurrency 8 \
     --filter "lambda m: not m.others.get('exclude_reason')" \
     --config-path "$CFG/$1.yaml" \
-    --log-root "$LOGS/$3" &
+    --log-root "$LOGS/$3" < /dev/null &
   gpu=$((gpu + 1))
 }
 
@@ -425,9 +420,9 @@ did-SFT-help number too.
 
 A campaign that is not written down cannot answer the only question it was run to answer —
 did SFT beat the base model. Collect all eighteen — nineteen with the RL run — then commit as
-`devs/exps/train/desktop/logs/$RUN.md`, the same running-snapshot convention `devs/exps/eval/`
-uses ([`/devs/exps/eval/AGENTS.md`](/devs/exps/eval/AGENTS.md#snapshot-template)). One file per
-campaign, edited as runs land — not a wrap-up written from memory.
+`devs/exps/train/desktop/logs/$RUN.md` — flat here, where `devs/exps/eval/` nests under a
+per-commit directory ([`/devs/exps/eval/AGENTS.md`](/devs/exps/eval/AGENTS.md#snapshot-template)),
+but the same idea: one file per campaign, edited as runs land — not a wrap-up from memory.
 
 ```bash
 # --- EVAL HOST, same shell as the Eval block ---
@@ -440,8 +435,12 @@ show() {  # $1 = log slug
 import json, sys, pathlib
 p = pathlib.Path(sys.argv[1]) / 'summary.json'
 if not p.exists(): print(f'{sys.argv[2]:78s} MISSING'); raise SystemExit
-s = json.loads(p.read_text())['stats']
-print(f\"{sys.argv[2]:78s} {s['mean_episode_return']:.4f}  n={s['num_valid']}\")
+d = json.loads(p.read_text()); s = d['stats']
+# summary.json has no solved count: derive it. 'fully-solved' is episode_return == 1.0.
+solved = sum(r == 1.0 for t in d['tasks'] for r in t['episode_returns'])
+pf = (s.get('stop_reasons') or {}).get('parse_failure', 0)
+print(f\"{sys.argv[2]:70s} {s['mean_episode_return']:.4f} ({solved}/{s['num_valid']})\"
+      f\"  err={s['num_samples'] - s['num_valid']} parse_fail={pf}\")
 " "$LOGS/$1" "$1"
 }
 for P in desktop.use.lowr.i4 desktop.use.lowr.i1 desktop.use.highr.i1; do
@@ -449,7 +448,7 @@ for P in desktop.use.lowr.i4 desktop.use.lowr.i1 desktop.use.highr.i1; do
 done
 while read -r P T; do show "sft.$P.$DS.$T@$RUN.$EPOCH"; done <<< "$(cells)"
 # The RL run, if it was scored (see the RL section): 19th line, not part of cells().
-show "grpo.lowr.i4@$RUN" 2>/dev/null || true
+show "grpo.lowr.i4@$RUN"
 ```
 
 Paste the numbers into the snapshot's `Results` table, laid out so each contrast the block
@@ -488,8 +487,10 @@ byte-identical prompts on these episodes, because `history_n` 50 vs 100 cannot b
 
 `num_valid` is 328 in every scored run so far — no run lost samples to errors, so those means
 share one denominator. Each sits +0.009 to +0.019 above its solved count (the partial-credit
-tail); the ordering reads the same either way. Blanks are cells that have not been trained and
-scored yet — the two `i1` profiles, plus everything `qwen3_5_27b` and both `<think>` rows.
+tail); the ordering reads the same either way. Every blank is UNSCORED — the whole `lowr.i1` and
+`highr.i1` columns, `base` and `GRPO` rows included. Of the fifteen SFT cells, nine are trained
+and on the Hub (every `gpt5_5` cell, plus `qwen3_8_27b`'s three); seven of those nine are still
+unscored, and the six `qwen3_5_27b` cells are not trained yet.
 Read `lowr.i4` vs `highr.h1` as
 a prior only: that pair moves resolution, image count AND text history all at once, which is the
 three-knob confound the current profile set was reshaped to remove.
@@ -519,11 +520,15 @@ three-knob confound the current profile set was reshaped to remove.
   either count, say so before reading their MER gap.
 ```
 
-Note what the reasoning row measures here: every trajectory's terminal turn is a bare
-`Done.` with no `reasoning_content`, so a `.reasoning` cell trains an empty `<think>` on its
-last step. That is one step per trajectory — **11.8%** of steps on the real 5000-row export
-(42427 steps, 8.49 per trajectory), not the ~29% a short-trajectory sample suggests. It is a
-property of the data, not of the config. Read the `<think>` effect with it in mind.
+A `.reasoning` cell trains an empty `<think>` on any step whose turn carries no
+`reasoning_content`, and the only turn that can is the terminal one — `filter.py` rewrites it to
+a bare `Done.` when the teacher ended with prose instead of a `terminate` call. How often that
+happens is a teacher's habit: `gpt5_5` ends every trajectory that way, `qwen3_5_27b` 196 of its
+15752 (1.2%). The export gate widens the gap rather than causing it — 187 of those 196 fail
+`episode_return > 0.5` — so on the 5000-row exports `gpt5_5` pays one empty step per trajectory
+(11.8% of 42427 steps) and `qwen3_5_27b` pays 6 of 50956 (0.01%). Read each `<think>` effect
+against its own teacher's ROW with that teacher's number in mind; do not carry `gpt5_5`'s 11.8%
+across the rows.
 
 ### RL
 
@@ -545,10 +550,9 @@ block does not repeat.
 <summary>Data</summary>
 
 ```bash
-# --- TRAIN HOST ---  (into .data/, which is the ONLY thing the container mounts:
-# launch.sh binds the repo root at /workspaces/cua-lite, and the only other bind is an optional
-# read-only HF cache. docs/grpo.md
-# writes to /root/datasets because it runs its Data step INSIDE the container; that path
+# --- TRAIN HOST ---  (into .data/, which the container sees because launch.sh binds the repo
+# root at /workspaces/cua-lite; the only other bind is an optional read-only HF cache.
+# docs/grpo.md writes to /root/datasets because it runs its Data step INSIDE the container; that path
 # does not survive the boundary, so do not copy it here.)
 # Same `exclude_reason` filter on both sides: those tasks cannot be solved (infeasible,
 # proxy_required, broken upstream evaluator), so they add zero-reward noise to training and a
