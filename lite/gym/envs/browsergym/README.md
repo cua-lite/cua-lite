@@ -146,8 +146,10 @@ mechanics, and development notes live in
 
 `env.step()` returns per-call results for executed or rejected tool calls,
 including terminal and max-step calls when a pairable `call_id` exists.
-BrowserGym keeps the current page context in the response whenever possible, so
-agents can recover from rejected calls on the next step.
+BrowserGym keeps the current page context in metadata/debug logs whenever
+possible, while model-visible text stays screenshot-first by default. Text,
+SoM, and mixed configs opt in with `include_page_context_text: true` when the
+agent needs URL/title/AXTree/HTML feedback.
 
 `valid_actions` constrains only coordinate GUI actions; BrowserGym bid/nav/finish
 tools are selected separately by `action_subsets` and `extra_tools`.

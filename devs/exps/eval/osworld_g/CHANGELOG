@@ -1,3 +1,12 @@
+## restore-first-valid ← 74e80687  (2026-09-11)
+
+- Restores OSWorld-G scoring to the first well-formed answer: `point` for
+  spatial tasks and `report_infeasible` for refusal tasks. Later answers or
+  malformed/rejected calls remain logged as feedback, but they no longer poison
+  a valid first answer. This keeps migration results comparable with the
+  original first-valid grounding metric; an exactly-one anti-hedging metric
+  would need a separate future eval-definition entry and new snapshots.
+
 ## e32c7948 ← 1bdef611  (2026-04-28)
 
 env-side grounding harness rebuilt as `grounding.point`:

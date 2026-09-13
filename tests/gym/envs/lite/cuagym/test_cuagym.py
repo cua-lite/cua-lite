@@ -52,6 +52,23 @@ from lite.gym.types import LiteEnvObservation
 # --- shared reward parsing -------------------------------------------------
 
 
+_EXPECTED_EXCLUDE_REASONS = {
+    "broken_mock:blank_render": 81,
+    "broken_reward:empty": 152,
+    "broken_reward:instruction_mismatch": 178,
+    "broken_reward:missing_golden": 19,
+    "broken_reward:no_sentinel": 42,
+    "broken_reward:syntax_error": 26,
+    "broken_setup:external_dependency": 8,
+    "broken_setup:missing_seed_file": 2,
+    "broken_setup:no_task_window": 1,
+    "broken_setup:syntax_error": 1,
+    "broken_setup:unsatisfiable_gate": 1,
+    "broken_setup:wrong_backend": 1,
+    "broken_task:empty_instruction": 1,
+}
+
+
 def _require_fresh_task_cache() -> None:
     try:
         M._register_tasks()
@@ -917,15 +934,114 @@ def test_catalog_validator_rejects_empty_malformed_or_duplicate(tmp_path, conten
         dataset.validate_catalog(path)
 
 
-def test_every_exclude_reason_is_used_by_the_pinned_catalogs():
-    """The EXCLUDE_REASONS docstring quotes a count; keep it honest. A category
-    defined but never counted is how it drifted to 362 (it omitted the 41
-    `broken_reward:no_sentinel` rows defined two lines below it)."""
+def test_reward_defect_marks_setup_file_without_golden_suffix(tmp_path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "initial_setup.py").write_text(
+        "Path('/home/user/report.csv').write_text('expected')\n"
+    )
+    reward = bundle / "reward.py"
+    reward.write_text(
+        "Path('/home/user/report_golden.csv').read_text()\n"
+        "print('REWARD:', 1.0)\n"
+    )
+
+    assert dataset.reward_defect(reward) == "broken_reward:missing_golden"
+
+
+def test_reward_defect_allows_setup_built_golden_file(tmp_path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "initial_setup.py").write_text(
+        "Path('/home/user/report_golden.csv').write_text('expected')\n"
+    )
+    reward = bundle / "reward.py"
+    reward.write_text(
+        "Path('/home/user/report_golden.csv').read_text()\n"
+        "print('REWARD:', 1.0)\n"
+    )
+
+    assert dataset.reward_defect(reward) is None
+
+
+def test_reward_defect_allows_reward_built_golden_file(tmp_path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "initial_setup.py").write_text(
+        "Path('/home/user/report.csv').write_text('expected')\n"
+    )
+    reward = bundle / "reward.py"
+    reward.write_text(
+        "def build_reference(df):\n"
+        "    df.to_csv('/home/user/report_golden.csv')\n"
+        "Path('/home/user/report_golden.csv').read_text()\n"
+        "print('REWARD:', 1.0)\n"
+    )
+
+    assert dataset.reward_defect(reward) is None
+
+
+def test_catalog_count_lock_pins_registered_and_collectable_counts():
+    lock = dataset.load_catalog_lock()
+    train = lock["splits"]["train"]
+
+    assert lock["version"] == 1
+    assert lock["generated"] is True
+    assert lock["sources"] == {
+        "asset_identity": dataset.asset_identity(),
+        "generator": "scripts/utils/import_tasks.py",
+    }
+    assert train["rows"] == 10910
+    assert train["excluded_rows"] == 513
+    assert train["collectable_rows"] == 10397
+    assert train["rows"] == train["excluded_rows"] + train["collectable_rows"]
+    assert train["exclude_reasons"] == _EXPECTED_EXCLUDE_REASONS
+    assert sum(train["exclude_reasons"].values()) == train["excluded_rows"]
+    assert train["backends"] == {
+        "desktop": {
+            "rows": 9405,
+            "excluded_rows": 415,
+            "collectable_rows": 8990,
+            "exclude_reasons": {
+                "broken_reward:empty": 152,
+                "broken_reward:instruction_mismatch": 178,
+                "broken_reward:missing_golden": 19,
+                "broken_reward:no_sentinel": 26,
+                "broken_reward:syntax_error": 26,
+                "broken_setup:external_dependency": 8,
+                "broken_setup:missing_seed_file": 2,
+                "broken_setup:no_task_window": 1,
+                "broken_setup:syntax_error": 1,
+                "broken_setup:unsatisfiable_gate": 1,
+                "broken_task:empty_instruction": 1,
+            },
+        },
+        "web": {
+            "rows": 1505,
+            "excluded_rows": 98,
+            "collectable_rows": 1407,
+            "exclude_reasons": {
+                "broken_mock:blank_render": 81,
+                "broken_reward:no_sentinel": 16,
+                "broken_setup:wrong_backend": 1,
+            },
+        },
+    }
+
+
+def test_pinned_catalog_counts_match_count_lock():
+    """Generated catalogs must match the count lock that public docs cite."""
     catalogs = [
         M._DIR / ".cache" / "desktop" / "lite.cuagym_desktop_tasks" / "train.jsonl",
         M._DIR / ".cache" / "web" / "lite.cuagym_tasks" / "train.jsonl",
     ]
     _require_fresh_task_cache()
+    lock = dataset.load_catalog_lock()
+    assert dataset.catalog_count_lock({
+        "desktop": catalogs[0],
+        "web": catalogs[1],
+    }) == lock
+    train = lock["splits"]["train"]
     rows = [
         json.loads(line)
         for path in catalogs
@@ -938,26 +1054,84 @@ def test_every_exclude_reason_is_used_by_the_pinned_catalogs():
         if (reason := (row["metadata"].get("others") or {}).get("exclude_reason"))
     ]
     assert set(tagged) <= set(dataset.EXCLUDE_REASONS)
-    assert (len(rows), len(tagged)) == (10910, 513)
-    assert Counter(tagged) == Counter({
-        "broken_reward:empty": 152,
-        "broken_mock:blank_render": 81,
-        "broken_reward:no_sentinel": 42,
-        "broken_reward:syntax_error": 26,
-        # Structural, from dataset.reward_defect: the reward opens a `*_golden.*`
-        # only its authoring run had, while setup builds the same artifact without
-        # the suffix -- so os.path.exists is False on every trajectory and the
-        # script returns a SILENT 0.0 no matter what the agent did.
-        "broken_reward:missing_golden": 19,
-        "broken_setup:unsatisfiable_gate": 1,
-        "broken_setup:external_dependency": 8,
-        "broken_setup:wrong_backend": 1,
-        "broken_setup:missing_seed_file": 2,
-        "broken_setup:syntax_error": 1,
-        "broken_setup:no_task_window": 1,
-        "broken_reward:instruction_mismatch": 178,
-        "broken_task:empty_instruction": 1,
+    assert (len(rows), len(tagged)) == (train["rows"], train["excluded_rows"])
+    assert Counter(tagged) == Counter(train["exclude_reasons"])
+
+
+def test_catalog_count_lock_rejects_count_drift(tmp_path, monkeypatch):
+    web = tmp_path / "web.jsonl"
+    desktop = tmp_path / "desktop.jsonl"
+    web.write_text(
+        json.dumps({
+            "task_id": "web-1",
+            "metadata": {"others": {"exclude_reason": "broken_mock:blank_render"}},
+        })
+        + "\n"
+    )
+    desktop.write_text(json.dumps({"task_id": "desktop-1", "metadata": {}}) + "\n")
+
+    expected = dataset.catalog_count_lock({"desktop": desktop, "web": web})
+    expected["splits"]["train"]["collectable_rows"] = 99
+    lock = tmp_path / "catalog.lock.json"
+    lock.write_text(json.dumps(expected) + "\n")
+    monkeypatch.setattr(dataset, "CATALOG_LOCK_PATH", lock)
+
+    with pytest.raises(RuntimeError, match="imported catalog counts do not match lock"):
+        dataset.validate_catalog_count_lock({"desktop": desktop, "web": web})
+
+
+def test_lazy_registration_rejects_catalog_count_lock_drift(tmp_path, monkeypatch):
+    setup = tmp_path / "setup.py"
+    reward = tmp_path / "reward.py"
+    setup.write_text("pass\n")
+    reward.write_text("print('REWARD:', 1.0)\n")
+    web_root = tmp_path / "web"
+    desktop_root = tmp_path / "desktop"
+    web_root.mkdir()
+    desktop_root.mkdir()
+    web_jsonl = web_root / "train.jsonl"
+    desktop_jsonl = desktop_root / "train.jsonl"
+    dataset.write_jsonl_atomic(
+        web_jsonl,
+        [{
+            "task_id": "web-1",
+            "instruction": "do it",
+            "metadata": {"setup": str(setup), "reward": str(reward)},
+        }],
+    )
+    dataset.write_jsonl_atomic(
+        desktop_jsonl,
+        [{
+            "task_id": "desktop-1",
+            "instruction": "do it",
+            "metadata": {"setup": str(setup), "reward": str(reward)},
+        }],
+    )
+    for root in (web_root, desktop_root):
+        (root / ".asset_revision").write_text(dataset.asset_identity() + "\n")
+        (root / ".asset_digest").write_text(dataset.task_cache_digest(root) + "\n")
+    expected = dataset.catalog_count_lock({
+        "desktop": desktop_jsonl,
+        "web": web_jsonl,
     })
+    expected["splits"]["train"]["excluded_rows"] = 1
+    lock = tmp_path / "catalog.lock.json"
+    lock.write_text(json.dumps(expected) + "\n")
+
+    monkeypatch.setattr(M, "_catalog_registered", False)
+    monkeypatch.setattr(M, "_WEB_ROOT", web_root)
+    monkeypatch.setattr(M, "_DESKTOP_ROOT", desktop_root)
+    monkeypatch.setattr(M, "_WEB_JSONL", web_jsonl)
+    monkeypatch.setattr(M, "_DESKTOP_JSONL", desktop_jsonl)
+    monkeypatch.setattr(dataset, "CATALOG_LOCK_PATH", lock)
+    monkeypatch.setattr(
+        M,
+        "register_jsonl_tasks",
+        lambda *_args, **_kwargs: pytest.fail("must validate count lock first"),
+    )
+
+    with pytest.raises(EnvDepsMissingError, match="task cache is invalid"):
+        M.CuaGymServices().register_tasks("lite.cuagym")
 
 
 def test_no_catalog_row_states_an_empty_instruction_without_a_reason():

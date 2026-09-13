@@ -14,6 +14,7 @@ env_kwargs:
   viewport: [1280, 720]
   fix_box_color: true
   use_som: false                     # draw Set-of-Marks [N] boxes on the screenshot. false = plain screenshot (coord mode); som.yaml sets true.
+  include_page_context_text: false    # screenshot-first default: omit URL/title/DOM page context but keep screenshots and action errors
   valid_actions: ["click", "type", "key", "scroll", "wait"]
   extra_tools: []                    # opt in per rollout yaml; supported: back, goto, response, terminate (coord mode) | click, input, scroll, navigate, go_back, response (WebHarbor SoM)
   eval_config:

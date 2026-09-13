@@ -42,6 +42,7 @@ from lite.agents.core.agent.utils.loop import (
     mark_steps_truncated,
     record_lite_env_result,
 )
+from lite.agents.core.agent.utils.mobile_finish import mobile_finish_guidance
 from lite.agents.core.agent.utils.retry import acompletion_with_retry
 from lite.agents.models.claude.action_space import (
     ClaudeDesktopActionSpace,
@@ -1074,6 +1075,17 @@ class ClaudeMobileUseAgent(_ClaudeBaseAgent, key="claude@mobile@use"):
             provider_tool_declarations.append(self._to_litellm_wrapped_function_tool(et))
         return provider_tool_declarations
 
+    def _system_prompt_for_mobile_request(self, sent_w: int, sent_h: int) -> str | None:
+        prompt = self._effective_system_prompt()
+        if prompt:
+            prompt = prompt.replace("{w}", str(sent_w)).replace("{h}", str(sent_h))
+        guidance = mobile_finish_guidance(_extra_tool_names(self.metadata))
+        if not guidance:
+            return prompt
+        if not prompt:
+            return guidance
+        return f"{prompt}\n\n{guidance}"
+
     # -- sample ----------------------------------------------------------------
 
     async def sample(
@@ -1092,8 +1104,6 @@ class ClaudeMobileUseAgent(_ClaudeBaseAgent, key="claude@mobile@use"):
         completed = False
 
         completion_messages: list[dict[str, Any]] = []
-
-        sys_prompt_template = self._effective_system_prompt()
 
         try:
             observation = await env.reset()
@@ -1139,10 +1149,8 @@ class ClaudeMobileUseAgent(_ClaudeBaseAgent, key="claude@mobile@use"):
                 ) - _extra_tool_names(self.metadata)
 
                 if step == 0:
-                    if sys_prompt_template:
-                        sys_prompt = sys_prompt_template.replace("{w}", str(sent_w)).replace(
-                            "{h}", str(sent_h)
-                        )
+                    sys_prompt = self._system_prompt_for_mobile_request(sent_w, sent_h)
+                    if sys_prompt:
                         completion_messages.append({"role": "system", "content": sys_prompt})
                     completion_messages.append(
                         {

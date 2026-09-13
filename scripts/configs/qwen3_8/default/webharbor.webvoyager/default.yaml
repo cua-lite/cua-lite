@@ -1,7 +1,7 @@
 # Qwen3.8 computer-use (coord) rollout eval on WebVoyager.
 # 643 multi-step web navigation tasks across 15 WebHarbor self-hosted mirrors.
 #
-# Observation: screenshot-only (explicit keep_text_with_images:false; web_text not carried).
+# Observation: screenshot-only; env disables model-visible URL/title/DOM page context.
 # Action: standard computer_use coordinate-based tools + back extra tool (no goto — see below).
 #
 # Related configs (sync env_kwargs when changing):
@@ -12,11 +12,10 @@ agent_id: "qwen3_8"
 agent_kwargs:
   sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
     temperature: 0.0
-  protocol_kwargs:
-    keep_text_with_images: false
 
 env_id: "webharbor.webvoyager"
 env_kwargs:
+  include_page_context_text: false
   # ``goto`` is intentionally NOT exposed: WebVoyager is a fully offline
   # WebHarbor mirror served only at 127.0.0.1:4000x, with no domain→mirror
   # resolver rules, so a URL ``goto`` escapes to the live internet and breaks

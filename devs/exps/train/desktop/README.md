@@ -302,9 +302,9 @@ path-in-repo and so cannot express `epoch_<k>/`.
 #### Eval
 
 Eighteen runs on the `lite.osworld` eval split: the rows left after `--filter` drops
-`exclude_reason`, **328 of the 369** `catalog.lock.json` pins. The 41 exclusions live in the
-generated `eval.jsonl`, which is gitignored — count them there, not in the lock, and not in
-[docs/eval.md](/docs/eval.md#osworld--liteosworld), whose Lite.OSWorld row still says 332. Env
+`exclude_reason`, **328 of the 369** `catalog.lock.json` pins. The 41 exclusions are
+recorded in the tracked catalog lock generated from `eval.jsonl`; count them there
+rather than restating denominators by hand. Env
 setup: [`lite/gym/envs/lite/osworld/README.md`](/lite/gym/envs/lite/osworld/README.md).
 
 Eighteen, not fifteen: **the base model runs once per screenshot profile.** A checkpoint must be

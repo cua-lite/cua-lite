@@ -314,14 +314,17 @@ class STEPGUIMobileBaseAdapter(BaseAgentAdapter):
             cot_part = ""
 
         records = self._parse_kv_records(kv_part)
-        agent_tool_calls = [
-            tc for rec in records
-            if (tc := self._action_dict_to_tool_call(rec)) is not None
-        ]
-        tool_calls = (
-            self._route_agent_tool_calls_to_lite(agent_tool_calls)
-            if agent_tool_calls else []
-        )
+        if self._records_are_doneish_final(records):
+            tool_calls = []
+        else:
+            agent_tool_calls = [
+                tc for rec in records
+                if (tc := self._action_dict_to_tool_call(rec)) is not None
+            ]
+            tool_calls = (
+                self._route_agent_tool_calls_to_lite(agent_tool_calls)
+                if agent_tool_calls else []
+            )
         if tool_calls:
             result["tool_calls"] = tool_calls
         else:

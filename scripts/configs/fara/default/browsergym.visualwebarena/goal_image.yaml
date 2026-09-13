@@ -29,6 +29,7 @@ env_kwargs:
   # ─── Obs mode: screenshot only (vision+coord) ────────────────────────
   use_screenshot: true
   use_ax_tree: false
+  include_page_context_text: false
   skip_dom_extraction: true
   # Fara's web nav/finish is native to computer_use, but the translated
   # canonical Lite calls (goto/back/terminate/response) still need schemas for

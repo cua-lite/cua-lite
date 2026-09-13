@@ -1,3 +1,8 @@
+## migration-audit  (2026-09-11)
+
+No known metric, prompt, or tool-surface comparability break is recorded for this
+eval in the migration audit.
+
 ## 8b9d4bd  (2026-04-26)
 
 Initial standardized snapshot at this commit; no predecessor entry.

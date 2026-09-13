@@ -24,6 +24,7 @@ agent_kwargs:
 
 env_id: "online_mind2web"
 env_kwargs:
+  include_page_context_text: false
   max_steps: 100    # Fara reference max_rounds default (caps the per-task budget)
   # Fara's web nav/finish is native to computer_use, but the translated
   # canonical Lite calls (goto/back/terminate/response) still need schemas for

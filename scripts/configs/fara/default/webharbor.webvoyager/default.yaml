@@ -40,6 +40,7 @@ agent_kwargs:
 
 env_id: "webharbor.webvoyager"
 env_kwargs:
+  include_page_context_text: false
   max_steps: 100    # Fara reference max_rounds default
   extra_tools: ["goto", "back", "response", "terminate"]
   # Answer capture: WebVoyager scores via a VLM judge that only runs when the
