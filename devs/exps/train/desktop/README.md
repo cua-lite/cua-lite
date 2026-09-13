@@ -148,11 +148,6 @@ done <<< "$(cells)"
 # slime/slime/ray/placement_group.py) -- so NUM_EPOCH=2
 # gives exactly 2. Ship gates on finding exactly $EPOCHS of them; SKIP on every cell means that
 # premise broke (a slime bump can move it), and the checkpoints are still on disk.
-#
-# CUA_LITE_TRAIN_BROAD_CLEANUP=1 is what makes the LOOP safe: run_sft.sh starts a Ray head and
-# never stops it, and its only teardown is utils/cleanup.sh, sourced at startup and opt-in. So
-# each cell tears down the previous cell's cluster instead of stacking a second one on top.
-# Safe here precisely because the Slime container is dedicated.
 DS=scalecua_5k
 # The fifteen cells as "<config stem> <teacher>". The <think> arm skips qwen3_8_27b.
 cells() {
@@ -169,7 +164,6 @@ cells() {
 
 while read -r P T; do
   TP_SIZE=2 MBS=1 NUM_TRAIN_GPUS=8 \
-    CUA_LITE_TRAIN_BROAD_CLEANUP=1 \
     MODEL_ID=Qwen/Qwen3.5-4B \
     SAVE=1 NO_SAVE_OPTIM=1 NUM_EPOCH=2 GLOBAL_BATCH_SIZE=32 LR=5e-6 \
     PROMPT_DATA=/workspaces/cua-lite/.data/sft/qwen3_5/desktop.use/$P.$DS.$T.parquet \

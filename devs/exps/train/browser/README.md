@@ -194,10 +194,6 @@ fixed — the intersection is too small to train on.
 #
 # Leave SAVE_INTERVAL unset. What writes the two iter_* dirs is slime's epoch-boundary save, so
 # NUM_EPOCH=2 gives exactly 2 -- which is what Ship gates on.
-#
-# CUA_LITE_TRAIN_BROAD_CLEANUP=1 makes the LOOP safe: run_sft.sh starts a Ray head and never
-# stops it, so each cell tears down the previous cell's cluster instead of stacking a second one
-# on top. Set it only in a dedicated training container.
 DS=webgym_1k
 # The eight cells as "<config stem> <teacher>". Both teachers get a <think> arm.
 cells() {
@@ -211,7 +207,6 @@ cells() {
 
 while read -r P T; do
   TP_SIZE=2 MBS=1 NUM_TRAIN_GPUS=8 \
-    CUA_LITE_TRAIN_BROAD_CLEANUP=1 \
     MODEL_ID=Qwen/Qwen3.5-4B \
     SAVE=1 NO_SAVE_OPTIM=1 NUM_EPOCH=2 GLOBAL_BATCH_SIZE=32 LR=5e-6 \
     PROMPT_DATA=/workspaces/cua-lite/.data/sft/qwen3_5/browser.use/$P.$DS.$T.parquet \
