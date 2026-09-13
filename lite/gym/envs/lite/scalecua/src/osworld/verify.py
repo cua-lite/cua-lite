@@ -15,6 +15,7 @@ import math
 import os
 import re
 import shlex
+import shutil
 import statistics
 import tempfile
 import xml.etree.ElementTree as ET
@@ -31,6 +32,7 @@ from lite.core.tools.calls import (
 from lite.gym.envs.lite.osworld.src.eval import runner as base_runner
 from lite.gym.envs.lite.scalecua.src.osworld import judges
 from lite.gym.envs.lite.scalecua.src.osworld.setup import dispatch_strict
+from lite.gym.errors import EnvBlocked, LiteGymError
 from lite.gym.sandbox.types import SandboxTaskConfig
 
 logger = logging.getLogger(__name__)
@@ -226,57 +228,54 @@ async def evaluate_final_fn(
     actions = actions or []
     pre_postconfig_state = await _capture_pre_postconfig_state(computer, evaluator)
     postconfig_done = bool(evaluator.get("_postconfig_done"))
+    owned_cache_dir = False
     if evaluator.get("postconfig"):
         cache_dir = tempfile.mkdtemp(prefix="scalecua_eval_")
+        owned_cache_dir = True
         os.makedirs(cache_dir, exist_ok=True)
-        if not postconfig_done:
-            try:
-                await _run_postconfig(computer, evaluator, cache_dir)
-            except Exception as exc:
-                # Same reasoning as the per-metric handler below, and worse here:
-                # postconfig is what SAVES the app's state before anything is read,
-                # so a failure zeroes the whole trajectory before a single metric
-                # runs. Silently, outside --debug.
-                logger.warning(
-                    "scalecua postconfig raised %s: %s -- scoring 0.0",
-                    type(exc).__name__, exc,
-                )
-                if debug:
-                    return 0.0, {"postconfig_error": str(exc)}
-                return 0.0
     else:
         cache_dir = None
 
-    func = evaluator.get("func", "")
-    if func == "infeasible":
-        ok = _reported_infeasible(actions)
-        return (1.0 if ok else 0.0, {"infeasible": ok}) if debug else (1.0 if ok else 0.0)
+    try:
+        if cache_dir is not None and not postconfig_done:
+            await _run_postconfig_or_block(computer, evaluator, cache_dir)
 
-    forfeit_reason = _final_action_forfeit_reason(actions)
-    if forfeit_reason:
-        return (
-            (0.0, {"terminal_failure": True, "reason": forfeit_reason})
-            if debug
-            else 0.0
-        )
+        func = evaluator.get("func", "")
+        if func == "infeasible":
+            ok = _reported_infeasible(actions)
+            return (
+                (1.0 if ok else 0.0, {"infeasible": ok})
+                if debug else (1.0 if ok else 0.0)
+            )
 
-    if runtime_split in {"train", "rl"}:
-        return await evaluate_scalecua_task(
+        forfeit_reason = _final_action_forfeit_reason(actions)
+        if forfeit_reason:
+            return (
+                (0.0, {"terminal_failure": True, "reason": forfeit_reason})
+                if debug
+                else 0.0
+            )
+
+        if runtime_split in {"train", "rl"}:
+            return await evaluate_scalecua_task(
+                computer,
+                evaluator,
+                runtime_split=runtime_split,
+                cache_dir=cache_dir,
+                run_postconfig=cache_dir is None and not postconfig_done,
+                pre_postconfig_state=pre_postconfig_state,
+                reference_sources=_reference_sources_from_task(task),
+                debug=debug,
+            )
+        return await base_runner.evaluate_osworld_task(
             computer,
             evaluator,
-            runtime_split=runtime_split,
             cache_dir=cache_dir,
-            run_postconfig=cache_dir is None and not postconfig_done,
-            pre_postconfig_state=pre_postconfig_state,
-            reference_sources=_reference_sources_from_task(task),
             debug=debug,
         )
-    return await base_runner.evaluate_osworld_task(
-        computer,
-        evaluator,
-        cache_dir=cache_dir,
-        debug=debug,
-    )
+    finally:
+        if owned_cache_dir and not debug and cache_dir is not None:
+            shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 def _reported_infeasible(actions: list[dict[str, Any]]) -> bool:
@@ -393,15 +392,43 @@ async def evaluate_scalecua_task(
     reference_sources: dict[str, list[str]] | None = None,
     debug: bool = False,
 ) -> float | tuple[float, dict]:
+    owned_cache_dir = cache_dir is None
     if cache_dir is None:
         cache_dir = tempfile.mkdtemp(prefix="scalecua_eval_")
     os.makedirs(cache_dir, exist_ok=True)
+    try:
+        return await _evaluate_scalecua_task(
+            computer,
+            evaluator,
+            runtime_split=runtime_split,
+            cache_dir=cache_dir,
+            run_postconfig=run_postconfig,
+            pre_postconfig_state=pre_postconfig_state,
+            reference_sources=reference_sources,
+            debug=debug,
+        )
+    finally:
+        if owned_cache_dir and not debug:
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
+
+async def _evaluate_scalecua_task(
+    computer,
+    evaluator: dict[str, Any],
+    *,
+    runtime_split: str,
+    cache_dir: str,
+    run_postconfig: bool = True,
+    pre_postconfig_state: str | None = None,
+    reference_sources: dict[str, list[str]] | None = None,
+    debug: bool = False,
+) -> float | tuple[float, dict]:
     eval_env = judges.make_eval_env(computer, cache_dir)
     if reference_sources:
         setattr(eval_env, "_scalecua_reference_source_urls", reference_sources)
 
     if run_postconfig:
-        await _run_postconfig(computer, evaluator, cache_dir)
+        await _run_postconfig_or_block(computer, evaluator, cache_dir)
 
     raw_func = evaluator.get("func", "")
     multi_metric = isinstance(raw_func, list)
@@ -412,9 +439,21 @@ async def evaluate_scalecua_task(
     options_list = _as_list(evaluator.get("options", {}))
     conj = evaluator.get("conj", "and")
     n = len(func_list)
-    result_list += [{}] * (n - len(result_list))
-    expected_list += [{}] * (n - len(expected_list))
-    options_list += [{}] * (n - len(options_list))
+    if len(result_list) < n:
+        raise EnvBlocked(
+            what=(
+                "scalecua evaluator result list is shorter than "
+                f"func list ({len(result_list)} < {n})"
+            )
+        )
+    if len(expected_list) < n:
+        raise EnvBlocked(
+            what=(
+                "scalecua evaluator expected list is shorter than "
+                f"func list ({len(expected_list)} < {n})"
+            )
+        )
+    options_list = options_list + [{}] * (n - len(options_list))
 
     scores: list[float] = []
     details: list[dict[str, Any]] = []
@@ -423,6 +462,24 @@ async def evaluate_scalecua_task(
             result_data = await _get_result(
                 eval_env, result_list[i] or {}, cache_dir, runtime_split
             )
+        except FileNotFoundError as exc:
+            logger.warning("ScaleCUA result file not found for %s[%d]: %s", fn_name, i, exc)
+            scores.append(0.0)
+            if debug:
+                details.append({"func": fn_name, "error": str(exc), "score": 0.0})
+            if multi_metric and conj == "and":
+                return _format_result(
+                    0.0, conj, scores, details, debug, flush_stats=_flush_stats_snapshot(eval_env)
+                )
+            continue
+        except EnvBlocked:
+            raise
+        except Exception as exc:
+            raise EnvBlocked(
+                what=f"scalecua evaluator result getter failed for {fn_name}[{i}]: {exc}"
+            ) from exc
+
+        try:
             if i == len(func_list) - 1 and len(expected_list) > len(func_list):
                 remaining = expected_list[i:]
                 if len(remaining) > 1:
@@ -438,6 +495,14 @@ async def evaluate_scalecua_task(
                 expected_data = await _get_expected(
                     eval_env, expected_list[i] or {}, cache_dir, runtime_split
                 )
+        except EnvBlocked:
+            raise
+        except Exception as exc:
+            raise EnvBlocked(
+                what=f"scalecua evaluator expected getter failed for {fn_name}[{i}]: {exc}"
+            ) from exc
+
+        try:
             expected_data = _normalize_scalecua_expected_rules(
                 str(fn_name), expected_data
             )
@@ -472,6 +537,14 @@ async def evaluate_scalecua_task(
             metric_result, metric_expected = _prepare_metric_args(
                 str(fn_name), metric_result, expected_data
             )
+        except EnvBlocked:
+            raise
+        except Exception as exc:
+            raise EnvBlocked(
+                what=f"scalecua evaluator setup failed for {fn_name}[{i}]: {exc}"
+            ) from exc
+
+        try:
             raw_score = await judges.call_metric(
                 metric_fn,
                 eval_env,
@@ -480,32 +553,8 @@ async def evaluate_scalecua_task(
                 opts,
             )
             score = _coerce_score(raw_score)
-            scores.append(score)
-            if debug:
-                detail = {
-                    "func": fn_name,
-                    "score": score,
-                    "result_preview": _debug_preview(result_data),
-                    "expected_preview": _debug_preview(expected_data),
-                }
-                if _is_gimp_action_history_result(result_list[i] or {}):
-                    detail["result_preview"] = _debug_preview(raw_result_data)
-                    detail["result_after_window_fallback_preview"] = _debug_preview(
-                        result_data
-                    )
-                    detail["expected_preview"] = _debug_preview(expected_data)
-                    detail["pre_postconfig_state_preview"] = _debug_preview(
-                        pre_postconfig_state
-                    )
-                details.append(detail)
-            if multi_metric and conj == "and" and score == 0.0:
-                return _format_result(
-                    0.0, conj, scores, details, debug, flush_stats=_flush_stats_snapshot(eval_env)
-                )
-            if multi_metric and conj == "or" and score == 1.0:
-                return _format_result(
-                    1.0, conj, scores, details, debug, flush_stats=_flush_stats_snapshot(eval_env)
-                )
+        except EnvBlocked:
+            raise
         except Exception as exc:
             # A judge that CRASHED and an agent that genuinely earned nothing both
             # land on 0.0, and outside --debug this branch used to leave no trace at
@@ -526,11 +575,61 @@ async def evaluate_scalecua_task(
                 return _format_result(
                     0.0, conj, scores, details, debug, flush_stats=_flush_stats_snapshot(eval_env)
                 )
+            continue
+
+        scores.append(score)
+        if debug:
+            detail = {
+                "func": fn_name,
+                "score": score,
+                "result_preview": _debug_preview(result_data),
+                "expected_preview": _debug_preview(expected_data),
+            }
+            if _is_gimp_action_history_result(result_list[i] or {}):
+                detail["result_preview"] = _debug_preview(raw_result_data)
+                detail["result_after_window_fallback_preview"] = _debug_preview(
+                    result_data
+                )
+                detail["expected_preview"] = _debug_preview(expected_data)
+                detail["pre_postconfig_state_preview"] = _debug_preview(
+                    pre_postconfig_state
+                )
+            details.append(detail)
+        if multi_metric and conj == "and" and score == 0.0:
+            return _format_result(
+                0.0, conj, scores, details, debug, flush_stats=_flush_stats_snapshot(eval_env)
+            )
+        if multi_metric and conj == "or" and score == 1.0:
+            return _format_result(
+                1.0, conj, scores, details, debug, flush_stats=_flush_stats_snapshot(eval_env)
+            )
 
     final = _combine_scores(scores, conj, multi_metric)
     return _format_result(
         final, conj, scores, details, debug, flush_stats=_flush_stats_snapshot(eval_env)
     )
+
+
+async def _run_postconfig_or_block(
+    computer,
+    evaluator: dict[str, Any],
+    cache_dir: str,
+) -> None:
+    try:
+        await _run_postconfig(computer, evaluator, cache_dir)
+    except LiteGymError:
+        raise
+    except Exception as exc:
+        # Postconfig is evaluator-owned state capture before any score is read.
+        # If it fails, the sample is unscoreable rather than a trustworthy
+        # reward-0.
+        logger.warning(
+            "scalecua postconfig raised %s: %s -- blocking evaluation",
+            type(exc).__name__, exc,
+        )
+        raise EnvBlocked(
+            what=f"scalecua evaluator postconfig failed: {exc}"
+        ) from exc
 
 
 async def _run_postconfig(computer, evaluator: dict[str, Any], cache_dir: str) -> None:

@@ -802,7 +802,7 @@ class LiteOsworldEnv(SandboxBaseEnv):
         image = _IMAGE
         if self._computer_config is not None:
             image = str(self._computer_config.get("image", _IMAGE))
-        _check_docker_image(image)
+        await asyncio.to_thread(_check_docker_image, image)
         from lite.gym.errors import EnvDesktopCrashed
         # Cold-vs-existing signal for the post-boot liveness check below:
         # ``self._computer`` is None until ``SandboxBaseEnv.boot()`` (called

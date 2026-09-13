@@ -37,7 +37,7 @@ _DETAILS = re.compile(
 _CODE = re.compile(r"`([^`]+)`")
 _TEST_ENV_PREFIXES = ("_", "faketest_")
 _ENV_APP_SUFFIX = ".<app>"
-_NAMESPACE_ENVS_COVERED_BY_CHILDREN = {"cua.bench"}
+_NAMESPACE_ENVS_COVERED_BY_CHILDREN = {"browsergym", "cua.bench"}
 
 
 def _reference_block() -> str:

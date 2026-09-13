@@ -47,6 +47,7 @@ def test_scalecua_excludes_tell_explain_gimp_action_history_mismatch():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "instruction_eval_mismatch"
     )
@@ -56,6 +57,7 @@ def test_scalecua_excludes_tell_explain_gimp_action_history_mismatch():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "instruction_eval_mismatch"
     )
@@ -65,6 +67,7 @@ def test_scalecua_excludes_tell_explain_gimp_action_history_mismatch():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "instruction_eval_mismatch"
     )
@@ -74,6 +77,7 @@ def test_scalecua_excludes_tell_explain_gimp_action_history_mismatch():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "instruction_eval_mismatch"
     )
@@ -83,6 +87,7 @@ def test_scalecua_excludes_tell_explain_gimp_action_history_mismatch():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -161,6 +166,7 @@ def test_scalecua_excludes_exact_instruction_eval_mismatch_rows():
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split="train",
+                broken_metrics=frozenset(),
             )
             == "instruction_eval_mismatch"
         )
@@ -173,6 +179,7 @@ def test_scalecua_excludes_exact_instruction_eval_mismatch_rows():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -194,6 +201,7 @@ def test_scalecua_excludes_exact_thunderbird_gmail_auth_gap():
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split="train",
+                broken_metrics=frozenset(),
             )
             == "google_auth"
         )
@@ -207,6 +215,7 @@ def test_scalecua_excludes_exact_thunderbird_gmail_auth_gap():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -236,6 +245,7 @@ def test_scalecua_excludes_exact_chrome_webstore_live_site_rows():
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split=split,
+                broken_metrics=frozenset(),
             )
             == "upstream_live_site_drift"
         )
@@ -332,6 +342,7 @@ def test_scalecua_excludes_exact_visual_audit_live_site_drift_rows():
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split=runtime_split,
+                broken_metrics=frozenset(),
             )
             == "upstream_live_site_drift"
         )
@@ -347,6 +358,7 @@ def test_scalecua_excludes_exact_visual_audit_live_site_drift_rows():
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split="train",
+                broken_metrics=frozenset(),
             )
             is None
         )
@@ -418,6 +430,7 @@ def test_scalecua_excludes_missing_instruction_asset_url_without_overfiltering()
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "instruction_setup_mismatch"
     )
@@ -427,6 +440,7 @@ def test_scalecua_excludes_missing_instruction_asset_url_without_overfiltering()
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "instruction_setup_mismatch"
     )
@@ -436,6 +450,7 @@ def test_scalecua_excludes_missing_instruction_asset_url_without_overfiltering()
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -445,6 +460,7 @@ def test_scalecua_excludes_missing_instruction_asset_url_without_overfiltering()
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -454,6 +470,7 @@ def test_scalecua_excludes_missing_instruction_asset_url_without_overfiltering()
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -499,6 +516,7 @@ def test_scalecua_excludes_missing_author_results_reference_asset():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "missing_reference_asset"
     )
@@ -508,6 +526,7 @@ def test_scalecua_excludes_missing_author_results_reference_asset():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -517,6 +536,7 @@ def test_scalecua_excludes_missing_author_results_reference_asset():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -766,6 +786,7 @@ def test_scalecua_excludes_known_upstream_generated_eval_bug_exactly():
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split="train",
+                broken_metrics=frozenset(),
             )
             == "upstream_generated_eval_bug"
         )
@@ -779,6 +800,7 @@ def test_scalecua_excludes_known_upstream_generated_eval_bug_exactly():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -792,6 +814,7 @@ def test_scalecua_excludes_known_upstream_generated_eval_bug_exactly():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -805,6 +828,7 @@ def test_scalecua_excludes_known_upstream_generated_eval_bug_exactly():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "infeasible"
     )
@@ -818,6 +842,7 @@ def test_scalecua_excludes_known_upstream_generated_eval_bug_exactly():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -830,6 +855,7 @@ def test_scalecua_excludes_known_upstream_generated_eval_bug_exactly():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -862,6 +888,7 @@ def test_scalecua_excludes_uncompilable_python_heredoc_oracle_script():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "upstream_generated_eval_bug"
     )
@@ -936,6 +963,7 @@ def test_scalecua_upstream_generated_eval_bug_does_not_blanket_extension_load_fa
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split=runtime_split,
+                broken_metrics=frozenset(),
             )
             != "upstream_generated_eval_bug"
         )
@@ -973,6 +1001,7 @@ def test_scalecua_excludes_exact_missing_proxy_social_tab_rows(tmp_path):
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split="train",
+                broken_metrics=frozenset(),
             )
             == "proxy_required"
         )
@@ -985,6 +1014,7 @@ def test_scalecua_excludes_exact_missing_proxy_social_tab_rows(tmp_path):
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -995,7 +1025,7 @@ def test_scalecua_excludes_exact_missing_proxy_social_tab_rows(tmp_path):
         source_domain="chrome",
         source_path=(tmp_path / "06fe7178-4491-4589-810f-2e2bc9502122_task_verify_30.json"),
         inherited_exclusion=None,
-        context=dataset._ImportContext(snapshot=tmp_path),
+        context=dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset()),
     )
 
     assert row["metadata"]["others"]["proxy"] is True
@@ -1043,6 +1073,7 @@ def test_scalecua_excludes_generated_babycenter_exact_url_live_site_drift():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1052,6 +1083,7 @@ def test_scalecua_excludes_generated_babycenter_exact_url_live_site_drift():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1151,6 +1183,7 @@ def test_scalecua_excludes_macys_live_url_filter_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1160,6 +1193,7 @@ def test_scalecua_excludes_macys_live_url_filter_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1169,6 +1203,7 @@ def test_scalecua_excludes_macys_live_url_filter_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1180,6 +1215,7 @@ def test_scalecua_excludes_macys_live_url_filter_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "proxy_required"
     )
@@ -1189,6 +1225,7 @@ def test_scalecua_excludes_macys_live_url_filter_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1198,6 +1235,7 @@ def test_scalecua_excludes_macys_live_url_filter_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1228,6 +1266,7 @@ def test_scalecua_excludes_doubleclick_cookie_live_site_drift_exactly():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1240,6 +1279,7 @@ def test_scalecua_excludes_doubleclick_cookie_live_site_drift_exactly():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1269,6 +1309,7 @@ def test_scalecua_excludes_rl_url_live_site_drift_exactly():
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split="rl",
+                broken_metrics=frozenset(),
             )
             == "upstream_live_site_drift"
         )
@@ -1281,6 +1322,7 @@ def test_scalecua_excludes_rl_url_live_site_drift_exactly():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1321,6 +1363,7 @@ def test_scalecua_excludes_doj_forms_component_id_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1330,6 +1373,7 @@ def test_scalecua_excludes_doj_forms_component_id_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "proxy_required"
     )
@@ -1339,6 +1383,7 @@ def test_scalecua_excludes_doj_forms_component_id_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1397,6 +1442,7 @@ def test_scalecua_excludes_dmv_old_path_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1406,6 +1452,7 @@ def test_scalecua_excludes_dmv_old_path_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1415,6 +1462,7 @@ def test_scalecua_excludes_dmv_old_path_drift_without_overfiltering():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1459,6 +1507,7 @@ def test_scalecua_excludes_flightaware_category_redirect_drift():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1468,6 +1517,7 @@ def test_scalecua_excludes_flightaware_category_redirect_drift():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "proxy_required"
     )
@@ -1477,6 +1527,7 @@ def test_scalecua_excludes_flightaware_category_redirect_drift():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1517,6 +1568,7 @@ def test_scalecua_excludes_united_special_needs_path_drift_without_overfiltering
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1526,6 +1578,7 @@ def test_scalecua_excludes_united_special_needs_path_drift_without_overfiltering
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "proxy_required"
     )
@@ -1535,6 +1588,7 @@ def test_scalecua_excludes_united_special_needs_path_drift_without_overfiltering
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1596,6 +1650,7 @@ def test_scalecua_excludes_generated_shenzhen_address_lookup_drift_only_for_trai
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1605,6 +1660,7 @@ def test_scalecua_excludes_generated_shenzhen_address_lookup_drift_only_for_trai
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "upstream_live_site_drift"
     )
@@ -1614,6 +1670,7 @@ def test_scalecua_excludes_generated_shenzhen_address_lookup_drift_only_for_trai
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -1623,6 +1680,7 @@ def test_scalecua_excludes_generated_shenzhen_address_lookup_drift_only_for_trai
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="eval",
+            broken_metrics=frozenset(),
         )
         is None
     )

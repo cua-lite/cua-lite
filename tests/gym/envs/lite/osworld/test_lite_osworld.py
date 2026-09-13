@@ -1030,10 +1030,27 @@ class TestEvalPull:
     def test_download_url_allows_nested_dest_inside_cache(self, monkeypatch, tmp_path):
         from lite.gym.envs.lite.osworld.src.eval import runner
 
-        def fake_urlretrieve(_url, filename):
-            Path(filename).write_bytes(b"payload")
+        class _Response:
+            def __init__(self, payload: bytes):
+                self._payload = payload
 
-        monkeypatch.setattr(runner.urllib.request, "urlretrieve", fake_urlretrieve)
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self, size=-1):
+                payload, self._payload = self._payload, b""
+                return payload
+
+        timeouts = []
+
+        def fake_urlopen(_url, *, timeout):
+            timeouts.append(timeout)
+            return _Response(b"payload")
+
+        monkeypatch.setattr(runner.urllib.request, "urlopen", fake_urlopen)
 
         result = runner._download_url(
             "https://example.test/file.txt",
@@ -1043,6 +1060,62 @@ class TestEvalPull:
 
         assert result == str(tmp_path / "nested/file.txt")
         assert (tmp_path / "nested/file.txt").read_bytes() == b"payload"
+        assert timeouts == [runner._DOWNLOAD_TIMEOUT_S]
+
+
+class TestEvalScratchDirs:
+    @pytest.mark.asyncio
+    async def test_evaluate_osworld_task_removes_owned_cache_dir(self, monkeypatch, tmp_path):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+
+        owned = tmp_path / "owned"
+
+        async def fake_evaluate(_computer, _evaluator, cache_dir, *, debug):
+            Path(cache_dir, "artifact.txt").write_text("payload", encoding="utf-8")
+            return 0.5
+
+        monkeypatch.setattr(runner.tempfile, "mkdtemp", lambda prefix: str(owned))
+        monkeypatch.setattr(runner, "_evaluate_osworld_task", fake_evaluate)
+
+        assert await runner.evaluate_osworld_task(None, {}) == 0.5
+        assert not owned.exists()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_osworld_task_leaves_caller_cache_dir(self, monkeypatch, tmp_path):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+
+        caller = tmp_path / "caller"
+        caller.mkdir()
+
+        async def fake_evaluate(_computer, _evaluator, cache_dir, *, debug):
+            Path(cache_dir, "artifact.txt").write_text("payload", encoding="utf-8")
+            return 0.5
+
+        monkeypatch.setattr(runner, "_evaluate_osworld_task", fake_evaluate)
+
+        assert await runner.evaluate_osworld_task(None, {}, cache_dir=str(caller)) == 0.5
+        assert (caller / "artifact.txt").read_text(encoding="utf-8") == "payload"
+
+    @pytest.mark.asyncio
+    async def test_evaluate_osworld_task_keeps_owned_cache_dir_in_debug(
+        self, monkeypatch, tmp_path
+    ):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+
+        owned = tmp_path / "debug-owned"
+
+        async def fake_evaluate(_computer, _evaluator, cache_dir, *, debug):
+            Path(cache_dir, "artifact.txt").write_text("payload", encoding="utf-8")
+            return 0.5, {"cache_dir": cache_dir}
+
+        monkeypatch.setattr(runner.tempfile, "mkdtemp", lambda prefix: str(owned))
+        monkeypatch.setattr(runner, "_evaluate_osworld_task", fake_evaluate)
+
+        assert await runner.evaluate_osworld_task(None, {}, debug=True) == (
+            0.5,
+            {"cache_dir": str(owned)},
+        )
+        assert (owned / "artifact.txt").read_text(encoding="utf-8") == "payload"
 
 
 # =========================================================================
@@ -3519,6 +3592,43 @@ class TestJsonlContract:
         assert seen["env_id"] == "lite.osworld"
         assert seen["tag"] == "cua-lite/lite.osworld:mine"
         assert "checked" in seen
+
+    @pytest.mark.asyncio
+    async def test_reset_runs_docker_image_preflight_off_loop(self, monkeypatch):
+        from lite.gym.envs.lite.osworld import main as M
+
+        seen = {}
+
+        async def fake_to_thread(fn, /, *args, **kwargs):
+            seen["fn"] = fn
+            seen["args"] = args
+            return fn(*args, **kwargs)
+
+        async def fake_base_reset(self):
+            return M.LiteEnvObservation(image=None, text="ok")
+
+        def fake_check(image):
+            seen["image"] = image
+
+        monkeypatch.setattr(M, "_check_desktop_env", lambda: None)
+        monkeypatch.setattr(M, "_check_docker_image", fake_check)
+        monkeypatch.setattr(M.asyncio, "to_thread", fake_to_thread)
+        monkeypatch.setattr(M.SandboxBaseEnv, "reset", fake_base_reset)
+
+        env = M.LiteOsworldEnv(
+            task=None,
+            image="cua-lite/lite.osworld:mine",
+            post_action_delay=0.0,
+        )
+        env._computer = None
+        env._owns_computer = True
+
+        result = await env.reset()
+
+        assert result.text == "ok"
+        assert seen["fn"] is fake_check
+        assert seen["args"] == ("cua-lite/lite.osworld:mine",)
+        assert seen["image"] == "cua-lite/lite.osworld:mine"
 
     def test_flat_image_override_updates_constructor_computer_config(self, monkeypatch):
         from lite.gym.envs.lite.osworld import main as M
