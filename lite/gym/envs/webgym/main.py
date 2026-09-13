@@ -129,8 +129,10 @@ try:
     from webgym.misc import is_white_image
 except ImportError:
     def is_white_image(img: Any) -> bool:  # type: ignore[misc]
-        """Fallback: treat all images as non-blank when webgym is unavailable."""
-        return False
+        """Fallback for hosts without the optional ``webgym`` package."""
+        image = img.convert("RGB")
+        extrema = image.getextrema()
+        return all(lo == hi == 255 for lo, hi in extrema)
 
 ENV_DIR = str(Path(__file__).parent)
 CFG = env_config.load(ENV_DIR)

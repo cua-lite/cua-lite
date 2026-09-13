@@ -171,6 +171,7 @@ _PINNED_ENV_DIMS: dict[str, tuple[str, ...]] = {
     "lite.cuagym": ("browser", "use"),
     "lite.cuaworld.librecad": ("desktop", "use"),
     "lite.cuaworld.pymol": ("desktop", "use"),
+    "osworld_g": ("desktop", "grounding.point"),
 }
 
 # Envs that end the episode on the FIRST step (single-step grounding). They are
