@@ -12,16 +12,20 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import functools
 import json
 import logging
 import os
-from pathlib import Path
 import shlex
+import shutil
 import tempfile
+import time
+from pathlib import Path
 import urllib.request
 
+from lite.gym.errors import EnvBlocked
 from lite.gym.envs.lite.osworld.src.utils.dispatch import (
     dispatch_action,
     CHROME_DATA_DIR as _CHROME_DATA_DIR,
@@ -30,6 +34,8 @@ from lite.gym.envs.lite.osworld.src.utils.dispatch import (
 logger = logging.getLogger(__name__)
 
 _SERVER = "http://localhost:5000"
+_DOWNLOAD_TIMEOUT_S = 15.0
+_DOWNLOAD_TOTAL_BUDGET_S = 60.0
 
 # Bare shell operator tokens that appear as their OWN element in an argv-list getter
 # command (e.g. ["code","--list-extensions","|","grep",X]); left UNQUOTED when the
@@ -97,13 +103,38 @@ def _summarize(data: object, limit: int = 2000) -> object:
     return data
 
 
+class MetricRaised(RuntimeError):
+    """Raised after a metric function has received its artifacts and failed."""
+
+
 async def evaluate_osworld_task(
     computer, evaluator: dict, cache_dir: str | None = None, *, debug: bool = False,
 ) -> float | tuple[float, dict]:
     """Run OSWorld evaluator: postconfig → getter(result) → getter(expected) → metric."""
+    owned_cache_dir = cache_dir is None
     if cache_dir is None:
         cache_dir = tempfile.mkdtemp(prefix="osworld_eval_")
     os.makedirs(cache_dir, exist_ok=True)
+    try:
+        return await _evaluate_osworld_task(
+            computer,
+            evaluator,
+            cache_dir,
+            debug=debug,
+        )
+    finally:
+        if owned_cache_dir and not debug:
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
+
+async def _evaluate_osworld_task(
+    computer,
+    evaluator: dict,
+    cache_dir: str,
+    *,
+    debug: bool = False,
+) -> float | tuple[float, dict]:
+    """Evaluate with a caller-owned cache directory."""
 
     func = evaluator.get("func", "")
     if func == "infeasible":
@@ -127,9 +158,7 @@ async def evaluate_osworld_task(
         options_list = [options_list]
 
     n = len(func_list)
-    result_list += [{}] * (n - len(result_list))
-    expected_list += [{}] * (n - len(expected_list))
-    options_list += [{}] * (n - len(options_list))
+    options_list = options_list + [{}] * (n - len(options_list))
 
     conj = evaluator.get("conj", "and")
     scores = []
@@ -148,14 +177,27 @@ async def evaluate_osworld_task(
     for i, fn_name in enumerate(func_list):
         try:
             result_data = await _get_result(computer, result_list[i] or {}, cache_dir)
-            # DIAG dump (set CUALITE_EVAL_DUMP=/path to enable)
-            _dump = os.environ.get("CUALITE_EVAL_DUMP")
-            if _dump and isinstance(result_data, str) and result_data.lstrip().startswith("<"):
-                try:
-                    with open(_dump, "w") as _f:
-                        _f.write(result_data)
-                except Exception:
-                    pass
+        except FileNotFoundError as exc:
+            logger.warning("Result file not found for %s[%d]: %s", fn_name, i, exc)
+            scores.append(0.0)
+            if details is not None:
+                details.append({"func": fn_name, "error": str(exc), "score": 0.0})
+            continue
+        except EnvBlocked:
+            raise
+        except Exception as exc:
+            raise EnvBlocked(
+                what=f"osworld evaluator result getter failed for {fn_name}[{i}]: {exc}"
+            ) from exc
+
+        # DIAG dump (set CUALITE_EVAL_DUMP=/path to enable)
+        _dump = os.environ.get("CUALITE_EVAL_DUMP")
+        if _dump and isinstance(result_data, str) and result_data.lstrip().startswith("<"):
+            with contextlib.suppress(Exception):
+                with open(_dump, "w") as _f:
+                    _f.write(result_data)
+
+        try:
             # When expected_list has more entries than func_list (multi-expected
             # pattern, e.g. compare_unique_train_records which needs both a gold
             # file and an initial-state reference), fetch all remaining entries
@@ -168,38 +210,58 @@ async def evaluate_osworld_task(
                         _items.append(await _get_expected(computer, _cfg or {}, cache_dir))
                     expected_data = _items
                 else:
-                    expected_data = await _get_expected(computer, expected_list[i] or {}, cache_dir)
+                    expected_data = await _get_expected(
+                        computer,
+                        expected_list[i] or {},
+                        cache_dir,
+                    )
             else:
-                expected_data = await _get_expected(computer, expected_list[i] or {}, cache_dir)
-            metric_fn = getattr(custom_metrics, fn_name, None)
-            if metric_fn is None:
-                metric_fn = getattr(metrics, fn_name, None)
-            if metric_fn is None:
-                logger.warning("Metric not found: %s", fn_name)
-                scores.append(0.0)
-                if details is not None:
-                    details.append({"func": fn_name, "error": "metric not found", "score": 0.0})
-                continue
-            # Match OSWorld's calling pattern:
-            # - with expected: metric(result, expected, **options)
-            # - without expected: metric(result, **options)
-            opts = options_list[i] or {}
-            # Run the metric in a thread so CPU-heavy evaluators (SSIM on
-            # large images, PDF parsing, audio DTW, etc.) don't block the
-            # async event loop and stall other concurrent tasks.
-            import sys as _sys
+                expected_data = await _get_expected(
+                    computer,
+                    expected_list[i] or {},
+                    cache_dir,
+                )
+        except EnvBlocked:
+            raise
+        except Exception as exc:
+            raise EnvBlocked(
+                what=f"osworld evaluator expected getter failed for {fn_name}[{i}]: {exc}"
+            ) from exc
 
-            def _run_metric(
-                _fn=metric_fn, _rd=result_data, _ed=expected_data,
-                _opts=opts, _cache=cache_dir,
-            ):
-                # Snapshot sys.modules so we can evict task-specific modules
-                # (e.g. settings, tetris, block) imported from cache_dir.
-                _modules_before = set(_sys.modules.keys())
+        metric_fn = getattr(custom_metrics, fn_name, None)
+        if metric_fn is None:
+            metric_fn = getattr(metrics, fn_name, None)
+        if metric_fn is None:
+            logger.warning("Metric not found: %s", fn_name)
+            scores.append(0.0)
+            if details is not None:
+                details.append({"func": fn_name, "error": "metric not found", "score": 0.0})
+            continue
+        # Match OSWorld's calling pattern:
+        # - with expected: metric(result, expected, **options)
+        # - without expected: metric(result, **options)
+        opts = options_list[i] or {}
+        # Run the metric in a thread so CPU-heavy evaluators (SSIM on
+        # large images, PDF parsing, audio DTW, etc.) don't block the
+        # async event loop and stall other concurrent tasks.
+        import sys as _sys
+
+        def _run_metric(
+            _fn=metric_fn, _rd=result_data, _ed=expected_data,
+            _opts=opts, _cache=cache_dir,
+        ):
+            # Snapshot sys.modules so we can evict task-specific modules
+            # (e.g. settings, tetris, block) imported from cache_dir.
+            _modules_before = set(_sys.modules.keys())
+            try:
                 if _ed is not None:
-                    result = _fn(_rd, _ed, **_opts)
-                else:
-                    result = _fn(_rd, **_opts)
+                    return _fn(_rd, _ed, **_opts)
+                return _fn(_rd, **_opts)
+            except EnvBlocked:
+                raise
+            except Exception as exc:
+                raise MetricRaised(str(exc)) from exc
+            finally:
                 # Remove modules imported from the temp cache_dir
                 for _mod in list(_sys.modules.keys()):
                     if _mod not in _modules_before:
@@ -207,25 +269,32 @@ async def evaluate_osworld_task(
                         _mod_file = getattr(_mod_obj, "__file__", None) or ""
                         if _cache and _mod_file.startswith(_cache):
                             del _sys.modules[_mod]
-                return result
 
-            loop = asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
+        try:
             score = await loop.run_in_executor(None, _run_metric)
-            score_f = float(score) if isinstance(score, (int, float)) else (1.0 if score else 0.0)
-            scores.append(score_f)
-            if details is not None:
-                details.append({
-                    "func": fn_name,
-                    "result_config": result_list[i],
-                    "result_data": _summarize(result_data),
-                    "expected_data": _summarize(expected_data),
-                    "score": score_f,
-                })
-        except Exception as e:
-            logger.warning("Metric %s[%d] failed: %s", fn_name, i, e)
+        except EnvBlocked:
+            raise
+        except MetricRaised as exc:
+            logger.warning("Metric %s[%d] failed: %s", fn_name, i, exc)
             scores.append(0.0)
             if details is not None:
-                details.append({"func": fn_name, "error": str(e), "score": 0.0})
+                details.append({"func": fn_name, "error": str(exc), "score": 0.0})
+            continue
+        except Exception as exc:
+            raise EnvBlocked(
+                what=f"osworld evaluator metric runner failed for {fn_name}[{i}]: {exc}"
+            ) from exc
+        score_f = float(score) if isinstance(score, (int, float)) else (1.0 if score else 0.0)
+        scores.append(score_f)
+        if details is not None:
+            details.append({
+                "func": fn_name,
+                "result_config": result_list[i],
+                "result_data": _summarize(result_data),
+                "expected_data": _summarize(expected_data),
+                "score": score_f,
+            })
 
     # Faithful to upstream OSWorld DesktopEnv.evaluate(): return the RAW aggregate
     # score (partial credit preserved) — NEVER binarize at 0.5. The old
@@ -1798,7 +1867,7 @@ async def _get_expected(computer, config: dict, cache_dir: str):
         return None
     t = config.get("type", "")
     if t == "cloud_file":
-        # _download_url is sync (requests.get); _ensure_csv_exports is sync
+        # _download_url is sync (urlopen); _ensure_csv_exports is sync
         # openpyxl. Both must run in a thread to avoid stalling the 32-way
         # concurrent rollout event loop.
         if config.get("multi", False):
@@ -2159,8 +2228,8 @@ async def _download_from_container(computer, remote_path: str, cache_dir: str, p
     Single-line base64 payload, bounded by the host-side ``_STREAM_LIMIT``
     (64 MiB) in ``lite/gym/sandbox/exec_stdio/client.py``. Falls back to
     ``run_command("base64 -w0 <path>")`` (also exec-stdio) if the
-    primary op raises a transient error; final return is ``None`` if
-    both fail.
+    primary op raises a transient error. A missing file still returns ``None``;
+    a transport that cannot answer raises ``EnvBlocked``.
     """
     if not remote_path:
         return None
@@ -2177,6 +2246,7 @@ async def _download_from_container(computer, remote_path: str, cache_dir: str, p
             with open(local_path, "wb") as f:
                 f.write(data)
             return local_path
+        return None
     except Exception as e:
         logger.warning("read_bytes failed for %s: %s", remote_path, e)
 
@@ -2186,10 +2256,15 @@ async def _download_from_container(computer, remote_path: str, cache_dir: str, p
     # which has a different retry surface (one extra round-trip is cheap).
     import shlex as _shlex
     try:
-        r = await computer.interface.run_command(
-            f"base64 -w0 {_shlex.quote(remote_path)}"
-        )
-        b64 = r.stdout.strip()
+        r = await computer.interface.run_command(f"base64 -w0 {_shlex.quote(remote_path)}")
+    except Exception as e:
+        raise EnvBlocked(
+            what=f"evaluator file could not be read from container: {remote_path}: {e}"
+        ) from e
+    b64 = r.stdout.strip()
+    if getattr(r, "returncode", 0) != 0 and not b64:
+        return None
+    try:
         if b64:
             data = base64.b64decode(b64)
             if data:
@@ -2197,8 +2272,9 @@ async def _download_from_container(computer, remote_path: str, cache_dir: str, p
                     f.write(data)
                 return local_path
     except Exception as e:
-        logger.warning("base64 download failed for %s: %s", remote_path, e)
-
+        raise EnvBlocked(
+            what=f"evaluator file could not be decoded from container: {remote_path}: {e}"
+        ) from e
     return None
 
 
@@ -2216,20 +2292,32 @@ def _download_url(url: str, cache_dir: str, dest: str = "") -> str | None:
         )
     if os.path.exists(local) and os.path.getsize(local) > 0:
         return local
-    import time
-    delay = 3
-    for attempt in range(1, 6):
+    delay = 3.0
+    deadline = time.monotonic() + _DOWNLOAD_TOTAL_BUDGET_S
+    last_error = "empty response"
+    for attempt in range(1, 1000):
+        if time.monotonic() >= deadline:
+            break
+        tmp = local + ".tmp"
         try:
-            tmp = local + ".tmp"
-            urllib.request.urlretrieve(url, tmp)
+            with urllib.request.urlopen(url, timeout=_DOWNLOAD_TIMEOUT_S) as response:
+                with open(tmp, "wb") as f:
+                    shutil.copyfileobj(response, f)
             if os.path.getsize(tmp) > 0:
                 os.replace(tmp, local)
                 return local
+            last_error = "empty response"
             os.unlink(tmp)
         except Exception as e:
-            logger.warning("Download attempt %d/5 failed %s: %s", attempt, url, e)
-        if attempt < 5:
-            time.sleep(delay)
-            delay = min(delay * 2, 30)
-    logger.warning("All 5 download attempts failed: %s", url)
-    return None
+            last_error = str(e) or type(e).__name__
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(tmp)
+            logger.warning("Download attempt %d failed %s: %s", attempt, url, e)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(delay, remaining))
+        delay = min(delay * 2, 30.0)
+    raise EnvBlocked(
+        what=f"evaluator file could not be downloaded from {url!r}: {last_error}"
+    )

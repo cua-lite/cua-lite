@@ -1030,10 +1030,27 @@ class TestEvalPull:
     def test_download_url_allows_nested_dest_inside_cache(self, monkeypatch, tmp_path):
         from lite.gym.envs.lite.osworld.src.eval import runner
 
-        def fake_urlretrieve(_url, filename):
-            Path(filename).write_bytes(b"payload")
+        class _Response:
+            def __init__(self, payload: bytes):
+                self._payload = payload
 
-        monkeypatch.setattr(runner.urllib.request, "urlretrieve", fake_urlretrieve)
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self, size=-1):
+                payload, self._payload = self._payload, b""
+                return payload
+
+        timeouts = []
+
+        def fake_urlopen(_url, *, timeout):
+            timeouts.append(timeout)
+            return _Response(b"payload")
+
+        monkeypatch.setattr(runner.urllib.request, "urlopen", fake_urlopen)
 
         result = runner._download_url(
             "https://example.test/file.txt",
@@ -1043,6 +1060,96 @@ class TestEvalPull:
 
         assert result == str(tmp_path / "nested/file.txt")
         assert (tmp_path / "nested/file.txt").read_bytes() == b"payload"
+        assert timeouts == [runner._DOWNLOAD_TIMEOUT_S]
+
+    def test_download_url_raises_env_blocked_after_retry_budget(self, monkeypatch, tmp_path):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+        from lite.gym.errors import EnvBlocked
+
+        times = iter([0.0, 0.0, 1.0])
+
+        def fake_urlopen(_url, *, timeout):
+            raise TimeoutError("socket timeout")
+
+        monkeypatch.setattr(runner.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setattr(runner.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(runner, "_DOWNLOAD_TOTAL_BUDGET_S", 0.1)
+
+        with pytest.raises(EnvBlocked, match="evaluator file"):
+            runner._download_url("https://example.test/missing.txt", str(tmp_path))
+
+    @pytest.mark.asyncio
+    async def test_container_download_transport_failure_raises_env_blocked(self, tmp_cache):
+        from lite.gym.envs.lite.osworld.src.eval.runner import _download_from_container
+        from lite.gym.errors import EnvBlocked
+
+        class _Iface:
+            async def read_bytes(self, path):
+                raise RuntimeError("read op failed")
+
+            async def run_command(self, cmd):
+                raise RuntimeError("session dead")
+
+        class _Comp:
+            interface = _Iface()
+
+        with pytest.raises(EnvBlocked, match="evaluator file could not be read"):
+            await _download_from_container(_Comp(), "/tmp/result.txt", tmp_cache)
+
+
+class TestEvalScratchDirs:
+    @pytest.mark.asyncio
+    async def test_evaluate_osworld_task_removes_owned_cache_dir(self, monkeypatch, tmp_path):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+
+        owned = tmp_path / "owned"
+
+        async def fake_evaluate(_computer, _evaluator, cache_dir, *, debug):
+            Path(cache_dir, "artifact.txt").write_text("payload", encoding="utf-8")
+            return 0.5
+
+        monkeypatch.setattr(runner.tempfile, "mkdtemp", lambda prefix: str(owned))
+        monkeypatch.setattr(runner, "_evaluate_osworld_task", fake_evaluate)
+
+        assert await runner.evaluate_osworld_task(None, {}) == 0.5
+        assert not owned.exists()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_osworld_task_leaves_caller_cache_dir(self, monkeypatch, tmp_path):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+
+        caller = tmp_path / "caller"
+        caller.mkdir()
+
+        async def fake_evaluate(_computer, _evaluator, cache_dir, *, debug):
+            Path(cache_dir, "artifact.txt").write_text("payload", encoding="utf-8")
+            return 0.5
+
+        monkeypatch.setattr(runner, "_evaluate_osworld_task", fake_evaluate)
+
+        assert await runner.evaluate_osworld_task(None, {}, cache_dir=str(caller)) == 0.5
+        assert (caller / "artifact.txt").read_text(encoding="utf-8") == "payload"
+
+    @pytest.mark.asyncio
+    async def test_evaluate_osworld_task_keeps_owned_cache_dir_in_debug(
+        self, monkeypatch, tmp_path
+    ):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+
+        owned = tmp_path / "debug-owned"
+
+        async def fake_evaluate(_computer, _evaluator, cache_dir, *, debug):
+            Path(cache_dir, "artifact.txt").write_text("payload", encoding="utf-8")
+            return 0.5, {"cache_dir": cache_dir}
+
+        monkeypatch.setattr(runner.tempfile, "mkdtemp", lambda prefix: str(owned))
+        monkeypatch.setattr(runner, "_evaluate_osworld_task", fake_evaluate)
+
+        assert await runner.evaluate_osworld_task(None, {}, debug=True) == (
+            0.5,
+            {"cache_dir": str(owned)},
+        )
+        assert (owned / "artifact.txt").read_text(encoding="utf-8") == "payload"
 
 
 # =========================================================================
@@ -1495,6 +1602,119 @@ class TestEvalMetricCalling:
         }
 
         assert await runner.evaluate_osworld_task(None, evaluator) == expected
+
+    @pytest.mark.asyncio
+    async def test_result_file_not_found_scores_zero(self, monkeypatch):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+
+        async def missing_result(_computer, _config, _cache_dir):
+            raise FileNotFoundError("missing result")
+
+        async def unused_expected(_computer, _config, _cache_dir):
+            raise AssertionError("expected getter should not run")
+
+        monkeypatch.setattr(runner, "_get_result", missing_result)
+        monkeypatch.setattr(runner, "_get_expected", unused_expected)
+
+        score, detail = await runner.evaluate_osworld_task(
+            None,
+            {"_postconfig_done": True, "func": "missing_metric", "result": {}, "expected": {}},
+            debug=True,
+        )
+
+        assert score == 0.0
+        assert detail["details"] == [
+            {"func": "missing_metric", "error": "missing result", "score": 0.0}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_result_getter_infra_failure_raises_env_blocked(self, monkeypatch):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+        from lite.gym.errors import EnvBlocked
+
+        async def broken_result(_computer, _config, _cache_dir):
+            raise RuntimeError("container stopped answering")
+
+        monkeypatch.setattr(runner, "_get_result", broken_result)
+
+        with pytest.raises(EnvBlocked, match="result getter failed"):
+            await runner.evaluate_osworld_task(
+                None,
+                {"_postconfig_done": True, "func": "any_metric", "result": {}, "expected": {}},
+            )
+
+    @pytest.mark.asyncio
+    async def test_expected_getter_failure_raises_env_blocked(self, monkeypatch):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+        from lite.gym.errors import EnvBlocked
+
+        async def fake_result(_computer, _config, _cache_dir):
+            return "result"
+
+        async def broken_expected(_computer, _config, _cache_dir):
+            raise RuntimeError("gold could not be read")
+
+        monkeypatch.setattr(runner, "_get_result", fake_result)
+        monkeypatch.setattr(runner, "_get_expected", broken_expected)
+
+        with pytest.raises(EnvBlocked, match="expected getter failed"):
+            await runner.evaluate_osworld_task(
+                None,
+                {"_postconfig_done": True, "func": "any_metric", "result": {}, "expected": {}},
+            )
+
+    @pytest.mark.asyncio
+    async def test_env_blocked_from_getters_bubbles(self, monkeypatch):
+        from lite.gym.envs.lite.osworld.src.eval import runner
+        from lite.gym.errors import EnvBlocked
+
+        blocked = EnvBlocked(what="download transport failed")
+
+        async def blocked_result(_computer, _config, _cache_dir):
+            raise blocked
+
+        monkeypatch.setattr(runner, "_get_result", blocked_result)
+
+        with pytest.raises(EnvBlocked) as exc_info:
+            await runner.evaluate_osworld_task(
+                None,
+                {"_postconfig_done": True, "func": "any_metric", "result": {}, "expected": {}},
+            )
+        assert exc_info.value is blocked
+
+    @pytest.mark.asyncio
+    async def test_metric_exception_scores_zero_after_artifacts_loaded(self, monkeypatch):
+        from lite.gym.envs.lite.osworld.src.eval import metrics as custom_metrics
+        from lite.gym.envs.lite.osworld.src.eval import runner
+
+        async def fake_result(_computer, _config, _cache_dir):
+            return "result"
+
+        async def fake_expected(_computer, _config, _cache_dir):
+            return "expected"
+
+        def broken_metric(_result, _expected):
+            raise ValueError("metric crashed")
+
+        monkeypatch.setattr(runner, "_get_result", fake_result)
+        monkeypatch.setattr(runner, "_get_expected", fake_expected)
+        monkeypatch.setattr(custom_metrics, "_broken_metric", broken_metric, raising=False)
+
+        score, detail = await runner.evaluate_osworld_task(
+            None,
+            {
+                "_postconfig_done": True,
+                "func": "_broken_metric",
+                "result": {},
+                "expected": {},
+            },
+            debug=True,
+        )
+
+        assert score == 0.0
+        assert detail["details"] == [
+            {"func": "_broken_metric", "error": "metric crashed", "score": 0.0}
+        ]
 
 
 # =========================================================================
@@ -3519,6 +3739,43 @@ class TestJsonlContract:
         assert seen["env_id"] == "lite.osworld"
         assert seen["tag"] == "cua-lite/lite.osworld:mine"
         assert "checked" in seen
+
+    @pytest.mark.asyncio
+    async def test_reset_runs_docker_image_preflight_off_loop(self, monkeypatch):
+        from lite.gym.envs.lite.osworld import main as M
+
+        seen = {}
+
+        async def fake_to_thread(fn, /, *args, **kwargs):
+            seen["fn"] = fn
+            seen["args"] = args
+            return fn(*args, **kwargs)
+
+        async def fake_base_reset(self):
+            return M.LiteEnvObservation(image=None, text="ok")
+
+        def fake_check(image):
+            seen["image"] = image
+
+        monkeypatch.setattr(M, "_check_desktop_env", lambda: None)
+        monkeypatch.setattr(M, "_check_docker_image", fake_check)
+        monkeypatch.setattr(M.asyncio, "to_thread", fake_to_thread)
+        monkeypatch.setattr(M.SandboxBaseEnv, "reset", fake_base_reset)
+
+        env = M.LiteOsworldEnv(
+            task=None,
+            image="cua-lite/lite.osworld:mine",
+            post_action_delay=0.0,
+        )
+        env._computer = None
+        env._owns_computer = True
+
+        result = await env.reset()
+
+        assert result.text == "ok"
+        assert seen["fn"] is fake_check
+        assert seen["args"] == ("cua-lite/lite.osworld:mine",)
+        assert seen["image"] == "cua-lite/lite.osworld:mine"
 
     def test_flat_image_override_updates_constructor_computer_config(self, monkeypatch):
         from lite.gym.envs.lite.osworld import main as M

@@ -15,6 +15,7 @@ import math
 import os
 import re
 import shlex
+import shutil
 import statistics
 import tempfile
 import xml.etree.ElementTree as ET
@@ -31,6 +32,7 @@ from lite.core.tools.calls import (
 from lite.gym.envs.lite.osworld.src.eval import runner as base_runner
 from lite.gym.envs.lite.scalecua.src.osworld import judges
 from lite.gym.envs.lite.scalecua.src.osworld.setup import dispatch_strict
+from lite.gym.errors import EnvBlocked
 from lite.gym.sandbox.types import SandboxTaskConfig
 
 logger = logging.getLogger(__name__)
@@ -226,12 +228,20 @@ async def evaluate_final_fn(
     actions = actions or []
     pre_postconfig_state = await _capture_pre_postconfig_state(computer, evaluator)
     postconfig_done = bool(evaluator.get("_postconfig_done"))
+    owned_cache_dir = False
     if evaluator.get("postconfig"):
         cache_dir = tempfile.mkdtemp(prefix="scalecua_eval_")
+        owned_cache_dir = True
         os.makedirs(cache_dir, exist_ok=True)
-        if not postconfig_done:
+    else:
+        cache_dir = None
+
+    try:
+        if cache_dir is not None and not postconfig_done:
             try:
                 await _run_postconfig(computer, evaluator, cache_dir)
+            except EnvBlocked:
+                raise
             except Exception as exc:
                 # Same reasoning as the per-metric handler below, and worse here:
                 # postconfig is what SAVES the app's state before anything is read,
@@ -244,39 +254,43 @@ async def evaluate_final_fn(
                 if debug:
                     return 0.0, {"postconfig_error": str(exc)}
                 return 0.0
-    else:
-        cache_dir = None
 
-    func = evaluator.get("func", "")
-    if func == "infeasible":
-        ok = _reported_infeasible(actions)
-        return (1.0 if ok else 0.0, {"infeasible": ok}) if debug else (1.0 if ok else 0.0)
+        func = evaluator.get("func", "")
+        if func == "infeasible":
+            ok = _reported_infeasible(actions)
+            return (
+                (1.0 if ok else 0.0, {"infeasible": ok})
+                if debug else (1.0 if ok else 0.0)
+            )
 
-    forfeit_reason = _final_action_forfeit_reason(actions)
-    if forfeit_reason:
-        return (
-            (0.0, {"terminal_failure": True, "reason": forfeit_reason})
-            if debug
-            else 0.0
-        )
+        forfeit_reason = _final_action_forfeit_reason(actions)
+        if forfeit_reason:
+            return (
+                (0.0, {"terminal_failure": True, "reason": forfeit_reason})
+                if debug
+                else 0.0
+            )
 
-    if runtime_split in {"train", "rl"}:
-        return await evaluate_scalecua_task(
+        if runtime_split in {"train", "rl"}:
+            return await evaluate_scalecua_task(
+                computer,
+                evaluator,
+                runtime_split=runtime_split,
+                cache_dir=cache_dir,
+                run_postconfig=cache_dir is None and not postconfig_done,
+                pre_postconfig_state=pre_postconfig_state,
+                reference_sources=_reference_sources_from_task(task),
+                debug=debug,
+            )
+        return await base_runner.evaluate_osworld_task(
             computer,
             evaluator,
-            runtime_split=runtime_split,
             cache_dir=cache_dir,
-            run_postconfig=cache_dir is None and not postconfig_done,
-            pre_postconfig_state=pre_postconfig_state,
-            reference_sources=_reference_sources_from_task(task),
             debug=debug,
         )
-    return await base_runner.evaluate_osworld_task(
-        computer,
-        evaluator,
-        cache_dir=cache_dir,
-        debug=debug,
-    )
+    finally:
+        if owned_cache_dir and not debug and cache_dir is not None:
+            shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 def _reported_infeasible(actions: list[dict[str, Any]]) -> bool:
@@ -393,9 +407,37 @@ async def evaluate_scalecua_task(
     reference_sources: dict[str, list[str]] | None = None,
     debug: bool = False,
 ) -> float | tuple[float, dict]:
+    owned_cache_dir = cache_dir is None
     if cache_dir is None:
         cache_dir = tempfile.mkdtemp(prefix="scalecua_eval_")
     os.makedirs(cache_dir, exist_ok=True)
+    try:
+        return await _evaluate_scalecua_task(
+            computer,
+            evaluator,
+            runtime_split=runtime_split,
+            cache_dir=cache_dir,
+            run_postconfig=run_postconfig,
+            pre_postconfig_state=pre_postconfig_state,
+            reference_sources=reference_sources,
+            debug=debug,
+        )
+    finally:
+        if owned_cache_dir and not debug:
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
+
+async def _evaluate_scalecua_task(
+    computer,
+    evaluator: dict[str, Any],
+    *,
+    runtime_split: str,
+    cache_dir: str,
+    run_postconfig: bool = True,
+    pre_postconfig_state: str | None = None,
+    reference_sources: dict[str, list[str]] | None = None,
+    debug: bool = False,
+) -> float | tuple[float, dict]:
     eval_env = judges.make_eval_env(computer, cache_dir)
     if reference_sources:
         setattr(eval_env, "_scalecua_reference_source_urls", reference_sources)
@@ -506,6 +548,8 @@ async def evaluate_scalecua_task(
                 return _format_result(
                     1.0, conj, scores, details, debug, flush_stats=_flush_stats_snapshot(eval_env)
                 )
+        except EnvBlocked:
+            raise
         except Exception as exc:
             # A judge that CRASHED and an agent that genuinely earned nothing both
             # land on 0.0, and outside --debug this branch used to leave no trace at

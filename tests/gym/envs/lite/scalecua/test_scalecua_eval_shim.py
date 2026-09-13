@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -352,6 +353,242 @@ async def test_scalecua_evaluate_uses_official_score_aggregation(monkeypatch):
     assert single == 0.25
     assert and_score == 0.75
     assert or_score == 0.5
+
+
+@pytest.mark.asyncio
+async def test_scalecua_task_removes_owned_cache_dir(monkeypatch, tmp_path):
+    owned = tmp_path / "owned"
+
+    async def fake_evaluate(
+        _computer,
+        _evaluator,
+        *,
+        runtime_split,
+        cache_dir,
+        run_postconfig,
+        pre_postconfig_state,
+        reference_sources,
+        debug,
+    ):
+        Path(cache_dir, "artifact.txt").write_text("payload", encoding="utf-8")
+        return 0.5
+
+    monkeypatch.setattr(scalecua_verify.tempfile, "mkdtemp", lambda prefix: str(owned))
+    monkeypatch.setattr(scalecua_verify, "_evaluate_scalecua_task", fake_evaluate)
+
+    assert (
+        await scalecua_verify.evaluate_scalecua_task(
+            _FakeComputer(),
+            {"func": "score_metric"},
+            runtime_split="train",
+        )
+        == 0.5
+    )
+    assert not owned.exists()
+
+
+@pytest.mark.asyncio
+async def test_scalecua_task_leaves_caller_cache_dir(monkeypatch, tmp_path):
+    caller = tmp_path / "caller"
+    caller.mkdir()
+
+    async def fake_evaluate(
+        _computer,
+        _evaluator,
+        *,
+        runtime_split,
+        cache_dir,
+        run_postconfig,
+        pre_postconfig_state,
+        reference_sources,
+        debug,
+    ):
+        Path(cache_dir, "artifact.txt").write_text("payload", encoding="utf-8")
+        return 0.5
+
+    monkeypatch.setattr(scalecua_verify, "_evaluate_scalecua_task", fake_evaluate)
+
+    assert (
+        await scalecua_verify.evaluate_scalecua_task(
+            _FakeComputer(),
+            {"func": "score_metric"},
+            runtime_split="train",
+            cache_dir=str(caller),
+        )
+        == 0.5
+    )
+    assert (caller / "artifact.txt").read_text(encoding="utf-8") == "payload"
+
+
+@pytest.mark.asyncio
+async def test_scalecua_task_keeps_owned_cache_dir_in_debug(monkeypatch, tmp_path):
+    owned = tmp_path / "debug-owned"
+
+    async def fake_evaluate(
+        _computer,
+        _evaluator,
+        *,
+        runtime_split,
+        cache_dir,
+        run_postconfig,
+        pre_postconfig_state,
+        reference_sources,
+        debug,
+    ):
+        Path(cache_dir, "artifact.txt").write_text("payload", encoding="utf-8")
+        return 0.5, {"cache_dir": cache_dir}
+
+    monkeypatch.setattr(scalecua_verify.tempfile, "mkdtemp", lambda prefix: str(owned))
+    monkeypatch.setattr(scalecua_verify, "_evaluate_scalecua_task", fake_evaluate)
+
+    assert await scalecua_verify.evaluate_scalecua_task(
+        _FakeComputer(),
+        {"func": "score_metric"},
+        runtime_split="train",
+        debug=True,
+    ) == (0.5, {"cache_dir": str(owned)})
+    assert (owned / "artifact.txt").read_text(encoding="utf-8") == "payload"
+
+
+@pytest.mark.asyncio
+async def test_scalecua_final_fn_removes_owned_postconfig_cache_dir(monkeypatch, tmp_path):
+    owned = tmp_path / "final-owned"
+    task = SimpleNamespace(
+        metadata={
+            "evaluator": {"func": "score_metric", "postconfig": [{"type": "noop"}]},
+            "scalecua": {"runtime_split": "train"},
+        }
+    )
+
+    async def fake_capture(_computer, _evaluator):
+        return "pre-state"
+
+    async def fake_postconfig(_computer, evaluator, cache_dir):
+        Path(cache_dir, "postconfig.txt").write_text("payload", encoding="utf-8")
+        evaluator["_postconfig_done"] = True
+
+    async def fake_evaluate_scalecua_task(
+        _computer,
+        _evaluator,
+        *,
+        runtime_split,
+        cache_dir,
+        run_postconfig,
+        pre_postconfig_state,
+        reference_sources,
+        debug,
+    ):
+        assert run_postconfig is False
+        assert pre_postconfig_state == "pre-state"
+        Path(cache_dir, "score.txt").write_text("payload", encoding="utf-8")
+        return 0.75
+
+    monkeypatch.setattr(scalecua_verify.tempfile, "mkdtemp", lambda prefix: str(owned))
+    monkeypatch.setattr(scalecua_verify, "_capture_pre_postconfig_state", fake_capture)
+    monkeypatch.setattr(scalecua_verify, "_run_postconfig", fake_postconfig)
+    monkeypatch.setattr(
+        scalecua_verify,
+        "evaluate_scalecua_task",
+        fake_evaluate_scalecua_task,
+    )
+
+    assert await scalecua_verify.evaluate_final_fn(task, _FakeComputer()) == 0.75
+    assert not owned.exists()
+
+
+@pytest.mark.asyncio
+async def test_scalecua_final_fn_keeps_owned_postconfig_cache_dir_in_debug(
+    monkeypatch, tmp_path
+):
+    owned = tmp_path / "final-debug-owned"
+    task = SimpleNamespace(
+        metadata={
+            "evaluator": {"func": "score_metric", "postconfig": [{"type": "noop"}]},
+            "scalecua": {"runtime_split": "train"},
+        }
+    )
+
+    async def fake_capture(_computer, _evaluator):
+        return None
+
+    async def fake_postconfig(_computer, evaluator, cache_dir):
+        Path(cache_dir, "postconfig.txt").write_text("payload", encoding="utf-8")
+        evaluator["_postconfig_done"] = True
+
+    async def fake_evaluate_scalecua_task(
+        _computer,
+        _evaluator,
+        *,
+        runtime_split,
+        cache_dir,
+        run_postconfig,
+        pre_postconfig_state,
+        reference_sources,
+        debug,
+    ):
+        return 0.75, {"cache_dir": cache_dir}
+
+    monkeypatch.setattr(scalecua_verify.tempfile, "mkdtemp", lambda prefix: str(owned))
+    monkeypatch.setattr(scalecua_verify, "_capture_pre_postconfig_state", fake_capture)
+    monkeypatch.setattr(scalecua_verify, "_run_postconfig", fake_postconfig)
+    monkeypatch.setattr(
+        scalecua_verify,
+        "evaluate_scalecua_task",
+        fake_evaluate_scalecua_task,
+    )
+
+    assert await scalecua_verify.evaluate_final_fn(
+        task, _FakeComputer(), debug=True,
+    ) == (0.75, {"cache_dir": str(owned)})
+    assert (owned / "postconfig.txt").read_text(encoding="utf-8") == "payload"
+
+
+@pytest.mark.asyncio
+async def test_scalecua_env_blocked_from_getter_bubbles(monkeypatch):
+    from lite.gym.errors import EnvBlocked
+
+    blocked = EnvBlocked(what="download transport failed")
+
+    async def blocked_result(eval_env, config, cache_dir, runtime_split):
+        raise blocked
+
+    monkeypatch.setattr(scalecua_verify, "_get_result", blocked_result)
+
+    with pytest.raises(EnvBlocked) as exc_info:
+        await scalecua_verify.evaluate_scalecua_task(
+            _FakeComputer(),
+            {"func": "score_metric", "result": {}, "expected": {}},
+            runtime_split="train",
+        )
+    assert exc_info.value is blocked
+
+
+@pytest.mark.asyncio
+async def test_scalecua_metric_exception_still_scores_zero(monkeypatch):
+    async def fake_get_result(eval_env, config, cache_dir, runtime_split):
+        return "result"
+
+    async def fake_get_expected(eval_env, config, cache_dir, runtime_split):
+        return "expected"
+
+    def broken_metric(result, expected):
+        raise ValueError("metric crashed")
+
+    monkeypatch.setattr(scalecua_verify, "_get_result", fake_get_result)
+    monkeypatch.setattr(scalecua_verify, "_get_expected", fake_get_expected)
+    monkeypatch.setattr(judges, "resolve_metric", lambda name, runtime_split: broken_metric)
+
+    score, detail = await scalecua_verify.evaluate_scalecua_task(
+        _FakeComputer(),
+        {"func": "score_metric", "result": {}, "expected": {}},
+        runtime_split="train",
+        debug=True,
+    )
+
+    assert score == 0.0
+    assert detail["details"] == [
+        {"func": "score_metric", "error": "metric crashed", "score": 0.0}
+    ]
 
 
 def test_scalecua_score_coercion_clamps_generated_metric_noise():
