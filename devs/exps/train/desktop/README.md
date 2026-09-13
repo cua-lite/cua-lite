@@ -2,8 +2,7 @@
 
 Train **fifteen checkpoints** — three screenshot profiles x three teachers, plus a `<think>` arm
 on the two teachers that emit reasoning — and score them on one eval. A single GRPO run from the
-same base weights closes the file (**RL** at the end), scored on that same eval so it reads
-against the SFT cells.
+same base weights closes the file (**RL** at the end), scored on that same eval.
 
 | | `lowr.i4` | `lowr.i1` | `highr.i1` |
 |---|---|---|---|
@@ -17,63 +16,48 @@ against the SFT cells.
 All three cap SCREENSHOTS and nothing else: `iN` sets `image_max: N` (with `fold_size` tracking
 it) and leaves `history_n` at the protocol default of 100, so every past turn is still rendered in
 full — its text, its literal `<tool_call>`, and on the reasoning arm its `<think>`. Only the old
-*pixels* become `"This screenshot has been collapsed."` That is what the reference agent
-effectively does: [xlang-ai/OSWorld#448](https://github.com/xlang-ai/OSWorld/pull/448) ships
-`history_n=100` against far shorter episodes, so image folding is the only truncation that fires.
+*pixels* become `"This screenshot has been collapsed."`, which is what the reference agent
+effectively does ([xlang-ai/OSWorld#448](https://github.com/xlang-ai/OSWorld/pull/448)). Sizes
+above are post-`smart_resize` (x32): the yamls ask for 1280x720, and `highr.i1` takes the envs'
+native 1920x1080.
 
-The three form an L with `lowr.i1` at the corner, so each arm moves one thing:
+The three form an L with `lowr.i1` at the corner: `lowr.i4` vs `lowr.i1` moves **image count**,
+`lowr.i1` vs `highr.i1` moves **resolution**, and the diagonal moves both — not a profile effect.
 
-- **image count** — `lowr.i4` vs `lowr.i1`: same resolution, same text history, 1-4 img vs 1.
-- **resolution** — `lowr.i1` vs `highr.i1`: same one image, same text history, 880 vs 2040 tokens.
-- `lowr.i4` vs `highr.i1` is the diagonal and moves both. Not a profile effect.
+> **Train and eval must use the same profile yaml.** `$P` — the config stem — selects both the
+> checkpoint and `--config-path`, in every SFT block below. A `highr.i1` checkpoint scored under
+> `lowr.i4` is measuring a prompt surface it never saw.
 
-Three profiles exist on disk and are deliberately NOT cells (six files with their twins).
-`desktop.use.default.yaml` is the fourth corner `highr.i4`: 8160 peak vision tokens per step,
-2.3x `lowr.i4`'s peak, which is what sets MBS — excluded for that memory ceiling, not for total
-cost (being an i4 profile it packs, so its BILL would land under `highr.i1`). The `hN` pair
-(`lowr.h1`, `highr.h1`, twins)
-caps TURNS instead, collapsing older ones into a `Previous actions:` prose summary: measured, `h1`
-carries **0** historical `<think>` blocks where `i1` carries all of them, so it is the wrong shape
-for a reasoning campaign. Kept for a future history-representation study.
+**What compares to what.** Within a ROW only the profile moves: every cell draws the same 5000
+rows from **Lite.ScaleCUA** at the same seed. Within a COLUMN, a `+ <think>` row differs from the
+row above by `enable_thinking` alone — so read a reasoning cell against **its own teacher's**
+Action-only row, never the other teacher's. **Across teacher rows is NOT a clean contrast**: each
+teacher's pool is its own successes (`episode_return > 0.5`), so the pools differ in membership
+and the shared seed buys nothing — measured, `gpt5_5` and `qwen3_8_27b` share only **43%** of
+their task ids. To make it clean, intersect the pools first and draw every teacher's 5000 from
+that intersection. (The third pool has not been measured against either.)
 
-Every cell draws 5000 rows from **Lite.ScaleCUA** at the same seed, so within a row only the
-profile moves, and within a column each `+ <think>` row differs from the row above it by that
-channel alone — same teacher, same rows.
+`qwen3_8_27b` has no `<think>` arm: thinking was off when it was sampled, so the reasoning config
+would train an empty `<think>` — and the empty-vs-filled mismatch drops packing from 3.5
+steps/segment to 1.0. The other two reach the field by different routes: `gpt5_5` is prompted for
+a `Thought:` line that [`/devs/data/internalize_cot.py`](/devs/data/internalize_cot.py)
+canonicalizes before staging; `qwen3_5_27b` was sampled with `enable_thinking` and writes it
+natively.
 
-The TEACHER axis is not that clean, and the seed does not make it so. Each teacher's pool is its
-own successes (`episode_return > 0.5`), so the pools differ in size and membership and the shared
-seed buys nothing across them: measured, the gpt5_5 and qwen3_8_27b draws share **43%** of their
-task ids, which is what independent sampling would give. Reading one teacher row against another
-therefore mixes the teacher with a mostly-disjoint training task set. To make it a clean contrast,
-intersect the pools first and draw every teacher's 5000 from that intersection. The 43% is a
-gpt5_5-vs-qwen3_8_27b measurement taken when there were two teachers; the third pool has not been
-measured against either.
+Three profiles on disk are deliberately NOT cells. `desktop.use.default.yaml` is the fourth
+corner `highr.i4` — 8160 peak vision tokens per step, 2.3x `lowr.i4`, excluded on that memory
+ceiling (which is what sets MBS), not on total cost. The `hN` pair (`lowr.h1`, `highr.h1`) caps
+TURNS instead, collapsing older ones into a `Previous actions:` summary: measured, `h1` carries
+**0** historical `<think>` blocks where `i1` carries all of them — wrong shape for a reasoning
+campaign, kept for a future history-representation study.
 
-Each `+ <think>` row is a reasoning arm. Its config is `desktop.use.<profile>.reasoning.yaml`,
-which differs from its Action-only twin by `enable_thinking` alone, so reading a reasoning cell
-against **its own teacher's** Action-only cell — the row directly above it — isolates Qwen3.5's
-native `<think>` channel. Never read it against the other teacher's row. The arm exists
-for the teachers whose rows carry
-`reasoning_content`, and those arrive by two different routes. `gpt5_5` is prompted for a
-`Thought:` line, which [`/devs/data/internalize_cot.py`](/devs/data/internalize_cot.py)
-canonicalizes into the field before staging; `qwen3_5_27b` was sampled with `enable_thinking` and
-writes it natively, so it needs no such pass. `qwen3_8_27b` runs thinking off and is excluded:
-the same config would train an empty `<think>` on it, and — measured — the empty-vs-filled
-mismatch also breaks step packing, taking that arm from 3.5 steps/segment down to 1.0.
-
-A cell is a `(config stem, teacher)` pair, and every block in **SFT** below enumerates the fifteen
-from one `cells()` definition. The RL section at the end is a single run and uses none of
-this. Two names carry them: `$P`, the config stem taken whole off the filename,
-and `$DS`, the dataset recipe (`scalecua_5k` = source + row cap). Both are threaded verbatim into
-every artifact — parquet `$P.$DS.$T.parquet`, checkpoint `sft.$P.$DS.$T`, HF repo
-`ZHZisZZ/qwen3_5-4b.sft.$P.$DS.$T`, W&B group suffix the same — so nothing downstream re-derives
-`desktop.use`, `.reasoning`, or the row cap on its own, and two recipes never collide. To ablate
-the dataset, change `DS=` **and** `--sample` together; the cap is in the name.
-
-> **Train and eval must use the same profile yaml.** `$P` — the config stem — selects both the checkpoint and
-> `--config-path`, in every SFT block below. A `highr.i1` checkpoint scored under `lowr.i4` is
-> measuring a prompt surface it never saw. The sizes in the matrix above are post-`smart_resize`
-> (x32): the yamls ask for 1280x720, and `highr.i1` just takes the envs' native 1920x1080.
+**Naming.** A cell is a `(config stem, teacher)` pair; the SFT blocks enumerate the fifteen from
+a `cells()` function that each block redefines (four copies — paste the one in the block you are
+running). RL uses none of it. `$P` is the stem taken whole off the filename and
+`$DS` the dataset recipe (`scalecua_5k` = source + row cap). Both are threaded verbatim into every
+artifact — parquet `$P.$DS.$T.parquet`, checkpoint `sft.$P.$DS.$T`, HF repo
+`ZHZisZZ/qwen3_5-4b.sft.$P.$DS.$T`, W&B group — so nothing downstream re-derives them and two
+recipes never collide. To ablate the dataset, change `DS=` **and** `--sample` together.
 
 ### SFT
 
@@ -196,20 +180,15 @@ while read -r P T; do
 done <<< "$(cells)"
 ```
 
-- `MBS=1` is the safe start, and **tune it on `lowr.i4`** — that column carries the longest
-  sequence, so it is what binds. All three columns run the same number of micro-batches per step --
-  `GLOBAL_BATCH_SIZE` counts trajectories and each one's segments come along (`run_sft.sh`), and
-  all three draw the same rows. Peak vision tokens per step decide whether a micro-batch fits:
-  `lowr.i4` 3520, `highr.i1` 2040, `lowr.i1` 880. Total TRAINING cost inverts that ordering,
-  because `lowr.i4` packs adjacent steps into one sequence and the one-image profiles cannot --
-  measured 0.52x of `lowr.i1` and 0.37x of `highr.i1` on 20 qwen3_8_27b trajectories.
-  Longest sequences, smallest bill.
-  TP=2 fits all three at 4B; `TP_SIZE=4` if it OOMs.
+- `MBS=1` is the safe start, and **tune it on `lowr.i4`** — that column has the longest sequence
+  so it binds first (peak vision tokens per step: `lowr.i4` 3520, `highr.i1` 2040, `lowr.i1` 880).
+  Total training COST inverts that ordering: `lowr.i4` packs adjacent steps into one sequence and
+  the one-image profiles cannot — measured 0.52x of `lowr.i1` and 0.37x of `highr.i1`. Longest
+  sequences, smallest bill. TP=2 fits all three at 4B; `TP_SIZE=4` if it OOMs.
 - `NO_SAVE_OPTIM=1` keeps weights only — these checkpoints are for eval, not for resuming.
-- **Export `WANDB_API_KEY` before the first cell.** `run_sft.sh` builds its whole W&B argument
-  list inside `if [ -n "${WANDB_API_KEY:-}" ]`, so without it every run trains with no logging
-  at all and `WANDB_GROUP_SUFFIX` above does nothing — discovered only after fifteen multi-hour
-  runs have finished.
+- **Export `WANDB_API_KEY` before the first cell.** `run_sft.sh` builds its W&B arguments inside
+  `if [ -n "${WANDB_API_KEY:-}" ]`, so without it fifteen multi-hour runs train with no logging
+  at all.
 
 #### Ship the checkpoints
 
@@ -218,13 +197,10 @@ Train and eval usually run on different machines, so checkpoints travel through 
 **subdir** = `epoch_1/`, `epoch_2/`, **tag** = the producing commit.
 
 The tag is provenance, not the entry point: **eval pulls `main`**, so a re-run replaces the epoch
-dirs and the next campaign picks them up with no sha to carry between hosts. Reach for the tag
-only to re-run an OLD campaign — `--revision <tag>` on the download. Tagging by commit is the
-dataset runbooks' convention ([`devs/data/lite.scalecua/AGENTS.md`](/devs/data/lite.scalecua/AGENTS.md)),
-and a re-run at the same commit *moves* the tag.
-
-Epoch dirs are named by rank at upload time, because training writes `iter_<N>` with slime's
-0-based rollout index — a number you should read off disk, never predict.
+dirs and the next campaign picks them up with no sha to carry between hosts. Use `--revision
+<tag>` only to re-run an OLD campaign; a re-run at the same commit *moves* the tag. Epoch dirs are
+named by rank at upload time — training writes `iter_<N>` with slime's 0-based index, a number to
+read off disk, never predict.
 
 ```bash
 # --- TRAIN HOST ---  (run from the repo root; commit FIRST -- `git rev-parse` reports a sha
@@ -333,9 +309,12 @@ unset SGLANG_SERVER_URL
 
 # The env-server is REQUIRED, and it is a scoring condition, not an implementation detail:
 # unset, rollout runs envs in-process and owns the containers itself, which changes container
-# lifecycle and timing enough to move MER by a few points. Measured on the same checkpoints,
-# direct mode scored 0.017-0.035 BELOW the env-server runs. Every number in the Results table
-# must come from the same mode, so a campaign that mixes them cannot be read across columns.
+# lifecycle and timing. The size of the effect is NOT established -- an earlier note here claimed
+# direct mode scored 0.017-0.035 lower, from a single pass; the six paired diffs behind it were
+# all within +/-0.016 with mixed sign, which this campaign's noise floor (half-range up to
+# +/-0.020) covers entirely. Treat the mode as a condition to hold fixed, not as a known offset:
+# every number in the Results table must come from the same mode, so a campaign that mixes them
+# cannot be read across columns.
 export CUA_LITE_ENV_SERVER_URL="http://$(hostname -I | awk '{print $1}'):30100"
 export CUA_LITE_ENV_SERVER_TOKEN=desktop-eval   # passthrough auth; any value scopes your envs
 EPOCH=epoch_2                            # epoch_1 = after 1 epoch
@@ -421,29 +400,22 @@ what the host has FREE; `NGPU=1` serializes all eighteen, slow but correct. Both
 `wait`s, so anything else left backgrounded in this shell delays them.
 
 Score each run from `<log-root>/summary.json` -> `stats.mean_episode_return` (denominator
-`num_valid`). Within a column, any two Action-only rows is a teacher effect and each `+ <think>`
-row against the Action-only row above it is a `<think>` effect; across a row, between ADJACENT
-columns, is the profile effect (the L at the top of this file). Compare an Action-only checkpoint
-only against the base run of its own column, and a reasoning checkpoint only against its OWN
-teacher's Action-only cell in that column. `base` runs thinking OFF, so it is the wrong baseline
-for a reasoning
-checkpoint — give that arm its own base run under the `.reasoning` config if you want its
-did-SFT-help number too.
+`num_valid`). Which cells compare to which is settled at the top of this file. `base` runs
+thinking OFF, so it is the wrong baseline for a reasoning checkpoint — give that arm its own base
+run under the `.reasoning` config if you want its did-SFT-help number.
 
 #### Record the scores
 
-A campaign that is not written down cannot answer the only question it was run to answer —
-did SFT beat the base model. Collect all eighteen — nineteen with the RL run — then commit as
-`devs/exps/train/desktop/logs/$RUN.md` — flat here, where `devs/exps/eval/` nests under a
-per-commit directory ([`/devs/exps/eval/AGENTS.md`](/devs/exps/eval/AGENTS.md#snapshot-template)),
-but the same idea: one file per campaign, edited as runs land — not a wrap-up from memory.
+Collect all eighteen — nineteen with the RL run — and commit as
+`devs/exps/train/desktop/logs/$RUN.md`: one file per campaign, edited as runs land, not a wrap-up
+from memory.
 
 ```bash
 # --- EVAL HOST, same shell as the Eval block ---
 # Reuses $RUN, $DS, $EPOCH, $LOGS and cells(). In a fresh shell set all five again -- $RUN needs
 # an ASSIGNMENT (`RUN=<the same slug>`): the Eval block's line is `: "${RUN:?...}"`, an assertion,
 # so re-pasting THAT leaves RUN empty and `show` prints MISSING for every slug.
-# The n it prints is a result too, not just bookkeeping -- see the num_valid bullet below.
+# The n it prints is a result too, not just bookkeeping -- see "Reading the table" in Results.
 show() {  # $1 = log slug
   uv run python -c "
 import json, sys, pathlib
@@ -465,8 +437,9 @@ while read -r P T; do show "sft.$P.$DS.$T@$RUN.$EPOCH"; done <<< "$(cells)"
 show "grpo.lowr.i4@$RUN"
 ```
 
-Paste the numbers into the snapshot's `Results` table, laid out so each contrast the block
-above defines reads off one row or one adjacent column pair:
+Paste the numbers into a snapshot file, reusing the two tables' LAYOUT from **Results** below
+(column meanings — `±`, `n/3`, `(solved/num_valid)`, `MER (solved) parse_failure` — are defined
+there; the pass labels and the retired column are this campaign's, not a template). Front matter:
 
 ```markdown
 # desktop.use @ <run>
@@ -482,75 +455,97 @@ above defines reads off one row or one adjacent column pair:
 
 ## Results
 
-Mean episode return, (fully-solved / `num_valid`) in parentheses. Same axes as the matrix at the
-top of this file, plus a `base` row: a cell is only comparable to `base` of its own COLUMN.
-`highr.h1` is a retired profile kept here because it was scored; it is not a cell to re-run.
-The `lowr.i4` column reuses runs made under its old name `lowr.h4`: measured, the two render
-byte-identical prompts on these episodes, because `history_n` 50 vs 100 cannot bind at
-`max_steps: 30`.
+<the two tables from the Results section of this file>
+```
+
+### Results
+
+Mean episode return, (fully-solved / `num_valid`) in parentheses. Campaign `20260912b/c/d`: every TRAINED
+cell scored three times, interleaved (all cells once, then all again) so host drift spreads across
+cells instead of landing on one. `±` is half the range of the three.
 
 | | `lowr.i4` | `lowr.i1` | `highr.i1` | `highr.h1` (retired) |
 |---|---:|---:|---:|---:|
-| **base** | 0.2557 (81/328) | | | 0.2070 (65/328) |
-| **`gpt5_5`** | 0.3670 (115/328) | | | 0.3743 (118/328) |
-| **`gpt5_5` + `<think>`** | | | | |
-| **`qwen3_5_27b`** | | | | |
-| **`qwen3_5_27b` + `<think>`** | | | | |
-| **`qwen3_8_27b`** | **0.4052** (130/328) | | | **0.4187** (131/328) |
-| **GRPO from base** | | — | — | — |
+| **base** | 0.2597 ±0.0091 (82/328) 3/3 | 0.1592 ±0.0031 (49/328) 3/3 | 0.2329 ±0.0090 (74/328) 3/3 | 0.2070 (65/328) |
+| **`gpt5_5`** | 0.3673 ±0.0154 (115/328) 3/3 | 0.3420 ±0.0201 (107/328) 3/3 | 0.3883 ±0.0120 (122/328) 3/3 | 0.3836 (118/320) |
+| **`gpt5_5` + `<think>`** | 0.4165 ±0.0050 (132/328) 3/3 | 0.3828 ±0.0127 (121/328) 3/3 | **0.4665** ±0.0011 (147/328) 3/3 | — |
+| **`qwen3_5_27b`** | 0.3421 ±0.0031 (108/328) 3/3 | 0.3209 ±0.0071 (101/328) 3/3 | 0.3582 ±0.0150 (113/328) 3/3 | — |
+| **`qwen3_5_27b` + `<think>`** | 0.3349 ±0.0207 (106/328) 3/3 | 0.3574 ±0.0096 (112/328) 3/3 | 0.3649 ±0.0046 (116/328) 3/3 | — |
+| **`qwen3_8_27b`** | 0.4090 ±0.0095 (130/328) 3/3 | 0.4019 ±0.0092 (128/328) 3/3 | 0.4069 ±0.0122 (129/328) 3/3 | 0.4318 (131/318) |
+| **GRPO from base** | not run | — | — | — |
 
-`num_valid` is NOT 328 in every run: of the three `lowr.i4` runs, `gpt5_5` lost one sample and
-`qwen3_8_27b` three. `mean_episode_return` in `summary.json` averages over `num_valid`, so a
-number divided by 328 instead is smaller than the run's own mean — that is where 0.3670 and
-0.4052 below came from, against the runs' 0.3682 and 0.4090. Record both the mean and its
-denominator. Each sits +0.009 to +0.019 above its solved count (the partial-credit
-tail); the ordering reads the same either way. Every blank is UNSCORED — the whole `lowr.i1` and
-`highr.i1` columns, `base` and `GRPO` rows included. Of the fifteen SFT cells, nine are trained
-and on the Hub (every `gpt5_5` cell, plus `qwen3_8_27b`'s three); seven of those nine are still
-unscored, and the six `qwen3_5_27b` cells are not trained yet.
-Read `lowr.i4` vs `highr.h1` as
-a prior only: that pair moves resolution, image count AND text history all at once, which is the
-three-knob confound the current profile set was reshaped to remove.
+Every individual run — `MER (solved) parse_failure`, one column per pass:
 
-- **Teacher effect** — any two Action-only rows, within a column. Three teachers gives three
-  pairwise contrasts; each carries the disjoint-task-set caveat above.
-- **`<think>` effect** — each `+ <think>` row against the Action-only row of the SAME teacher,
-  within a column: `gpt5_5` + `<think>` vs `gpt5_5`, `qwen3_5_27b` + `<think>` vs `qwen3_5_27b`.
-  Never against the other teacher, and never against `base`, which runs thinking off.
-- **Profile effect** — the same row, across columns, and only between ADJACENT ones:
-  `lowr.i4` vs `lowr.i1` is image count at fixed resolution, `lowr.i1` vs `highr.i1` is
-  resolution at fixed image count. `lowr.i4` vs `highr.i1` moves both and is the diagonal.
-- **Did SFT help at all** — each cell vs a base run on ITS OWN surface. The three Action-only
-  rows use the `base` row above. The two `<think>` rows need their own: Qwen3.5's chat
-  template has a native reasoning channel that `factory.py` merely pins off for the eval
-  matrix, so a base run
-  under the `.reasoning` config is a real baseline, not a model filling a slot it never
-  learned. Score it by adding `score "$P.reasoning" "" "base.$P.reasoning@$RUN"` per profile — three
-  more runs, and the campaign answers this for all fifteen cells instead of nine.
-- **`num_samples - num_valid`** — record it per run. `num_valid` counts the samples that
-  finished with no error (`valid = [r for r in results if r["error"] is None]`,
-  `lite/infer/rollout.py`), and MER averages over exactly those, so an arm that errored more is
-  a mean over fewer episodes. A malformed FINAL turn is not one of them: it is scored by the env
-  like any other episode and stays in the denominator, surfacing instead as
-  `stats.stop_reasons.parse_failure` in `summary.json`. Record that separately — it is a
-  model-quality number and the reasoning arm is the one to watch on it. If two arms differ on
-  either count, say so before reading their MER gap.
-```
+| | | `b` | `c` | `d` |
+|---|---|---:|---:|---:|
+| **base** | `lowr.i4` | 0.2618 (83) 0 | 0.2496 (79) 0 | 0.2679 (85) 0 |
+|  | `lowr.i1` | 0.1612 (50) 0 | 0.1551 (48) 0 | 0.1612 (50) 0 |
+|  | `highr.i1` | 0.2256 (72) 0 | 0.2435 (77) 0 | 0.2296 (73) 0 |
+| **`gpt5_5`** | `lowr.i4` | 0.3520 (110) 2 | 0.3672 (116) 5 | 0.3828 (120) 1 |
+|  | `lowr.i1` | 0.3369 (106) 3 | 0.3645 (115) 0 | 0.3244 (101) 0 |
+|  | `highr.i1` | 0.3742 (118) 3 | 0.3923 (123) 0 | 0.3983 (126) 0 |
+| **`gpt5_5`+`<think>`** | `lowr.i4` | 0.4187 (133) 6 | 0.4203 (133) 4 | 0.4103 (129) 5 |
+|  | `lowr.i1` | 0.3938 (124) 4 | 0.3683 (117) 3 | 0.3864 (123) 3 |
+|  | `highr.i1` | 0.4674 (146) 4 | 0.4670 (149) 4 | 0.4652 (147) 5 |
+| **`qwen3_5_27b`** | `lowr.i4` | 0.3402 (108) 0 | 0.3461 (109) 0 | 0.3399 (107) 0 |
+|  | `lowr.i1` | 0.3150 (99) 0 | 0.3292 (103) 0 | 0.3184 (101) 0 |
+|  | `highr.i1` | 0.3747 (118) 0 | 0.3552 (112) 0 | 0.3447 (109) 0 |
+| **`qwen3_5_27b`+`<think>`** | `lowr.i4` | 0.3365 (106) 0 | 0.3133 (99) 2 | 0.3547 (112) 1 |
+|  | `lowr.i1` | 0.3676 (115) 1 | 0.3562 (111) 1 | 0.3484 (109) 0 |
+|  | `highr.i1` | 0.3616 (116) 2 | 0.3708 (118) 1 | 0.3622 (115) 0 |
+| **`qwen3_8_27b`** | `lowr.i4` | 0.4175 (132) 7 | 0.3985 (127) 5 | 0.4110 (131) 5 |
+|  | `lowr.i1` | 0.4142 (133) 8 | 0.3959 (126) 3 | 0.3957 (126) 6 |
+|  | `highr.i1` | 0.4200 (134) 16 | 0.4050 (129) 3 | 0.3956 (125) 4 |
 
-A `.reasoning` cell trains an empty `<think>` on any step whose turn carries no
-`reasoning_content`, and the only turn that can is the terminal one — `filter.py` rewrites it to
-a bare `Done.` when the teacher ended with prose instead of a `terminate` call. How often that
-happens is a teacher's habit: `gpt5_5` ends every trajectory that way, `qwen3_5_27b` 196 of its
-15752 (1.2%). The export gate widens the gap rather than causing it — 187 of those 196 fail
-`episode_return > 0.5` — so on the 5000-row exports `gpt5_5` pays one empty step per trajectory
-(11.8% of 42427 steps) and `qwen3_5_27b` pays 6 of 50956 (0.01%). Read each `<think>` effect
-against its own teacher's ROW with that teacher's number in mind; do not carry `gpt5_5`'s 11.8%
-across the rows.
+Reading the table:
+
+- **Compare against the larger of the two cells' own `±`.** Across the eighteen cells the
+  half-range spans ±0.0011 to ±0.0207 (median ±0.0094), so one global threshold is either too
+  strict or too loose. Six cells sit at ±0.012 or worse: the whole `gpt5_5` row (±0.012-0.020),
+  `gpt5_5`+`<think>` x `lowr.i1`, `qwen3_5_27b` x `highr.i1`, and the noisiest in the table,
+  `qwen3_5_27b`+`<think>` x `lowr.i4` (±0.0207). It is not a property of any one column — the
+  tightest cell is `gpt5_5`+`<think>` x `highr.i1` (±0.0011), and `base` x `lowr.i1` ties
+  `qwen3_5_27b` x `lowr.i4` for second at ±0.0031.
+- **Only within a column.** `highr.h1` is a retired profile from the 2026-09-10 campaign, scored
+  before the env-server was named as a condition; it is kept because it was measured, and its two
+  SFT cells carry their own sub-328 denominators (320, 318) — that campaign lost samples to
+  errors. (Every `lowr.i4` cell lands within 0.016 of the 2026-09-10 run it replaces — the same
+  surface under its old name `lowr.h4`, which renders byte-identical prompts here — inside those
+  cells' noise floor.)
+- **`mean_episode_return` averages over `num_valid`, not 328.** The `err=` that `show` prints is
+  `num_samples - num_valid`: non-zero means that pass came up short and must be RE-RUN, not
+  averaged in. Every run in these tables is a full 328. Record the mean WITH its denominator.
+- **`parse_failure` does not move the denominator** — a malformed final turn is scored by the env
+  like any other episode. It rises with SFT and again with `<think>`; the single 16 was one run,
+  not the cell (the next pass was 3).
+
+#### What the profiles actually do
+
+The profile effect is something SFT creates, not a property of the eval:
+
+- **base prefers more images to more pixels** — `lowr.i4` best, `highr.i1` 0.027 lower, 3x its
+  noise floor. Both `gpt5_5` rows reverse that; `qwen3_8_27b` does not move either way.
+- **SFT flips it, `<think>` widens it** — `lowr.i4` to `highr.i1` gains +0.021 for `gpt5_5`,
+  +0.050 with `<think>`.
+- **`qwen3_8_27b` is flat** — its three cells span 0.007 under a ±0.009-0.012 floor. The one row
+  where the cheap profile costs nothing.
+- **Best cell `gpt5_5` + `<think>` x `highr.i1` (0.4665)** leads by 0.050 = 10x noise, but it is
+  0.019 BEHIND `qwen3_8_27b` at `lowr.i1`. The win is specific to high resolution.
+- **`<think>` pays off for `gpt5_5` everywhere, for `qwen3_5_27b` in one cell.** Against each
+  teacher's own Action-only row: `gpt5_5` gains +0.049 / +0.041 / +0.078 (`lowr.i4` / `lowr.i1` /
+  `highr.i1`), every one of them past that pair's noise. `qwen3_5_27b` gains +0.037 at `lowr.i1`
+  — 3.8x its ±0.0096 — but −0.007 at `lowr.i4` and +0.007 at `highr.i1`, both inside the noise.
+  And `lowr.i1` is exactly where its Action-only row was weakest (0.3209), so `<think>` reads as
+  lifting a floor there rather than helping across the board.
+- **Reading a `<think>` effect**, mind the empty-`<think>` rate: a `.reasoning` cell trains an
+  empty one on any terminal turn the teacher ended with prose. `gpt5_5` does that every
+  trajectory (11.8% of its 42427 exported steps), `qwen3_5_27b` almost never (0.01%). Compare
+  within a teacher, not across.
 
 ### RL
 
 One GRPO run, from the **base model** under `desktop.use.lowr.i4.yaml` — the same surface as the
-`base` / `lowr.i4` cell above, so that row's 0.2557 is this run's step-0 reference. Trains on
+`base` / `lowr.i4` cell above, so that row's 0.2597 is this run's step-0 reference. Trains on
 **Lite.ScaleCUA's `rl` split**, scores on **`lite.osworld` eval**. Read
 [docs/grpo.md](/docs/grpo.md) first: env-server prerequisite, sync-vs-async, and the knobs this
 block does not repeat.
@@ -613,77 +608,44 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
   bash "$W/scripts/train/run_grpo.sh"
 ```
 
-- **`CONFIG_PATH` is mandatory, and unset it fails loudly.** `run_grpo.sh` derives
-  `scripts/configs/qwen3_5/compact/lite.scalecua.yaml` from `ENV_ID`; that file does not exist, so
-  the launcher exits 1 before Ray starts rather than silently training on another surface. Pointing
-  it at some other `compact/*.yaml` WOULD be silent, and would stop the run being comparable to the
-  `lowr.i4` column.
-- **`lowr.i4` is much heavier than the `compact` profile RL normally uses**, and that is a
-  deliberate cost. The compact configs pin `history_n: 1` with the comment "reduced from the
-  rollout default to save VRAM during training"; `lowr.i4` keeps 4 images and uncapped text
-  history, and in RL both the rollout and the backward pass carry that length. It is the price of
-  scoring on the same surface as the SFT cells.
-- **`TP_SIZE=4`, not the 2 that SFT uses on the same 8 GPUs — measured, TP=2 OOMs here.** The
-  backward dies allocating the fp32 vocab-parallel logits: `(8448, 1, 124160)` = 3.91 GiB, where
-  124160 is `vocab_size 248320 / TP 2` and 8448 is one packed segment, with only 1.38 GiB free on
-  an 80 GB card. The parallelism is NOT what differs from SFT — `run_sft.sh` at `TP_SIZE=2 MBS=1`
-  on 8 GPUs is the same TP, the same MBS, the same DP=4, and the same `build_segment_samples`
-  packing (`lite/train/rollout/sft.py` says so in as many words). What differs is that RL is
-  colocated: 8 sglang engines hold `--sglang-mem-fraction-static 0.6` ≈ 47.5 GB per card for the
-  whole run, so training gets ~31 GB where SFT gets ~79 GB. TP=4 halves the vocab shard (logits
-  1.95 GiB) and the per-GPU weight/optimizer share. It costs DP 4 → 2 and roughly doubles the
-  train phase (measured 180s → 345s), but train is only ~35% of a step, so the step grows ~17% —
-  cheap against not running at all. Do NOT fix this by lowering `MEM_FRACTION` (that trades
-  sglang's KV cache for training memory and slows the phase that is already 65% of the step) and
-  do NOT touch `image_max` or `history_n` — a smaller prompt would make the run incomparable,
-  which defeats the reason for using this config at all. `ASYNC=1` is the only lever that would
-  make TP=2 viable again, by giving train and rollout their own cards.
-  This is a per-run override, not a launcher default: every GRPO example in
-  [README.md](/README.md) and [docs/grpo.md](/docs/grpo.md) runs on 1-2 GPUs and passes no
-  `TP_SIZE`, and `resolve_tp` hard-fails when TP does not divide `NUM_TRAIN_GPUS`, so a default of
-  4 would break all of them.
-- **`ROLLOUT_MAX_RESPONSE_LEN=2048` because `run_grpo.sh`'s 512 default is a real ceiling here.**
-  That default is sized for "short agentic turns are usually ~100 tokens" (run_grpo.sh:234).
-  Measured on this campaign's step-0 eval, base weights under `lowr.i4`: mean response 258 tokens,
-  max 710, and **35% of episodes hit the cap at least once** (per-turn `truncated_ratio` 0.069,
-  trajectory-level 0.352). A truncated turn is a turn the policy did not get to finish, so the cap
-  is a reward ceiling that RL cannot train past. It binds harder on the `.reasoning` arm, whose
-  `<think>` channel adds hundreds of tokens before the action ever appears — this cell is
-  Action-only, but the same launcher runs those, so the value is set here once.
-  This is a GENERATION budget, not a prompt change: it leaves `image_max` / `history_n` / the
-  rendered prompt untouched, so it does not affect comparability with the SFT column. It also does
-  not touch the final 328-task score, which goes through `scripts/rollout.py` and takes its
-  generation config from the yaml, not from this flag. What it DOES shift is the in-training
-  128-eval curve, so a step-0 taken at 2048 is not the same measurement as one taken at 512
-  (measured at 512: 0.2544, against the table's 0.2557 base). Keep the value fixed for the whole
-  run; changing it mid-run breaks the curve's own step-to-step pairing.
-- **Eval budget: 128 during training, 328 once at the end.** A rollout step is
-  `ROLLOUT_BATCH_SIZE x N_SAMPLES_PER_PROMPT` = 128 trajectories, so an eval pass costs exactly
-  one step and the default `EVAL_INTERVAL=5` puts it at 20% of training — cheap enough to leave
-  alone, and frequent enough to catch a reward collapse early rather than five steps late.
-  128 over 64 because at a Bernoulli p≈0.3 the 95% interval is ±0.079 against ±0.112, and ±0.112
-  is WIDER than the improvement being looked for (`base` 0.2557 to a trained ~0.37 is ~0.11) — a
-  single n=64 point cannot tell whether RL did anything. Every checkpoint reads the same parquet, so
-  step-to-step comparisons are paired — tighter still than that interval. `--seed` (default 42)
-  only matters for regenerating an identical file later.
-- **The final number must be the full 328**, on the same surface the SFT cells were scored on.
-  The Eval block above will NOT do it unmodified: its `cells()` lists SFT cells only, and the RL
-  checkpoint lands at `$W/.ckpts/qwen3_5-4b/grpo.desktop.use.lowr.i4/iter_*` on the TRAIN host,
-  which the Ship block (it only handles `sft.*`) never uploads. Move the chosen `iter_*` to the
-  eval host yourself, then add one `score desktop.use.lowr.i4 <that dir> grpo.lowr.i4@$RUN` line.
-  n=128 is for the curve; the table's denominator is 328 and a 128-subset score does not belong
-  in it.
-- The step-0 pass is the run's own baseline. It is unpaired against the table's 0.2557 (different
-  task set), so expect ~±0.08; landing well outside that means the prompt surface drifted and
-  nothing downstream is comparable.
-- Group size is `N_SAMPLES_PER_PROMPT` (default 8): 16 prompts x 8 = 128 trajectories per rollout
-  step, which is what `ENV_CONCURRENCY=64` feeds.
-- **Export `WANDB_API_KEY` before launching** — same guard as the SFT block, and here it also
-  means the every-5-steps eval curve this section is built around silently does not exist.
-- **Decide how long it runs, and which checkpoint gets scored.** `SAVE_INTERVAL` defaults to 5, so
-  at the default run length this writes a full HF checkpoint of a 4B model every 5 steps into the
-  bind-mounted repo — that adds up fast, and `/srv` is a shared volume. Set `NUM_ROLLOUT` to the
-  step budget you actually want and raise `SAVE_INTERVAL` unless you really need every fifth
-  checkpoint; then pick one `iter_*` for the 328-task score rather than scoring whatever is last.
-- Compare against the `base` / `lowr.i4` cell, never against an SFT cell — RL-from-base and
+- **`CONFIG_PATH` is mandatory.** Unset, `run_grpo.sh` derives a path that does not exist and
+  exits 1 before Ray starts. Pointing it at another `compact/*.yaml` would be SILENT and would
+  stop the run being comparable to the `lowr.i4` column.
+- **`lowr.i4` is heavier than the `compact` profile RL normally uses** (compact pins
+  `history_n: 1` to save VRAM). That cost is the price of scoring on the SFT cells' surface.
+- **`TP_SIZE=4`, not SFT's 2 — measured, TP=2 OOMs.** RL is colocated: 8 sglang engines hold
+  `--sglang-mem-fraction-static 0.6` ≈ 47.5 GB/card all run, so training gets ~31 GB where SFT
+  gets ~79. The backward dies on fp32 vocab-parallel logits (3.91 GiB needed, 1.38 free). TP=4
+  halves the vocab shard; it costs DP 4→2 and ~+17% per step. Do **not** instead lower
+  `MEM_FRACTION` (trades sglang KV cache for the phase that is already 65% of a step) or touch
+  `image_max`/`history_n` (makes the run incomparable). Per-run override only — the 1-2 GPU
+  examples in [docs/grpo.md](/docs/grpo.md) pass no `TP_SIZE` and `resolve_tp` hard-fails when it
+  does not divide `NUM_TRAIN_GPUS`. `ASYNC=1` is the one lever that would make TP=2 viable again,
+  by giving train and rollout their own cards.
+- **`ROLLOUT_MAX_RESPONSE_LEN=2048`** — the 512 default is a real ceiling here: measured at step 0
+  under `lowr.i4`, mean response 258 tokens, max 710, and **35% of episodes hit the cap at least
+  once**. A truncated turn is a reward ceiling RL cannot train past, and it binds harder on the
+  `.reasoning` arm. This is a GENERATION budget: it leaves the prompt untouched, so comparability
+  holds, and it does not touch the final 328 score. It DOES shift the in-training curve, so keep
+  it fixed for the whole run.
+- **Eval budget: 128 during training, 328 once at the end.** One eval pass = one rollout step, and
+  `EVAL_INTERVAL=5` puts it at 20% of training — **leave it there**: cheap enough, and frequent
+  enough to catch a reward collapse early rather than five steps late. (It defaults to 5 like
+  `SAVE_INTERVAL`, but the advice is the opposite — raise that one, not this one.) 128 over 64
+  because at p≈0.3 the 95% interval is ±0.079 against ±0.112, and ±0.112 is wider than the
+  improvement being looked for.
+- **The final number must be the full 328**, via `scripts/rollout.py` on the eval host. The Eval
+  block will not do it unmodified (its `cells()` lists SFT cells only) and Ship never uploads
+  `grpo.*`: move the chosen `iter_*` to the eval host yourself, then add one
+  `score desktop.use.lowr.i4 <that dir> grpo.lowr.i4@$RUN` line.
+- **Step 0 is the run's own baseline**, unpaired against the table's 0.2597 (different task set),
+  so expect ~±0.08. Landing well outside that means the prompt surface drifted.
+- Group size is `N_SAMPLES_PER_PROMPT` (default 8): 16 x 8 = 128 trajectories per rollout step,
+  which is what `ENV_CONCURRENCY=64` feeds.
+- **Export `WANDB_API_KEY`** or the every-5-steps curve this section is built around silently
+  does not exist.
+- **Set `NUM_ROLLOUT` and raise `SAVE_INTERVAL`.** The default 5 writes a full 4B checkpoint every
+  5 steps into the bind-mounted repo on a shared volume. Then pick one `iter_*` to score rather
+  than whatever is last.
+- Compare against the `base` / `lowr.i4` cell, never an SFT cell — RL-from-base and
   SFT-from-a-teacher answer different questions.
