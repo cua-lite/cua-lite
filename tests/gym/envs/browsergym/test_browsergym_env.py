@@ -32,6 +32,23 @@ from tests.gym.envs.browsergym._support import (
 # BrowserGymEnv: fake env lifecycle + obs builders
 # ---------------------------------------------------------------------------
 
+_FAKE_PAGE_METADATA = {
+    "open_pages_urls": ["http://browsergym.fake/"],
+    "open_pages_titles": ["BrowserGym Fake"],
+    "active_page_index": 0,
+}
+
+
+def _assert_error_metadata(
+    metadata: dict[str, Any] | None,
+    *,
+    page_context: dict[str, Any] | None = _FAKE_PAGE_METADATA,
+) -> None:
+    expected = {"is_error": True}
+    if page_context:
+        expected = {**page_context, **expected}
+    assert metadata == expected
+
 
 @pytest.mark.asyncio
 async def test_fake_reset_returns_screenshot():
@@ -305,7 +322,7 @@ async def test_bad_wait_duration_returns_current_feedback_without_backend(durati
         assert r.truncated is False
         assert r.results[0].tool_call_id == "call_wait"
         assert r.results[0].error.startswith("invalid arguments for wait: wait.duration")
-        assert r.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(r.results[0].metadata)
         env._execute_bgym_action.assert_not_awaited()
     finally:
         await env.close()
@@ -601,7 +618,14 @@ async def test_model_action_error_does_not_drop_later_valid_sibling():
         ]
         assert r.results[0].error
         assert r.results[0].error.startswith("invalid arguments for drag:")
-        assert r.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(
+            r.results[0].metadata,
+            page_context={
+                "open_pages_urls": ["http://miniwob/"],
+                "open_pages_titles": ["miniwob"],
+                "active_page_index": 0,
+            },
+        )
         assert r.results[1].error is None
         assert r.results[1].text
         env._execute_bgym_action.assert_awaited_once()
@@ -834,7 +858,7 @@ async def test_t2_browsergym_modes_use_deterministic_error_carriers(mode: str):
         assert unknown.results[0].error == "unknown tool: foo"
         assert unknown.results[0].text is None
         assert unknown.results[0].images == []
-        assert unknown.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(unknown.results[0].metadata, page_context=None)
 
         inactive = await env.step(
             [
@@ -843,13 +867,22 @@ async def test_t2_browsergym_modes_use_deterministic_error_carriers(mode: str):
         )
         assert inactive.results[0].tool_call_id == "call_hover"
         assert inactive.results[0].error == "hover is not available in this task."
-        assert inactive.results[0].text
-        assert "hover is not available in this task." not in inactive.results[0].text
+        expects_page_metadata = not _BROWSERGYM_T2_MODE_CONFIGS[mode].get(
+            "include_page_context_text", False
+        )
+        if expects_page_metadata:
+            assert inactive.results[0].text is None
+        else:
+            assert inactive.results[0].text
+            assert "hover is not available in this task." not in inactive.results[0].text
         if expects_image:
             assert inactive.results[0].images[-1][:4] == b"\x89PNG"
         else:
             assert inactive.results[0].images == []
-        assert inactive.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(
+            inactive.results[0].metadata,
+            page_context=_FAKE_PAGE_METADATA if expects_page_metadata else None,
+        )
         env._execute_bgym_action.assert_not_awaited()
     finally:
         await env.close()
@@ -1025,7 +1058,7 @@ async def test_inactive_terminal_tools_do_not_submit_on_direct_env(
         assert TOOL_RESULT_ERROR_SECTION_HEADER not in r.results[0].text
         assert f"{name} is not available in this task." not in r.results[0].text
         assert r.results[0].error == f"{name} is not available in this task."
-        assert r.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(r.results[0].metadata)
         env._execute_bgym_action.assert_not_awaited()
     finally:
         await env.close()
@@ -1054,7 +1087,7 @@ async def test_inactive_bid_tool_does_not_execute_on_direct_env():
         assert r.truncated is False
         assert r.results[0].tool_call_id == "call_bid"
         assert r.results[0].error == "click is not available in this task."
-        assert r.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(r.results[0].metadata)
         env._execute_bgym_action.assert_not_awaited()
     finally:
         await env.close()
@@ -1082,7 +1115,7 @@ async def test_unknown_foo_is_error_only_but_inactive_known_tool_keeps_current_c
         assert unknown.results[0].error == "unknown tool: foo"
         assert unknown.results[0].text is None
         assert unknown.results[0].images == []
-        assert unknown.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(unknown.results[0].metadata, page_context=None)
 
         inactive_known = await env.step(
             [
@@ -1092,7 +1125,7 @@ async def test_unknown_foo_is_error_only_but_inactive_known_tool_keeps_current_c
         assert inactive_known.results[0].tool_call_id == "call_bid"
         assert inactive_known.results[0].error == "click is not available in this task."
         assert inactive_known.results[0].text
-        assert inactive_known.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(inactive_known.results[0].metadata)
         env._execute_bgym_action.assert_not_awaited()
     finally:
         await env.close()
@@ -1132,12 +1165,7 @@ async def test_known_unsupported_mobile_action_keeps_current_carrier(
         assert "BrowserGym Fake" not in r.results[0].text
         assert "http://browsergym.fake/" not in r.results[0].text
         assert r.results[0].images == []
-        assert r.results[0].metadata == {
-            "open_pages_urls": ["http://browsergym.fake/"],
-            "open_pages_titles": ["BrowserGym Fake"],
-            "active_page_index": 0,
-            "is_error": True,
-        }
+        _assert_error_metadata(r.results[0].metadata)
         env._execute_bgym_action.assert_not_awaited()
     finally:
         await env.close()
@@ -1173,7 +1201,7 @@ async def test_direct_valid_actions_empty_rejects_lite_action_batch():
         assert r.results[0].error == (
             "invalid action: click; choose an available action for this task"
         )
-        assert r.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(r.results[0].metadata)
         env._execute_bgym_action.assert_not_awaited()
     finally:
         await env.close()
@@ -1206,7 +1234,7 @@ async def test_valid_actions_empty_keeps_axtree_text_feedback():
         assert r.results[0].error == (
             "invalid action: click; choose an available action for this task"
         )
-        assert r.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(r.results[0].metadata)
         assert r.results[0].text
         assert r.results[0].images == []
         assert "invalid action: click" not in r.results[0].text
@@ -1216,7 +1244,7 @@ async def test_valid_actions_empty_keeps_axtree_text_feedback():
 
 
 @pytest.mark.asyncio
-async def test_coordinate_error_preserves_image_text_and_error_carriers():
+async def test_coordinate_error_preserves_image_metadata_and_error_carriers():
     config = BrowserGymConfig(
         bgym_task_id="miniwob.click-dialog",
         benchmark="miniwob",
@@ -1239,12 +1267,11 @@ async def test_coordinate_error_preserves_image_text_and_error_carriers():
 
         assert r.results[0].tool_call_id == "call_action"
         assert r.results[0].images[-1][:4] == b"\x89PNG"
-        assert r.results[0].text
+        assert r.results[0].text is None
         assert r.results[0].error == (
             "invalid action: click; choose an available action for this task"
         )
-        assert "invalid action: click" not in r.results[0].text
-        assert r.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(r.results[0].metadata)
         env._execute_bgym_action.assert_not_awaited()
     finally:
         await env.close()
@@ -1278,7 +1305,7 @@ async def test_backend_last_action_error_sets_tool_result_error():
         assert r.results[0].text
         assert TOOL_RESULT_ERROR_SECTION_HEADER not in r.results[0].text
         assert "timeout exceeded" not in r.results[0].text
-        assert r.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(r.results[0].metadata, page_context=None)
     finally:
         await env.close()
 
@@ -1356,7 +1383,7 @@ async def test_backend_execution_exception_sets_tool_result_error():
         assert r.results[0].tool_call_id == "call_action"
         assert r.results[0].error == "click failed: execution failed"
         assert "playwright target closed" not in r.results[0].error
-        assert r.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(r.results[0].metadata, page_context=None)
     finally:
         await env.close()
 
@@ -1385,7 +1412,7 @@ async def test_malformed_drag_returns_current_feedback_without_execution():
         assert r.results[0].error
         assert r.results[0].error.startswith("invalid arguments for drag:")
         assert "coordinate" in r.results[0].error
-        assert r.results[0].metadata == {"is_error": True}
+        _assert_error_metadata(r.results[0].metadata)
     finally:
         await env.close()
 
@@ -1521,7 +1548,7 @@ async def test_bid_click_reaches_backend_only_when_selected(selected: list[str])
         else:
             env._execute_bgym_action.assert_not_awaited()
             assert r.results[0].error == "click is not available in this task."
-            assert r.results[0].metadata == {"is_error": True}
+            _assert_error_metadata(r.results[0].metadata)
             assert r.results[0].text
     finally:
         await env.close()
