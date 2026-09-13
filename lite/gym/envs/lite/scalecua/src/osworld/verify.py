@@ -454,9 +454,21 @@ async def _evaluate_scalecua_task(
     options_list = _as_list(evaluator.get("options", {}))
     conj = evaluator.get("conj", "and")
     n = len(func_list)
-    result_list += [{}] * (n - len(result_list))
-    expected_list += [{}] * (n - len(expected_list))
-    options_list += [{}] * (n - len(options_list))
+    if len(result_list) < n:
+        raise EnvBlocked(
+            what=(
+                "scalecua evaluator result list is shorter than "
+                f"func list ({len(result_list)} < {n})"
+            )
+        )
+    if len(expected_list) < n:
+        raise EnvBlocked(
+            what=(
+                "scalecua evaluator expected list is shorter than "
+                f"func list ({len(expected_list)} < {n})"
+            )
+        )
+    options_list = options_list + [{}] * (n - len(options_list))
 
     scores: list[float] = []
     details: list[dict[str, Any]] = []

@@ -356,6 +356,58 @@ async def test_scalecua_evaluate_uses_official_score_aggregation(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_scalecua_evaluate_does_not_mutate_short_options_list(monkeypatch):
+    async def fake_get_result(eval_env, config, cache_dir, runtime_split):
+        return config["score"]
+
+    async def fake_get_expected(eval_env, config, cache_dir, runtime_split):
+        return "expected"
+
+    monkeypatch.setattr(scalecua_verify, "_get_result", fake_get_result)
+    monkeypatch.setattr(scalecua_verify, "_get_expected", fake_get_expected)
+    monkeypatch.setattr(
+        judges,
+        "resolve_metric",
+        lambda name, runtime_split: lambda result, expected=None: result,
+    )
+
+    evaluator = {
+        "func": ["score_metric", "score_metric"],
+        "result": [{"score": 1.0}, {"score": 0.5}],
+        "expected": [{}, {}],
+        "options": [{}],
+        "conj": "and",
+    }
+
+    assert await scalecua_verify.evaluate_scalecua_task(
+        _FakeComputer(),
+        evaluator,
+        runtime_split="train",
+    ) == 0.75
+    assert evaluator["options"] == [{}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("short_key", ["result", "expected"])
+async def test_scalecua_short_result_or_expected_list_is_env_blocked(short_key):
+    from lite.gym.errors import EnvBlocked
+
+    evaluator = {
+        "func": ["score_metric", "score_metric"],
+        "result": [{}, {}],
+        "expected": [{}, {}],
+    }
+    evaluator[short_key] = [{}]
+
+    with pytest.raises(EnvBlocked, match=f"{short_key} list is shorter than func list"):
+        await scalecua_verify.evaluate_scalecua_task(
+            _FakeComputer(),
+            evaluator,
+            runtime_split="train",
+        )
+
+
+@pytest.mark.asyncio
 async def test_scalecua_task_removes_owned_cache_dir(monkeypatch, tmp_path):
     owned = tmp_path / "owned"
 
