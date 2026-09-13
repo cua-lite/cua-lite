@@ -1,3 +1,9 @@
+## 9685915 (2026-09-13)
+
+Added MiniWoB default runner/config coverage for Qwen3.8, UI-TARS-1.5,
+EvoCUA, and UI-Venus-2 model families. Default runs use the existing
+browsergym.miniwob task set (125 tasks) through the remote env-server path.
+
 ## f57d3cb  (2026-07-02)
 
 Initial standardized snapshot at this commit; no predecessor entry. MiniWoB
