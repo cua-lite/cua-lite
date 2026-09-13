@@ -52,11 +52,12 @@ class TestMakeAgentAPI:
         assert isinstance(agent, ClaudeDesktopUseAgent)
         assert agent.model_id == model
 
-    def test_gpt_model_returns_gpt_agent(self):
+    @pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-5.5"])
+    def test_gpt_model_returns_gpt_agent(self, model):
         env = _mock_env()
-        agent = make("gpt-5.5", env=env)
+        agent = make(model, env=env)
         assert isinstance(agent, GPTDesktopUseAgent)
-        assert agent.model_id == "gpt-5.5"
+        assert agent.model_id == model
 
     def test_extra_tools_forwarded(self):
         # ``make`` forwards env.metadata wholesale into the agent
