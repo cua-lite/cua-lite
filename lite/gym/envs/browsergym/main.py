@@ -3080,11 +3080,33 @@ def _encode_screenshot_maybe_som(
 
 def _extract_instruction(obs: dict[str, Any]) -> str:
     """Extract the task instruction from a BrowserGym observation."""
+    goal_object = obs.get("goal_object") or []
+    has_goal_image = any(
+        isinstance(msg, dict) and msg.get("type") == "image_url"
+        for msg in goal_object
+    )
+    if has_goal_image:
+        parts = []
+        for msg in goal_object:
+            if not isinstance(msg, dict) or msg.get("type") != "text":
+                continue
+            text = str(msg.get("text") or "")
+            stripped = text.strip()
+            if (
+                stripped.startswith("Input image ")
+                and " below" in stripped
+                and ("local path:" in stripped or "url:" in stripped or stripped.endswith(" below"))
+            ):
+                continue
+            if stripped.startswith("WARNING: This goal cannot be converted to a text-only goal format."):
+                continue
+            parts.append(text)
+        return "\n".join(parts)
+
     goal = obs.get("goal", "")
     if goal:
         return goal
 
-    goal_object = obs.get("goal_object", [])
     if goal_object:
         parts = []
         for msg in goal_object:
