@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,13 @@ from lite.gym.remote.alive import SERVER_KEEP_ALIVE_TIMEOUT_SEC, resolve_keep_al
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "serve_env.py"
+THREAD_CAP_VARS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
 
 
 def _load_serve_env():
@@ -37,6 +45,30 @@ def test_serve_env_help_documents_operator_flags() -> None:
     assert "--warm-singleton" in proc.stdout
     assert "--timeout-keep-alive" in proc.stdout
     assert "--reset-concurrency" not in proc.stdout
+
+
+def test_serve_env_caps_native_thread_pools_before_numpy_import() -> None:
+    script = f"""
+import os
+import sys
+from pathlib import Path
+
+source = Path({str(SCRIPT)!r}).read_text()
+exec(source.split("def _parse_args")[0])
+assert "numpy" not in sys.modules
+for var in {THREAD_CAP_VARS!r}:
+    assert os.environ[var] == "1", var
+"""
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        env={"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", "")},
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert proc.stdout == ""
 
 
 def test_warm_abbreviation_is_rejected(monkeypatch) -> None:
