@@ -1,0 +1,26 @@
+# EvoCUA computer-use (coord) rollout eval on WebVoyager.
+# 643 multi-step web navigation tasks across 15 WebHarbor self-hosted mirrors.
+#
+# Observation: screenshot-only; env disables model-visible URL/title/DOM page context.
+# Action: EvoCUA's desktop/browser coordinate grammar + back/response extra tools.
+#
+# Related configs (sync env_kwargs when changing):
+#   - scripts/configs/qwen3_vl/default/webharbor.webvoyager/default.yaml
+#   - scripts/configs/evocua/default/osworld.yaml
+
+agent_id: "evocua"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.01
+    top_p: 0.9
+
+env_id: "webharbor.webvoyager"
+env_kwargs:
+  include_page_context_text: false
+  # ``goto`` is intentionally NOT exposed: WebVoyager is a fully offline
+  # WebHarbor mirror served only at 127.0.0.1:4000x, with no domain-to-mirror
+  # resolver rules, so a URL ``goto`` escapes to the live internet and breaks
+  # the reproducible eval. All 643 tasks are single-site and start on the
+  # correct mirror, so in-page UI + ``back`` suffice. ``response`` is required
+  # for WebVoyager's final-answer judge.
+  extra_tools: ["back", "response"]
