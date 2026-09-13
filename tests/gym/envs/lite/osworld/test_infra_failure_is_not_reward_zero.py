@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -110,6 +111,48 @@ def test_download_url_retry_exhaustion_raises_env_blocked(monkeypatch, tmp_path)
 
     with pytest.raises(EnvBlocked, match="evaluator file"):
         runner._download_url("https://example.test/missing.txt", str(tmp_path))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("config", "expected_name"),
+    [
+        (
+            {"type": "cloud_file", "path": "https://example.test/result.txt", "dest": "result.txt"},
+            "result.txt",
+        ),
+        (
+            {
+                "type": "cloud_file",
+                "path": ["https://example.test/result.txt"],
+                "dest": ["result.txt"],
+                "gives": [0],
+            },
+            "result.txt",
+        ),
+    ],
+)
+async def test_result_cloud_file_download_runs_off_event_loop(
+    monkeypatch, tmp_path, config, expected_name
+):
+    from lite.gym.envs.lite.osworld.src.eval import runner
+
+    main_thread = threading.get_ident()
+    download_threads = []
+
+    def fake_download(_url, cache_dir, dest=""):
+        download_threads.append(threading.get_ident())
+        local = Path(cache_dir) / (dest or "result.txt")
+        local.write_text("payload", encoding="utf-8")
+        return str(local)
+
+    monkeypatch.setattr(runner, "_download_url", fake_download)
+
+    local = await runner._get_result(None, config, str(tmp_path))
+
+    assert Path(local).name == expected_name
+    assert download_threads
+    assert all(thread_id != main_thread for thread_id in download_threads)
 
 
 @pytest.mark.asyncio

@@ -1537,11 +1537,11 @@ async def _get_result(computer, config: dict, cache_dir: str):
             dests = config.get("dest", [])
             paths = []
             for i, (u, d) in enumerate(zip(url, dests if isinstance(dests, list) else [dests])):
-                local = _download_url(u, cache_dir, d)
+                local = await asyncio.to_thread(_download_url, u, cache_dir, d)
                 if i in gives:
                     paths.append(local)
             return paths[0] if len(paths) == 1 else paths
-        return _download_url(url, cache_dir, dest)
+        return await asyncio.to_thread(_download_url, url, cache_dir, dest)
 
     # --- URL extraction ---
     if result_type == "url_dashPart":
