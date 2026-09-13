@@ -158,6 +158,41 @@ async def test_getter_infrastructure_failure_raises_env_blocked(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_result_getter_infrastructure_failure_raises_env_blocked(monkeypatch):
+    from lite.gym.envs.lite.osworld.src.eval import runner
+
+    async def broken_result(_computer, _config, _cache_dir):
+        raise RuntimeError("container stopped answering")
+
+    monkeypatch.setattr(runner, "_get_result", broken_result)
+
+    with pytest.raises(EnvBlocked, match="result getter failed"):
+        await runner.evaluate_osworld_task(
+            None,
+            {"_postconfig_done": True, "func": "any_metric", "result": {}, "expected": {}},
+        )
+
+
+@pytest.mark.asyncio
+async def test_env_blocked_from_result_getter_bubbles(monkeypatch):
+    from lite.gym.envs.lite.osworld.src.eval import runner
+
+    blocked = EnvBlocked(what="download transport failed")
+
+    async def blocked_result(_computer, _config, _cache_dir):
+        raise blocked
+
+    monkeypatch.setattr(runner, "_get_result", blocked_result)
+
+    with pytest.raises(EnvBlocked) as exc_info:
+        await runner.evaluate_osworld_task(
+            None,
+            {"_postconfig_done": True, "func": "any_metric", "result": {}, "expected": {}},
+        )
+    assert exc_info.value is blocked
+
+
+@pytest.mark.asyncio
 async def test_metric_exception_scores_zero_but_env_blocked_bubbles(monkeypatch):
     from lite.gym.envs.lite.osworld.src.eval import metrics as custom_metrics
     from lite.gym.envs.lite.osworld.src.eval import runner
