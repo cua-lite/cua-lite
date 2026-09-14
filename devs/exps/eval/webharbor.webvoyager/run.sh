@@ -141,6 +141,10 @@ fi
 case "$MODEL" in
   Qwen/Qwen3-VL-*-Instruct|Qwen/Qwen3-VL-*-Thinking) CFG=scripts/configs/qwen3_vl/default/webharbor.webvoyager/${MODE}.yaml ;;
   Qwen/Qwen3.5-*)           CFG=scripts/configs/qwen3_5/default/webharbor.webvoyager/${MODE}.yaml ;;
+  Qwen/Qwen3.8-*)           CFG=scripts/configs/qwen3_8/default/webharbor.webvoyager/${MODE}.yaml ;;
+  ByteDance-Seed/UI-TARS-1.5-7B) CFG=scripts/configs/ui_tars_15_v1/default/webharbor.webvoyager/default.yaml ;;
+  meituan/EvoCUA-*)         CFG=scripts/configs/evocua/default/webharbor.webvoyager/default.yaml ;;
+  inclusionAI/UI-Venus-2-*) CFG=scripts/configs/ui_venus_2/default/webharbor.webvoyager/default.yaml ;;
   gpt-*)                    CFG=scripts/configs/gpt/default/webharbor.webvoyager/default.yaml ;;
   *) echo "unknown model: $MODEL — add a case in $0" >&2; exit 1 ;;
 esac
