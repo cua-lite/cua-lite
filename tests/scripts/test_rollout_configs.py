@@ -965,6 +965,9 @@ _EXPECTED_RESPONSE_CONFIGS = {
      | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS | _DESKTOP_USE_RECIPE_CONFIGS)
 
 _EXPECTED_TERMINATE_CONFIGS = {
+    "scripts/configs/evocua/default/waa.yaml",
+    "scripts/configs/ui_tars_15_v1/default/waa.yaml",
+    "scripts/configs/ui_venus_2/default/waa.yaml",
     "scripts/configs/gpt/default/online_mind2web.yaml",
     "scripts/configs/qwen3_5/default/online_mind2web.yaml",
     "scripts/configs/qwen3_8/default/online_mind2web.yaml",

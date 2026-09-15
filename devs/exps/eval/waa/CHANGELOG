@@ -1,0 +1,11 @@
+## 77f24c8 (2026-09-12)
+
+- Use the documented 138-task eval subset: exclude 13 infeasible and 3 block tasks.
+- Use model-family WAA defaults.
+
+## af5d4c8 (2026-09-12)
+
+- Limit Docker creation, reserve ports, create overlays inside the VM container,
+  disable THP for QEMU, and allow 60 seconds for Docker inspection.
+- Require installation checks to terminate with a valid evaluator score.
+- `1004ccb` adds native Qwen3.8 reasoning-effort selection.
