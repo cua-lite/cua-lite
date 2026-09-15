@@ -169,6 +169,8 @@ fi
 case "$MODEL" in
   Qwen/Qwen3-VL-*-Instruct|Qwen/Qwen3-VL-*-Thinking) CFG=scripts/configs/qwen3_vl/default/mobileworld.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/mobileworld.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/mobileworld.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/mobileworld.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/mobileworld.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/mobileworld.yaml ;;
   Tongyi-MAI/MAI-UI-*)             CFG=scripts/configs/mai_ui/default/mobileworld.yaml ;;
