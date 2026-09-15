@@ -2,7 +2,7 @@
 
 Train **fifteen checkpoints** — three screenshot profiles x three teachers, plus a `<think>` arm
 on the two teachers that emit reasoning — and score them on one eval. A single GRPO run from the
-same base weights closes the file (**RL** at the end), scored on that same eval.
+best `gpt5_5` + `<think>` SFT cell closes the file (**RL** at the end), scored on that same eval.
 
 | | `lowr.i4` | `lowr.i1` | `highr.i1` |
 |---|---|---|---|
@@ -53,7 +53,7 @@ campaign, kept for a future history-representation study.
 
 **Naming.** A cell is a `(config stem, teacher)` pair; the SFT blocks enumerate the fifteen from
 a `cells()` function that each block redefines (four copies — paste the one in the block you are
-running). RL uses none of it. `$P` is the stem taken whole off the filename and
+running). RL pins one of those cells explicitly. `$P` is the stem taken whole off the filename and
 `$DS` the dataset recipe (`scalecua_5k` = source + row cap). Both are threaded verbatim into every
 artifact — parquet `$P.$DS.$T.parquet`, checkpoint `sft.$P.$DS.$T`, HF repo
 `ZHZisZZ/qwen3_5-4b.sft.$P.$DS.$T`, W&B group — so nothing downstream re-derives them and two
@@ -342,10 +342,12 @@ while read -r P T; do
   done
 done <<< "$(cells)"
 # A missing checkpoint must not reach the score loop: it would take a GPU and fail as a crashed
-# background job long after `wait`. Like every check in this file it only PRINTS — a pasted
-# block cannot abort itself — so read the line and stop by hand before running the rest.
-[ -z "$MISSING" ] && echo "checkpoints OK" \
-  || echo "STOP -- do not run the score loop; missing under $EPOCH:$MISSING"
+# background job long after `wait`.
+if [ -n "$MISSING" ]; then
+  echo "STOP -- do not run the score loop; missing under $EPOCH:$MISSING"
+  return 1 2>/dev/null || exit 1
+fi
+echo "checkpoints OK"
 
 # $1 = config stem, $2 = --model-path ("" = base model), $3 = log slug. --config-path always
 # follows $1, so a checkpoint is only ever scored on the surface it was trained on.
@@ -428,7 +430,7 @@ for P in desktop.use.lowr.i4 desktop.use.lowr.i1 desktop.use.highr.i1; do
 done
 while read -r P T; do show "sft.$P.$DS.$T@$RUN.$EPOCH"; done <<< "$(cells)"
 # The RL run, if it was scored (see the RL section): 19th line, not part of cells().
-show "grpo.lowr.i4@$RUN"
+show "grpo.desktop.use.highr.i1.reasoning.scalecua_5k.gpt5_5.scalecua_rl_osworld128.from_sft@$RUN.<iter>"
 ```
 
 Paste the numbers into a snapshot file, reusing the two tables' LAYOUT from **Results** below
@@ -466,7 +468,7 @@ cells instead of landing on one. `±` is half the range of the three.
 | **`qwen3_5_27b`** | 0.3421 ±0.0031 (108/328) 3/3 | 0.3209 ±0.0071 (101/328) 3/3 | 0.3582 ±0.0150 (113/328) 3/3 | — |
 | **`qwen3_5_27b` + `<think>`** | 0.3349 ±0.0207 (106/328) 3/3 | 0.3574 ±0.0096 (112/328) 3/3 | 0.3649 ±0.0046 (116/328) 3/3 | — |
 | **`qwen3_8_27b`** | 0.4090 ±0.0095 (130/328) 3/3 | 0.4019 ±0.0092 (128/328) 3/3 | 0.4069 ±0.0122 (129/328) 3/3 | 0.4318 (131/318) |
-| **GRPO from base** | not run | — | — | — |
+| **GRPO from `gpt5_5` + `<think>`** | — | — | TBD | — |
 
 Every individual run — `MER (solved) parse_failure`, one column per pass:
 
@@ -490,6 +492,7 @@ Every individual run — `MER (solved) parse_failure`, one column per pass:
 | **`qwen3_8_27b`** | `lowr.i4` | 0.4175 (132) 7 | 0.3985 (127) 5 | 0.4110 (131) 5 |
 |  | `lowr.i1` | 0.4142 (133) 8 | 0.3959 (126) 3 | 0.3957 (126) 6 |
 |  | `highr.i1` | 0.4200 (134) 16 | 0.4050 (129) 3 | 0.3956 (125) 4 |
+| **GRPO from `gpt5_5`+`<think>`** | `highr.i1` | TBD | TBD | TBD |
 
 Reading the table:
 
@@ -538,11 +541,12 @@ The profile effect is something SFT creates, not a property of the eval:
 
 ### RL
 
-One GRPO run, from the **base model** under `desktop.use.lowr.i4.yaml` — the same surface as the
-`base` / `lowr.i4` cell above, so that row's 0.2597 is this run's step-0 reference. Trains on
-**Lite.ScaleCUA's `rl` split**, scores on **`lite.osworld` eval**. Read
-[docs/grpo.md](/docs/grpo.md) first: env-server prerequisite, sync-vs-async, and the knobs this
-block does not repeat.
+One GRPO run from the local **`gpt5_5` + `<think>` SFT checkpoint** trained with
+[`desktop.use.highr.i1.reasoning.yaml`](/devs/exps/train/desktop/configs/qwen3_5/desktop.use.highr.i1.reasoning.yaml).
+This is the best measured `gpt5_5` reasoning cell in the table above, so that row's `highr.i1`
+score is this run's step-0 reference. Trains on **Lite.ScaleCUA's `rl` split**, scores on
+**`lite.osworld` eval**. Read [docs/grpo.md](/docs/grpo.md) first: env-server prerequisite,
+sync-vs-async, and the knobs this block does not repeat.
 
 > **Two envs, one run.** Training tasks are `lite.scalecua`, eval tasks are `lite.osworld`. Each
 > parquet row carries its own `env_key` (`<env_id>@<task_id>`) and the engine resolves the env per
@@ -556,72 +560,132 @@ block does not repeat.
 <summary>Data</summary>
 
 ```bash
-# --- TRAIN HOST ---  (into .data/, which the container sees because launch.sh binds the repo
-# root at /workspaces/cua-lite; the only other bind is an optional read-only HF cache.
-# docs/grpo.md writes to /root/datasets because it runs its Data step INSIDE the container; that path
-# does not survive the boundary, so do not copy it here.)
+# --- ONE-TIME DATA BUILD; skip generation for any file that already exists ---
+# These parquet files are fixed experiment manifests under the repo, so Slime sees them at
+# /workspaces/cua-lite/devs/exps/train/desktop/data.
 # Same `exclude_reason` filter on both sides: those tasks cannot be solved (infeasible,
 # proxy_required, broken upstream evaluator), so they add zero-reward noise to training and a
 # fixed penalty to eval.
 #   rl   split: 2049 -> 1809 kept (240 excluded, mostly proxy_required + evaluator bugs)
 #   eval split:  369 ->  328 kept (41 excluded, 29 of them literally `infeasible`)
-RL=.data/rl/qwen3_5/desktop.use
+DATA=devs/exps/train/desktop/data
+TRAIN="$DATA/scalecua.rl.no_exclude.parquet"
+EVAL="$DATA/osworld.eval128.no_exclude.seed42.parquet"
+mkdir -p "$DATA"
 
-uv run python -m lite.train.export.export_tasks --env-id lite.scalecua --split rl \
-  -o "$RL/scalecua.rl.parquet" \
-  --filter "lambda m: not m.others.get('exclude_reason')"
+if [ -e "$TRAIN" ]; then
+  echo "keep existing fixed train manifest: $TRAIN"
+else
+  uv run python -m lite.train.export.export_tasks --env-id lite.scalecua --split rl \
+    -o "$TRAIN" \
+    --filter "lambda m: not m.others.get('exclude_reason')"
+fi
 
 # ONE parquet: the 128-task subset slime reads for the in-training curve. The final 328-task
 # score does NOT come from a parquet -- it goes through scripts/rollout.py on the eval host,
 # which reads the env registry directly (see "Eval budget" below).
-uv run python -m lite.train.export.export_tasks --env-id lite.osworld --split eval --sample 128 \
-  -o "$RL/osworld.eval128.parquet" \
-  --filter "lambda m: not m.others.get('exclude_reason')"
+if [ -e "$EVAL" ]; then
+  echo "keep existing fixed eval manifest: $EVAL"
+else
+  uv run python -m lite.train.export.export_tasks --env-id lite.osworld --split eval --sample 128 \
+    --seed 42 \
+    -o "$EVAL" \
+    --filter "lambda m: not m.others.get('exclude_reason')"
+fi
+
+uv run python - "$TRAIN" "$EVAL" <<'PY'
+import hashlib
+import sys
+
+import pandas as pd
+
+import lite.gym as gym
+from lite.data.staging import coerce_meta
+
+train = pd.read_parquet(sys.argv[1])
+eval_ = pd.read_parquet(sys.argv[2])
+train_keys = [coerce_meta(row["metadata"])["env_key"] for _, row in train.iterrows()]
+eval_keys = [coerce_meta(row["metadata"])["env_key"] for _, row in eval_.iterrows()]
+train_hash = hashlib.sha256("\n".join(train_keys).encode()).hexdigest()
+eval_hash = hashlib.sha256("\n".join(eval_keys).encode()).hexdigest()
+
+assert len(train) == 1809
+assert len(eval_) == 128
+assert all(key.startswith("lite.scalecua@") for key in train_keys)
+assert all(key.startswith("lite.osworld@") for key in eval_keys)
+assert all(
+    not gym.registry.task_metadata("lite.scalecua", key.split("@", 1)[1]).others.get("exclude_reason")
+    for key in train_keys
+)
+assert all(
+    not gym.registry.task_metadata("lite.osworld", key.split("@", 1)[1]).others.get("exclude_reason")
+    for key in eval_keys
+)
+print(
+    "desktop RL data ok: 1809 Lite.ScaleCUA train tasks, 128 OSWorld eval tasks, "
+    f"train_sha256={train_hash} eval_sha256={eval_hash}"
+)
+PY
 ```
 
 </details>
 
 ```bash
 # --- Slime container ---
-# sync, 8 GPUs colocated, TP=4 (-> DP=2). No HF_CKPT: this starts from BASE weights, which is the
-# point -- starting from an SFT checkpoint answers a different question.
+# sync, 8 GPUs colocated, TP=4 (-> DP=2). Start from the gpt5_5 + <think> SFT checkpoint for the
+# same desktop.use.highr.i1.reasoning surface.
 W=/workspaces/cua-lite
-CELL=grpo.desktop.use.lowr.i4
+P=desktop.use.highr.i1.reasoning
+DS=scalecua_5k
+T=gpt5_5
+RLDS=scalecua_rl_osworld128
+CELL=grpo.$P.$DS.$T.$RLDS.from_sft
+CKPT=${CKPT:-$(ls -d "$W/.ckpts/qwen3_5-4b/sft.$P.$DS.$T"/iter_* 2>/dev/null | sort -V | tail -1)}
+
+: "${CUA_LITE_ENV_SERVER_URL:?paste export line from env-server shell}"
+: "${CUA_LITE_ENV_SERVER_TOKEN:?paste export line from env-server shell}"
+[ -d "$CKPT" ] || { echo "MISSING CKPT=$CKPT"; exit 1; }
+for f in config.json tokenizer_config.json preprocessor_config.json; do
+  [ -e "$CKPT/$f" ] || { echo "MISSING $CKPT/$f"; exit 1; }
+done
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
   MODEL_ID=Qwen/Qwen3.5-4B \
+  HF_CKPT="$CKPT" \
   ENV_ID=lite.scalecua \
-  PROMPT_DATA="$W/.data/rl/qwen3_5/desktop.use/scalecua.rl.parquet" \
-  EVAL_PROMPT_DATA="$W/.data/rl/qwen3_5/desktop.use/osworld.eval128.parquet" \
+  PROMPT_DATA="$W/devs/exps/train/desktop/data/scalecua.rl.no_exclude.parquet" \
+  EVAL_PROMPT_DATA="$W/devs/exps/train/desktop/data/osworld.eval128.no_exclude.seed42.parquet" \
   ENV_CONCURRENCY=64 \
   ROLLOUT_BATCH_SIZE=16 \
+  N_SAMPLES_PER_PROMPT=8 \
+  NUM_STEPS_PER_ROLLOUT=8 \
   ROLLOUT_MAX_RESPONSE_LEN=2048 \
-  CONFIG_PATH="$W/devs/exps/train/desktop/configs/qwen3_5/desktop.use.lowr.i4.yaml" \
-  SAVE=1 SAVE_HF_DIR="$W/.ckpts/qwen3_5-4b/$CELL/iter_{rollout_id}" \
+  CONFIG_PATH="$W/devs/exps/train/desktop/configs/qwen3_5/$P.yaml" \
+  SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=10 EVAL_INTERVAL=5 NUM_ROLLOUT=100 \
+  SAVE_HF_DIR="$W/.ckpts/qwen3_5-4b/$CELL/iter_{rollout_id}" \
+  SAVE_DIR="/root/checkpoints/qwen3_5-4b/$CELL/megatron" \
   WANDB_GROUP_SUFFIX=".$CELL" \
   bash "$W/scripts/train/run_grpo.sh"
 ```
 
 - **`CONFIG_PATH` is mandatory.** Unset, `run_grpo.sh` derives a path that does not exist and
   exits 1 before Ray starts. Pointing it at another `compact/*.yaml` would be SILENT and would
-  stop the run being comparable to the `lowr.i4` column.
-- **`lowr.i4` is heavier than the `compact` profile RL normally uses** (compact pins
-  `history_n: 1` to save VRAM). That cost is the price of scoring on the SFT cells' surface.
-- **`TP_SIZE=4`, not SFT's 2 — measured, TP=2 OOMs.** RL is colocated: 8 sglang engines hold
-  `--sglang-mem-fraction-static 0.6` ≈ 47.5 GB/card all run, so training gets ~31 GB where SFT
-  gets ~79. The backward dies on fp32 vocab-parallel logits (3.91 GiB needed, 1.38 free). TP=4
-  halves the vocab shard; it costs DP 4→2 and ~+17% per step. Do **not** instead lower
-  `MEM_FRACTION` (trades sglang KV cache for the phase that is already 65% of a step) or touch
-  `image_max`/`history_n` (makes the run incomparable). Per-run override only — the 1-2 GPU
-  examples in [docs/grpo.md](/docs/grpo.md) pass no `TP_SIZE` and `resolve_tp` hard-fails when it
-  does not divide `NUM_TRAIN_GPUS`. `ASYNC=1` is the one lever that would make TP=2 viable again,
-  by giving train and rollout their own cards.
-- **`ROLLOUT_MAX_RESPONSE_LEN=2048`** — the 512 default is a real ceiling here: measured at step 0
-  under `lowr.i4`, mean response 258 tokens, max 710, and **35% of episodes hit the cap at least
-  once**. A truncated turn is a reward ceiling RL cannot train past, and it binds harder on the
-  `.reasoning` arm. This is a GENERATION budget: it leaves the prompt untouched, so comparability
-  holds, and it does not touch the final 328 score. It DOES shift the in-training curve, so keep
-  it fixed for the whole run.
+  stop the run being comparable to the `gpt5_5` + `<think>` / `highr.i1` parent.
+- **`HF_CKPT` is mandatory for this RL run.** It must point at the local
+  `sft.desktop.use.highr.i1.reasoning.scalecua_5k.gpt5_5/iter_*` HF export; omitting it silently
+  starts from base Qwen3.5-4B and answers a different question.
+- **`desktop.use.highr.i1.reasoning` is heavier than the `compact` profile RL normally uses**
+  (compact pins `history_n: 1` to save VRAM). That cost is the price of matching the chosen SFT
+  parent exactly.
+- **`TP_SIZE=4`, not SFT's 2, is the conservative colocated-RL default.** The measured
+  `lowr.i4` RL run OOMed at TP=2 because sglang engines hold memory for the whole run; keep TP=4
+  until this `highr.i1.reasoning` run has its own memory trace. Do **not** change
+  `image_max`/`history_n` to save memory, because that makes the run incomparable to its SFT
+  parent. `ASYNC=1` is the one structural lever that would make lower TP more plausible.
+- **`ROLLOUT_MAX_RESPONSE_LEN=2048`** — the 512 default is a real ceiling on desktop RL, and the
+  `.reasoning` arm can only make the tail longer. This is a GENERATION budget: it leaves the prompt
+  untouched, so comparability holds. It DOES shift the in-training curve, so keep it fixed for the
+  whole run.
 - **Eval budget: 128 during training, 328 once at the end.** One eval pass = one rollout step, and
   `EVAL_INTERVAL=5` puts it at 20% of training — **leave it there**: cheap enough, and frequent
   enough to catch a reward collapse early rather than five steps late. (It defaults to 5 like
@@ -631,9 +695,10 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
 - **The final number must be the full 328**, via `scripts/rollout.py` on the eval host. The Eval
   block will not do it unmodified (its `cells()` lists SFT cells only) and Ship never uploads
   `grpo.*`: move the chosen `iter_*` to the eval host yourself, then add one
-  `score desktop.use.lowr.i4 <that dir> grpo.lowr.i4@$RUN` line.
-- **Step 0 is the run's own baseline**, unpaired against the table's 0.2597 (different task set),
-  so expect ~±0.08. Landing well outside that means the prompt surface drifted.
+  `score desktop.use.highr.i1.reasoning "$GRPO_CKPT" "grpo.desktop.use.highr.i1.reasoning.scalecua_5k.gpt5_5.scalecua_rl_osworld128.from_sft@$RUN.$(basename "$GRPO_CKPT")"`.
+- **Step 0 is the run's own baseline**, paired against the `gpt5_5` + `<think>` / `highr.i1` SFT
+  cell up to eval-subset noise. Landing far below that usually means the wrong `P`, `CKPT`, or
+  config was used.
 - Group size is `N_SAMPLES_PER_PROMPT` (default 8): 16 x 8 = 128 trajectories per rollout step,
   which is what `ENV_CONCURRENCY=64` feeds.
 - **Export `WANDB_API_KEY`** or the every-5-steps curve this section is built around silently
@@ -641,5 +706,5 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
 - **Set `NUM_ROLLOUT` and raise `SAVE_INTERVAL`.** The default 5 writes a full 4B checkpoint every
   5 steps into the bind-mounted repo on a shared volume. Then pick one `iter_*` to score rather
   than whatever is last.
-- Compare against the `base` / `lowr.i4` cell, never an SFT cell — RL-from-base and
-  SFT-from-a-teacher answer different questions.
+- Compare against the `gpt5_5` + `<think>` / `highr.i1` SFT cell, not the base row: this run is
+  RL-from-SFT, not RL-from-base.
