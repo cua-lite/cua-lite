@@ -80,10 +80,10 @@ def test_agents_dicts_nonempty() -> None:
     assert set(AGENTS) >= union, (
         f"AGENTS missing entries from LOCAL ∪ API: {union - set(AGENTS)}"
     )
-    # Sanity on the audited counts (32 = 23 LOCAL + 9 API).
+    # Sanity on the audited counts (33 = 23 LOCAL + 10 API).
     assert len(LOCAL_AGENTS) == 23
-    assert len(API_AGENTS) == 9
-    assert len(AGENTS) == 32
+    assert len(API_AGENTS) == 10
+    assert len(AGENTS) == 33
 
 
 def test_compose_agent_key_format() -> None:
