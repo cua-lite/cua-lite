@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -10,6 +11,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from examples.not_a_robot import env as env_module
 from examples.not_a_robot import registration  # noqa: F401
 from examples.not_a_robot.catalog import LEVELS
 from examples.not_a_robot.env import LIVE_ENVS, NotARobotEnv
@@ -146,6 +148,79 @@ async def test_observation_failure_is_retained_as_infrastructure_error(mock_env,
     recorder.finalize.assert_called_once_with(
         "infra_error", cleanup_errors=[], cleanup_complete=True
     )
+
+
+@pytest.mark.parametrize("terminal_status", [None, "success", "failure"])
+@pytest.mark.parametrize("cursor", [False, True])
+async def test_observation_capture_intervals_follow_returned_image(
+    tmp_path, monkeypatch, terminal_status, cursor
+):
+    """A recaptured frame owns its timestamps, including after cursor projection."""
+    env = NotARobotEnv(mode="local", target_level=None, local_task="click", cursor=cursor)
+    env._cursor_xy = (19.2, 22.8)
+    initial_state = {
+        "task_id": "click",
+        "label": "Click",
+        "version": "test",
+        "seed": 0,
+        "reference_instance": "default",
+        "status": "in_progress",
+        "mistakes": 0,
+        "progress": 0,
+        "reason": "",
+        "elapsed_ms": 500,
+    }
+    final_state = dict(initial_state, status=terminal_status or "in_progress", elapsed_ms=600)
+    # Screenshot bytes are opaque at this boundary; the renderer is mocked.
+    frames = [b"first browser frame"]
+    intervals = [(1000.0, 1000.125)]
+    if terminal_status:
+        frames.append(b"recaptured terminal browser frame")
+        intervals.append((1001.0, 1001.25))
+    env._page = SimpleNamespace(
+        url="http://127.0.0.1/mock-game",
+        evaluate=AsyncMock(
+            side_effect=[dict(initial_state, events=[]), dict(final_state, events=[])]
+        ),
+        screenshot=AsyncMock(side_effect=frames),
+    )
+    capture_clock = Mock(side_effect=[value for interval in intervals for value in interval])
+    monkeypatch.setattr(env_module, "time", SimpleNamespace(time=capture_clock))
+    model_frame = b"cursor overlay of " + frames[-1] if cursor else frames[-1]
+    overlay = Mock(return_value=model_frame)
+    monkeypatch.setattr(env_module, "overlay_cursor_px", overlay)
+    recorder = EventRecorder(tmp_path / "capture", {"fixture": True})
+    env.recorder = recorder
+    try:
+        image = await env._observe("test_capture")
+    finally:
+        recorder.close()
+
+    assert image == model_frame
+    assert env._page.screenshot.await_count == len(frames)
+    assert capture_clock.call_count == 2 * len(frames)
+    if cursor:
+        overlay.assert_called_once_with(frames[-1], 19, 23)
+    else:
+        overlay.assert_not_called()
+    events = [
+        json.loads(line) for line in (recorder.root / "events.jsonl").read_text().splitlines()
+    ]
+    observations = [event["data"]["image"] for event in events if event["type"] == "observation"]
+    expected = [("raw", frames[-1], intervals[-1]), ("model_visible", model_frame, intervals[-1])]
+    if terminal_status:
+        expected.insert(0, ("before_terminal_transition", frames[0], intervals[0]))
+    assert len(observations) == len(expected)
+    for observation, (variant, content, interval) in zip(observations, expected, strict=True):
+        assert observation["phase"] == "test_capture"
+        assert observation["variant"] == variant
+        assert observation["capture_started_unix_s"] == interval[0]
+        assert observation["capture_completed_unix_s"] == interval[1]
+        assert observation["sha256"] == hashlib.sha256(content).hexdigest()
+        assert (recorder.root / observation["path"]).read_bytes() == content
+    assert env.last_observation == observations[-1]
+    assert events[-1]["type"] == "task_state"
+    assert events[-1]["data"]["state"] == final_state
 
 
 @pytest.mark.parametrize("press_enter", [True, False])

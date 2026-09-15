@@ -1,22 +1,32 @@
 # Not a Robot experiment
 
-## Reference-based first ten levels
+## Reference-based local levels
 
-The `visual_tasks@neal_01`–`visual_tasks@neal_10` tasks reconstruct captured
-instances from the supplied reference archives, separately from the earlier
-simplified adaptations below. See the
-[first-ten setup, evidence and limitations](/examples/not_a_robot/FIRST10.md).
+The local catalog contains 25 implemented captured-instance task paths:
+levels 01–14, 18, 21–22, 24, 29–31, 33–34, 39 and 46. Level 39 covers only the
+recorded unavailable-camera branch, not expression recognition.
+They are separate from the eight earlier
+authored exercises below. See the
+[current support and launch instructions](/examples/not_a_robot/SUPPORT.md),
+[first-ten evidence](/examples/not_a_robot/FIRST10.md), and
+[remaining all-48 plan](/examples/not_a_robot/ALL48_PLAN.md).
 Original artwork is imported privately with `reference_assets.py`, not included
 in Git. Local tasks contact no external site.
 
-Nine captured instances have recorded original completion evidence. Level-six
-opponent behavior remains inferred and its current legal state machine has no
-reachable player win. It is a partial reconstruction, not a solvable benchmark
-task. Dynamic timing also remains approximate. These are explicit fidelity limits.
+An experimental [local campaign controller](/examples/not_a_robot/CAMPAIGN.md)
+preserves one browser and trajectory across ordered levels. It stops at missing
+implementations; it is not a completed all-48 game or campaign result.
+
+Level-six opponent behavior remains inferred; new supplied captures show a normal
+refresh-to-win route, and the seeded local candidate fits the observed replies.
+Explicit second instances for 07/08 are documented in
+[INCREMENTAL.md](/examples/not_a_robot/INCREMENTAL.md); defaults stay unchanged.
+Dynamic timing and unobserved matching boundaries remain approximate. These are
+explicit fidelity limits, not claims of complete original-site parity.
 
 ## Self-hosted tasks
 
-Alongside the first-ten reconstructions, `local/` contains five original exercises and three locally authored
+Alongside the reference reconstructions, `local/` contains five original exercises and three locally authored
 adaptations of Neal-style game mechanics. It is **not** the official game,
 an exact replica, or an implementation of the full 48-level inventory.
 The original exercises are shape matching (`click`), code entry (`input`), block placement
@@ -119,7 +129,7 @@ This out-of-tree environment uses CUA-Lite's existing `gym.make`, metadata,
 canonical `computer` actions, feedback and reset/step contracts. It does not
 modify core environments, rollout, or training. No new HTTP server is required.
 
-## Implemented scope
+## Remote and fixture scope
 
 - `not_a_robot@level_001`: fresh browser, level-one start, success only upon an
   observed transition to level two.
@@ -128,9 +138,9 @@ modify core environments, rollout, or training. No new HTTP server is required.
   `terminate(status="success")` is only an agent claim, never an evaluator reward.
 - `mode="fixture"`: a local two-stage synthetic control, not Neal's game. It
   tests checkbox, keyboard and drag interaction without network access.
-- `catalog.py` reserves 48 level entries from the proposed task inventory.
-  Levels 2–48 do **not** have independent reset or verified graders. Their
-  names and live behavior remain unverified.
+- `catalog.py` reserves 48 remote level entries. Remote levels 2–48 do **not**
+  have independent reset or verified graders. This remote inventory is separate
+  from the implemented `visual_tasks@neal_*` local catalog described above.
 
 For live mode, only the synthetic Neal game is in scope. External network origins,
 off-game navigations, Cloudflare challenge assets, service workers and
@@ -205,9 +215,10 @@ produce their usual artifacts separately, but that path needs its own smoke test
 
 ## Further work
 
-For self-hosted work, validate model rollouts on the local tasks, then implement an
-agreed task inventory with per-task tests. The 48 Neal placeholders are not a
-specification for additional local tasks. Do not report them as implemented.
+For self-hosted work, continue the remaining 23 tasks and campaign according to
+[the reference audit and implementation plan](/examples/not_a_robot/ALL48_PLAN.md),
+with per-task tests and bounded model attempts. The 48 remote placeholders are
+not completed local tasks and must not be counted as such.
 
 If resuming the remote experiment, validate permitted live access first, then
 verify a few representative levels,

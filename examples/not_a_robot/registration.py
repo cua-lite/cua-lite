@@ -59,6 +59,7 @@ registry.set_env_supported_kwargs(
         "cursor",
         "extra_tools",
         "seed",
+        "reference_instance",
     },
 )
 for task_id in LOCAL_TASKS:
@@ -71,3 +72,31 @@ for task_id in LOCAL_TASKS:
         target_level=None,
         local_task=task_id,
     )
+
+
+register_family("visual_tasks_campaign", BackendFamily.DEDICATED)
+register_services("visual_tasks_campaign", NealServices())
+registry.set_env_supported_kwargs(
+    "visual_tasks_campaign",
+    {
+        "artifact_root",
+        "browser_executable",
+        "display_resolution",
+        "headless",
+        "max_steps",
+        "max_seconds",
+        "post_action_delay",
+        "cursor",
+        "extra_tools",
+        "seed",
+    },
+)
+register(
+    "visual_tasks_campaign@full_game",
+    NotARobotEnv,
+    split="eval",
+    metadata=NotARobotEnv.task_metadata(None, "local", local_campaign=True),
+    mode="local",
+    target_level=None,
+    local_campaign=True,
+)

@@ -10,8 +10,8 @@ from types import SimpleNamespace
 import pytest
 
 from examples.not_a_robot.codex_smoke import (
-    FIRST_TEN,
     PROMPT,
+    REFERENCE_TASKS,
     _parse_args,
     build_command,
     collect_result,
@@ -31,6 +31,9 @@ def run_files(tmp_path):
         reasoning_effort="xhigh",
         max_seconds=600,
         max_steps=150,
+        campaign=False,
+        seed=0,
+        reference_instance="default",
     )
     thread_id = str(uuid.uuid4())
     (task_root / "codex.stdout.jsonl").write_text(
@@ -112,6 +115,8 @@ def test_command_has_exact_model_and_gui_only_configuration(run_files):
     assert server["env"]["PYTHONDONTWRITEBYTECODE"] == "1"
     assert server["args"][server["args"].index("--task") + 1] == "neal_01"
     assert server["args"][server["args"].index("--model") + 1] == "gpt-6-astra"
+    assert server["args"][server["args"].index("--seed") + 1] == "0"
+    assert server["args"][server["args"].index("--reference-instance") + 1] == "default"
 
 
 def test_success_requires_current_thread_context_and_environment_manifest(run_files):
@@ -122,6 +127,56 @@ def test_success_requires_current_thread_context_and_environment_manifest(run_fi
     evidence = json.loads((task_root / "client_model_evidence.json").read_text())
     assert evidence["client_configuration_matches"]
     assert not evidence["provider_model_cryptographically_verified"]
+
+
+def test_campaign_launcher_targets_one_full_game(run_files, tmp_path):
+    args, task_root, *_ = run_files
+    parsed = _parse_args(
+        [
+            "--campaign",
+            "--artifact-root",
+            str(tmp_path / "new-run"),
+            "--browser-executable",
+            "/chrome",
+        ]
+    )
+    assert parsed.campaign and parsed.tasks == ["full_game"]
+    with pytest.raises(SystemExit):
+        _parse_args(
+            [
+                "--campaign",
+                "--tasks",
+                "neal_01",
+                "--artifact-root",
+                str(tmp_path / "other"),
+                "--browser-executable",
+                "/chrome",
+            ]
+        )
+    args.campaign = True
+    command = build_command(args, "full_game", task_root, "/bin/uv")
+    config = tomllib.loads(
+        "\n".join(command[i + 1] for i, token in enumerate(command) if token == "-c")
+    )
+    bridge_args = config["mcp_servers"]["local_game"]["args"]
+    assert "--campaign" in bridge_args and "--task" not in bridge_args
+
+
+def test_missing_task_is_not_evaluated_as_a_model_failure_or_success(run_files):
+    args, task_root, home, _, _, manifest = run_files
+    manifest.write_text(
+        json.dumps(
+            {
+                "outcome": "unsupported_task",
+                "recording_complete": True,
+                "data": {"cleanup_complete": True},
+            }
+        )
+    )
+    result = collect_result(args, task_root, home, 0, False)
+    assert result["blocked_by_missing_task"]
+    assert result["recording_complete"] and result["cleanup_complete"]
+    assert not result["evaluated"] and not result["success"]
 
 
 @pytest.mark.parametrize(
@@ -226,7 +281,7 @@ def test_infrastructure_or_missing_evidence_never_counts_as_pass(run_files, fail
 def test_cli_defaults_and_existing_artifacts_are_not_overwritten(tmp_path):
     root = tmp_path / "new-run"
     args = _parse_args(["--artifact-root", str(root), "--browser-executable", "/chrome"])
-    assert args.tasks == list(FIRST_TEN)
+    assert args.tasks == list(REFERENCE_TASKS)
     assert args.model == "gpt-6-astra" and args.reasoning_effort == "xhigh"
     assert args.max_seconds == 600 and args.max_steps == 150
     root.mkdir()
@@ -241,7 +296,7 @@ def test_cli_defaults_and_existing_artifacts_are_not_overwritten(tmp_path):
         ["--max-seconds", "0"],
         ["--max-steps", "0"],
         ["--tasks", "neal_01", "neal_01"],
-        ["--tasks", "neal_11"],
+        ["--tasks", "neal_48"],
     ],
 )
 def test_cli_rejects_invalid_or_duplicate_work(tmp_path, extra):

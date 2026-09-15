@@ -1,0 +1,279 @@
+{
+  "archives": {
+    "first10": "a2900366ef7ef7ea18312b607d62b65e003290ff97a20d4318b00e5f740323d2",
+    "expansion": "65af97b1434dfdc60ed8bae99b48941edcbdc14d5db1e24f0456d5e0f7769c40",
+    "incremental": "a887ec7576b86aa933af7818788192f6193f65e99c46bb70d0e6dba0a0981980"
+  },
+  "files": {
+    "level08_incremental_reference.jpg": {
+      "archive": "incremental",
+      "member": "tasks/level_08/attempts/attempt_602/initial.jpg",
+      "sha256": "2a2968a3d0698886347f538f54f847dbb7c66dcc48aee3401f464c6b03e5ec7e"
+    },
+    "level02_background.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level02_background.webp",
+      "sha256": "a73362e169465bdd5e3246cf94c39d4930389f1658120cb0755f408d553484bd"
+    },
+    "level04_image_01.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level04_image_01.webp",
+      "sha256": "3470ab900bf688e932df9b3c05b17b4018bdd69aeee8758289230e734f27bef8"
+    },
+    "level04_image_02.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level04_image_02.webp",
+      "sha256": "43d09975835ee196f61fdaf829e1e355c4c34c62ec5726a5d54a42323567d247"
+    },
+    "level04_image_03.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level04_image_03.webp",
+      "sha256": "4b1652e23d28da209192f8d884710f5418a0e11887fcf9886f4da4e5be9b04b4"
+    },
+    "level04_image_04.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level04_image_04.webp",
+      "sha256": "a64453949ab3d0aab0af705982720eb2e1ca818e3fc43a893ae796bcdf7cb2ad"
+    },
+    "level04_image_05.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level04_image_05.webp",
+      "sha256": "2fbd1458e55671bb23ee650ff0906323e28613f16ac939d93a846bc0c2f39afa"
+    },
+    "level04_image_06.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level04_image_06.webp",
+      "sha256": "1a380ceb88d8fe9099fa8e94a4d9521250094fdc4206c51a2ad3042015120683"
+    },
+    "level04_image_07.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level04_image_07.webp",
+      "sha256": "749581ffd77456272a502c25735b971189c47d012265c0f65303dce94a931341"
+    },
+    "level04_image_08.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level04_image_08.webp",
+      "sha256": "6f9057b8c998c208b8fc6ac5ed594d34d41ae003c58a94ee3084be3eb2c9b4cc"
+    },
+    "level04_image_09.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level04_image_09.webp",
+      "sha256": "0aeaad75dc4ccd6d7a8f48c7e48f2944d96f7720be94b1cf26a0811581654051"
+    },
+    "level05_intersection.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level05_intersection.webp",
+      "sha256": "9c49039c0005dcb73ecafb78ed9645d80ed6b3ce960774719e9854d3df4dc49a"
+    },
+    "level09_background.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level09_background.webp",
+      "sha256": "3597867bb8ed5a245e279fe053918be829fea731cd3db518172e40d633fb4d25"
+    },
+    "level10_grass.webp": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level10_grass.webp",
+      "sha256": "1f567515d0fd62aaf824e45dc3d1325812570d69c49104b8caa425e540cf2049"
+    },
+    "level10_mole.png": {
+      "archive": "first10",
+      "member": "implementation_reference/assets/level10_mole.png",
+      "sha256": "bd03b3c5f5b3880b7d2bd457c224567b19e7a0f52b67492b01da2e3a2b8a9191"
+    },
+    "level08_reference.jpg": {
+      "archive": "first10",
+      "member": "tasks/level_08/attempts/attempt_101/initial.jpg",
+      "sha256": "6d87c48450c6293ad1cf3d436ce317c93d4fc61d51c17b328176e7b15775b3fb"
+    },
+    "level11_background.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_11/assets/0a153625a7057849.webp",
+      "sha256": "2fd8fde68a1b0a15933226fa088e8d2ef1232e98ecbb98369bda562e892a7579"
+    },
+    "level12_reference.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_12/attempts/attempt_301/initial.jpg",
+      "sha256": "75426a4a01d96a0d4ab06514945a183de5f25fa7d4a71d99674cbd9ac60c2239"
+    },
+    "level13_background.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_13/assets/6efd41a09d9077cc.webp",
+      "sha256": "156a2037028f5844b471dcef3e984d6cf0c3c9d89b4d523550a769e715b2dddc"
+    },
+    "level30_background.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_30/assets/61eca44eeeacdf4e.webp",
+      "sha256": "c1d36f7744858eb8ae8bf246ce7a11956666dd89391e2671798fe17fa22bd86e"
+    },
+    "level31_background.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_31/assets/implementation_reference/7752aa99e5b9e75fa747f50a112828f4a6caeeb01ae2866d18ffb8204194a4e5.webp",
+      "sha256": "7752aa99e5b9e75fa747f50a112828f4a6caeeb01ae2866d18ffb8204194a4e5"
+    },
+    "level46_background.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_46/assets/implementation_reference/9a3ebec2236dc3ad44bb1d5dda309d650096b0cfa1db469321df4cf49f621ccb.webp",
+      "sha256": "9a3ebec2236dc3ad44bb1d5dda309d650096b0cfa1db469321df4cf49f621ccb"
+    },
+    "level33_reference.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_33/attempts/attempt_501/initial.jpg",
+      "sha256": "3e90bafe5f5f721fd589491993695a4c7dc60ef4ee0415f7e1d3cb3b074e4320"
+    },
+    "level21_arrow.png": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_21/assets/arrow.png",
+      "sha256": "5c017c848770b75ce617446155434444cc0fe0a6fc4bc09927c9894a8f46fd9f"
+    },
+    "level21_diamond.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_21/assets/diamond.webp",
+      "sha256": "c1590a98a7f7be1f171898ce01f6f488ee5bbb6f6ec4b2f36c67e623e5d3cf71"
+    },
+    "level21_log.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_21/assets/oak-log.webp",
+      "sha256": "79c70144b3bc9b1d4d1e7557c75be827ec84a91888fea351dbd417d6ea8d1bd9"
+    },
+    "level21_planks.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_21/assets/oak-planks.webp",
+      "sha256": "d0993c038e94f54093ff47420ccd33f152a3e637c41265f66f3c72fb42f18e24"
+    },
+    "level21_button.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_21/assets/oak-button.webp",
+      "sha256": "3b8af7a646bbef5b22a1992dd879de5bbb3ecec7065ce34d3a8bfc21ea88f609"
+    },
+    "level21_stick.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_21/assets/stick.webp",
+      "sha256": "6d35957be0a24e0be097219c1541853e433a10401fc2e154c41f872532fe2724"
+    },
+    "level21_pickaxe.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_21/assets/diamond-pickaxe.webp",
+      "sha256": "1791784396b235e4e5ddcab24dd2379496495266e52bcdfd58d9de915ece4f53"
+    },
+    "level29_image_01.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_29/assets/ece098b6f7adb2e0.webp",
+      "sha256": "f80b9569ec064f34aa9ddd08dc79c4a7169b468a79ea3807c847445fd99806b6"
+    },
+    "level29_image_02.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_29/assets/0c190a548d814194.webp",
+      "sha256": "9b310c7e802cdd1846e52687f883e9fdd62606681372475bb1b815529e74a064"
+    },
+    "level29_image_03.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_29/assets/3ca213d4c3d4846f.webp",
+      "sha256": "e984fea3abe0efd922f9eca79dccb7821313371df118ad7d9b49b202d0665235"
+    },
+    "level29_image_04.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_29/assets/bd2832e3c137f70b.webp",
+      "sha256": "a86e7e5a5019fa007b1bf930c0ae638151b2a478bede0aaf314608252466b3ec"
+    },
+    "level29_image_05.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_29/assets/78fbf1ef770649c3.webp",
+      "sha256": "b9d5e97f6d7d2c5cd2f15c38d449e6a156a31c45601efc365edc6595c395b2c4"
+    },
+    "level29_image_06.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_29/assets/38f12dcbb58ff6b0.webp",
+      "sha256": "457610c9dd9126b2bdc5c8cf86a385241be40c24ee4dcce43d263b5a67c15378"
+    },
+    "level29_image_07.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_29/assets/0f026e272649f138.webp",
+      "sha256": "94187f67613e3a64e6697eb6dc54bcbf4570f490ed21ad4f9164ff08b223ced2"
+    },
+    "level29_image_08.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_29/assets/540b4ec8e91f25f1.webp",
+      "sha256": "c580a3a8defd425abdd7ff7259cf51beb03e8ee6c274e831ac6553a7b8bc9c67"
+    },
+    "level29_image_09.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_29/assets/73f119f51838ab44.webp",
+      "sha256": "4ae45ced417c6cc85d0df14af8d1a28395f5fac351cb0d5583ce655498722960"
+    },
+    "level24_stage01.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_24/attempts/attempt_303/initial.jpg",
+      "sha256": "d4350c255be721f5446b1cf1daeb65c25eb72df30abfda7551dab033999a31a2"
+    },
+    "level24_stage02.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_24/attempts/attempt_303/stage1_after_submit.jpg",
+      "sha256": "b752a0af80b48af950f610f879d36df5ce036855d7060e66e86717f6e26178c9"
+    },
+    "level24_stage03.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_24/attempts/attempt_303/stage2_after_submit.jpg",
+      "sha256": "976564d2e01191c0c544fe7f473417ae6edaecf0969692161a71cab6e6928896"
+    },
+    "level24_stage04.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_24/attempts/attempt_303/stage3_after_submit.jpg",
+      "sha256": "c1b8f077c20b047701f38565437b8d2403916d4e411f94aebf3974c51b101f42"
+    },
+    "level18_state00.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_18/attempts/attempt_401/initial.jpg",
+      "sha256": "e7c54fca518e2409d58c1cc202d3cd80dab6882dd46dc8ca573c01932a4238f9"
+    },
+    "level18_state01.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_18/attempts/attempt_401/round1_stable.jpg",
+      "sha256": "e970bae239e2cad2f0bd1b9b0be09fcd72b5978f662a8ab414c4fced8ce60cdf"
+    },
+    "level18_state02.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_18/attempts/attempt_401/round2_stable.jpg",
+      "sha256": "f3da3a03587d84704943475b730f294a843bdb5b0db258a1dbae020c3f87b4a7"
+    },
+    "level18_state03.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_18/attempts/attempt_401/round3_stable.jpg",
+      "sha256": "87e93d98a371b665736b449937603f4fe9fa9535dfa32905dc6da1c55d2cec5c"
+    },
+    "level18_state04.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_18/attempts/attempt_401/round4_stable.jpg",
+      "sha256": "e9e8367e1cafb16769e95b451844fe92686c14121c3726ff7ee679b2d15537ec"
+    },
+    "level18_state05.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_18/attempts/attempt_401/round5_stable.jpg",
+      "sha256": "ae0b442df2550bede70bebbe53b10279d5b1c2d0f8a3f2f7040ce394b473ce02"
+    },
+    "level18_state06.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_18/attempts/attempt_401/round6_stable.jpg",
+      "sha256": "29189fd9e4a21fc550c6ff3cc180e4ff83ae970e75121469b7d89784225702b0"
+    },
+    "level18_state07.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_18/attempts/attempt_401/round7_stable.jpg",
+      "sha256": "d6469353f81ff116315fdf84b4b7258e92f90258c7dfaf103df69ec04ffa8e20"
+    },
+    "level18_state08.jpg": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_18/attempts/attempt_401/before_submit.jpg",
+      "sha256": "8ed6535cd5274b50074cc2f0b34be441578db748eb2a580b56197a37dcc53b29"
+    },
+    "level22_spritesheet.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_22/assets/spritesheet.webp",
+      "sha256": "03e2b4b7f75d68b78dc9ba40eabcd6ba22869cf2cc533dc986507ec8bf457437"
+    },
+    "level22_net.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_22/assets/net.webp",
+      "sha256": "089caa6465cf490c93ba68ff66a6eb57146b6dcbd2359f957371ffd22e30a8ea"
+    }
+  }
+}

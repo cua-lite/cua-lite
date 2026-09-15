@@ -40,8 +40,12 @@
   }
   const task = catalog.tasks.find((item) => item.id === taskId);
   if (!task) throw new Error(`Unknown task: ${taskId}`);
+  const referenceInstance = query.get("instance") ?? "default";
+  if (referenceInstance !== "default" && !Object.hasOwn(task.reference_variants || {}, referenceInstance)) {
+    throw new Error(`Unknown reference instance ${referenceInstance} for ${taskId}`);
+  }
   if (task.reference?.fidelity === "captured_instance") {
-    await window.renderNealTask({task, seed, version: catalog.version});
+    await window.renderNealTask({task, seed, version: catalog.version, referenceInstance});
     return;
   }
   let randomState = seed >>> 0;

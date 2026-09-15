@@ -1,7 +1,9 @@
 # Reference-based first ten tasks
 
-This experiment reimplements ten **synthetic game** tasks from the supplied
-Neal captures. It does not operate real CAPTCHA services, bypass access gates,
+This document covers the first ten **synthetic game** reconstructions from the
+supplied Neal captures. For the expanded catalog, see
+[current support](/examples/not_a_robot/SUPPORT.md). The experiment does not
+operate real CAPTCHA services, bypass access gates,
 contain original game source, or implement all 48 levels. All changes are in
 `examples/not_a_robot/`, reusing CUA-Lite registration, `gym.make`, canonical GUI
 actions and episode recording. Core and Slime behavior are unchanged. The eight
@@ -57,6 +59,11 @@ The supplement has 199 screenshots, 14 standalone artwork files and nine
 recorded official-embed completion messages: levels 1–5 and 7–10. It contains no
 continuous video or level-six winning completion.
 
+The later incremental archive adds a visible level-six refresh-to-win flow and
+second captured instances for levels seven and eight. These are visible outcomes,
+not saved official completion messages. See
+[incremental evidence and usage](/examples/not_a_robot/INCREMENTAL.md).
+
 The importer verifies the archive and each allowlisted file, never extracts
 arbitrary members, and refuses to overwrite different user bytes. Its 15 files
 are the 14 artwork files plus the level-eight successful instance's screenshot.
@@ -72,9 +79,9 @@ unknown: access to the archive does not confer an artwork license.
 | `neal_03` | Whole-raster distorted text, interference curves, input/Submit | Authored deformation and timing; audio unavailable; broader normalization |
 | `neal_04` | Nine original photos and captured vegetable selection | Other image sets and classification rules |
 | `neal_05` | Click-to-rotate tiles, captured initial orientation and accepted assembly | 160 ms transition and other initial arrangements |
-| `neal_06` | O opens center, legal turns, both observed draw sequences, Verify/refresh | Opponent candidate, 350 ms reply; original winning route unverified |
-| `neal_07` | Captured 10×10 letters and individual word-cell selection | Crossing words and random placement |
-| `neal_08` | Successful instance's car photo, real input/Submit | Screenshot-derived image; broader whitespace/case behavior |
+| `neal_06` | O opens center, legal turns, observed empty-board/X-first refresh and visible winning route | Seeded win/block/free-cell opponent fits observed reply candidates; original AI, tie distribution and 350 ms reply remain inferred |
+| `neal_07` | Two explicit captured 10×10 instances; shared crossing cell selected once in the incremental instance | Other crossing layouts and original random generator |
+| `neal_08` | Two separately selected car photos, real input/Submit, instance-specific accepted strings | Screenshot-derived images; broader whitespace/case behavior |
 | `neal_09` | Quadtree split, depth-four selection toggles, captured 31-cell accepted set | Other photos, boundary tolerance and transition timing |
 | `neal_10` | Real-time moles, original normal/hit sprite frames, five distinct hits then Verify | Spawn/lifetime timing, penalties and universal threshold |
 
@@ -86,18 +93,21 @@ claim that hit artwork was missing was incorrect.
 not pixel-perfect or generator-level parity. Limitations remain in task metadata.
 The fixed captured challenges are not an original random distribution. `seed`
 affects local dynamics, not a recovered original seed. Refresh restarts the
-same captured instance and preserves episode mistakes/events. Arial/Georgia may
+same captured instance and preserves episode mistakes/events; tic-tac-toe refresh
+clears the board for X to start instead of repeating the initial O opening. Arial/Georgia may
 resolve to host fallback fonts; browser/font versions matter for visual parity.
 
-The tic-tac-toe candidate takes an immediate win, otherwise blocks an immediate
-X win, otherwise selects the first empty corner `[0,2,6,8]`, then the first empty
-edge `[1,3,5,7]`. It reproduces both recorded games but is not a recovered original
-algorithm. Do not weaken it to manufacture model success. Draws are not success;
-the missing original winning route remains a fidelity gap despite green tests.
-Exhaustive enumeration of the implemented legal turns gives **zero X-winning
-paths**, 80 O-winning terminal paths and 14 draws. This is a partial reconstruction,
-not a solvable benchmark task: a model's non-success here is not evidence of model
-inability. Original normal-UI winning evidence is required to finish this level.
+The tic-tac-toe opponent selects uniformly with the local seeded RNG among
+immediate O wins; if none, immediate X threats; otherwise all empty cells. This
+allows the observed edge opening and either side of a fork. Every recorded reply
+in the two earlier draws and new winning flow belongs to these candidates, but
+priority and distribution are inferred: this is not exact replay or recovered AI.
+The same policy runs before and after refresh, whose RNG stream continues;
+environment reset restarts the seed. No move sequence or winning seed is injected.
+Only a real X line followed by Verify succeeds; losses and draws do not.
+Version 0.6.0 replaces the older deterministic corner-first candidate because
+the newly supplied normal-play replies include moves that candidate could not
+make. Historical results remain attached to their frozen earlier runtime.
 
 Moles spawn at inferred 850–1349 ms intervals and remain active for 1200–1999 ms.
 Time continues during inference: stale screenshots may cause genuine missed
@@ -107,7 +117,8 @@ captured instance's local rule, not a universal claim about the original game.
 ## Engineering tests versus model attempts
 
 Use an authenticated Codex CLI with access to the requested model. The launcher
-defaults to `gpt-6-astra` with `xhigh`; omit `--tasks` to attempt all ten:
+defaults to `gpt-6-astra` with `xhigh`. Always select tasks for a bounded smoke:
+omitting `--tasks` now selects all 25 implemented reference paths, not only ten.
 
 ```bash
 uv run --no-project --python /path/to/python python \
@@ -138,6 +149,22 @@ NEAL_BROWSER_EXECUTABLE=/path/to/chrome PYTHONDONTWRITEBYTECODE=1 \
 ```
 
 The Codex MCP bridge offers only `get_observation`, `computer`, and `finish`.
+The generic prompt permits screenshot-grounded retries, not blind answer enumeration.
+The bridge uses no additional post-action settle sleep; explicit waits remain
+available and each child action still has an archived screenshot. Feedback includes
+remaining time/steps, screenshot acquisition start/end times and image age when
+feedback is constructed. The same controller deadline governs feedback and
+execution. Cached terminal responses retain their original measurement timestamp.
+Animations continue during inference, so a low age in feedback does not guarantee that
+the next model action will still match the visible dynamic state. Keyboard guidance
+uses canonical lowercase tokens such as `["ctrl", "a"]`.
+`get_observation` optionally accepts a normalized `[left, top, right, bottom]`
+`region` and returns both the full screenshot and a magnified crop. This is a
+nearest-neighbor enlargement of those same pixels (up to 4x, longest edge at most
+1600 pixels), not DOM access or extra image detail. Actions always use the full
+screenshot's coordinates. The crop, its source image hash, acquisition interval,
+rectangle and next decision link are archived. This is needed because browser
+zoom shortcuts do not change the page scale in the tested headless Chromium.
 It returns screenshots and public feedback, never DOM, selectors, game source,
 target sets or evaluation-only state. Supplied public action summaries, requested
 actions, actual GUI primitives, observations, timestamps, errors, retries and
@@ -165,8 +192,9 @@ be reported as a fully evaluated attempt.
 
 ## Remaining reference work
 
-Highest priority: a genuinely winning normal-UI level-six flow with its official
-completion message. Next: continuous level-three/ten videos, rotation/split
-transitions, refresh variants and clear rejected submissions. These independent
-instances do not reproduce the main site's sequential 1–10 campaign. Levels
-11–48 need their own evidence and implementation.
+The new visible level-six win resolves the missing normal-UI flow, but a saved
+official completion event, multiple opponent games and timing remain useful.
+Other gaps include continuous level-three/ten videos, rotation/split transitions,
+refresh variants and same-instance accepted/rejected text comparisons. The local
+campaign controller and expanded task coverage are documented in
+[SUPPORT.md](/examples/not_a_robot/SUPPORT.md); all 48 are not implemented.

@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from examples.not_a_robot import registration  # noqa: F401
+from examples.not_a_robot import local_tasks, registration  # noqa: F401
 from examples.not_a_robot.env import LIVE_ENVS, NotARobotEnv
 from examples.not_a_robot.local_tasks import CATALOG, LOCAL_TASKS, LocalTaskServer
 from lite import gym
@@ -72,6 +72,53 @@ def test_local_server_only_serves_bundled_assets():
         connection.close()
         server.close()
     assert not server._thread.is_alive()
+
+
+def test_local_server_serves_partial_reference_import(tmp_path, monkeypatch):
+    reference_root = tmp_path / "reference_assets"
+    reference_root.mkdir()
+    (tmp_path / "index.html").write_bytes(b"preview")
+    (reference_root / "existing.webp").write_bytes(b"verified-image")
+    monkeypatch.setattr(local_tasks, "ASSET_ROOT", tmp_path)
+    monkeypatch.setattr(local_tasks, "REFERENCE_ROOT", reference_root)
+    monkeypatch.setattr(
+        local_tasks,
+        "ASSETS",
+        {
+            "/": ("index.html", "text/html"),
+            "/reference_assets/existing.webp": ("reference_assets/existing.webp", "image/webp"),
+            "/reference_assets/missing.webp": ("reference_assets/missing.webp", "image/webp"),
+        },
+    )
+    monkeypatch.setattr(
+        local_tasks,
+        "REFERENCE_HASHES",
+        {
+            "existing.webp": hashlib.sha256(b"verified-image").hexdigest(),
+            "missing.webp": "0" * 64,
+        },
+    )
+    server = LocalTaskServer(require_reference=True)
+    parsed = urlsplit(server.origin)
+    connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
+    try:
+        for path, expected_status in (
+            ("/", 200),
+            ("/reference_assets/existing.webp", 200),
+            ("/reference_assets/missing.webp", 404),
+        ):
+            connection.request("GET", path)
+            response = connection.getresponse()
+            response.read()
+            assert response.status == expected_status
+        assert "reference_assets/existing.webp" in server.asset_hashes
+        assert "reference_assets/missing.webp" not in server.asset_hashes
+    finally:
+        connection.close()
+        server.close()
+    (reference_root / "existing.webp").write_bytes(b"user-modified")
+    with pytest.raises(ValueError, match="hash mismatch"):
+        LocalTaskServer(require_reference=True)
 
 
 @pytest.fixture
@@ -221,6 +268,7 @@ async def test_local_tasks_complete_through_canonical_actions(local_env, task_id
         "label",
         "version",
         "seed",
+        "reference_instance",
         "status",
         "mistakes",
         "progress",

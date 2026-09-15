@@ -27,6 +27,12 @@ ASSETS = {
     "/tasks.json": ("tasks.json", "application/json"),
     "/neal.js": ("neal.js", "text/javascript; charset=utf-8"),
     "/neal.css": ("neal.css", "text/css; charset=utf-8"),
+    "/neal_grids.js": ("neal_grids.js", "text/javascript; charset=utf-8"),
+    "/neal_boards.js": ("neal_boards.js", "text/javascript; charset=utf-8"),
+    "/neal_forms.js": ("neal_forms.js", "text/javascript; charset=utf-8"),
+    "/neal_replacements.js": ("neal_replacements.js", "text/javascript; charset=utf-8"),
+    "/neal_ducks.js": ("neal_ducks.js", "text/javascript; charset=utf-8"),
+    "/neal_camera.js": ("neal_camera.js", "text/javascript; charset=utf-8"),
 }
 ASSETS.update(
     {
@@ -39,6 +45,17 @@ ASSETS.update(
 )
 CATALOG = json.loads((ASSET_ROOT / "tasks.json").read_text())
 LOCAL_TASKS = {task["id"]: task for task in CATALOG["tasks"]}
+
+
+def task_reference(task_id: str, reference_instance: str = "default") -> dict | None:
+    """Resolve one captured reference without changing another instance's rules."""
+    task = LOCAL_TASKS[task_id]
+    if reference_instance == "default":
+        return task.get("reference")
+    variants = task.get("reference_variants", {})
+    if reference_instance not in variants:
+        raise ValueError(f"Unknown reference_instance {reference_instance!r} for {task_id}")
+    return variants[reference_instance]
 
 
 @dataclass(frozen=True)
@@ -54,6 +71,7 @@ class LocalTaskState:
     progress: int
     reason: str
     elapsed_ms: int
+    reference_instance: str = "default"
 
 
 class LocalTaskServer:
@@ -63,12 +81,12 @@ class LocalTaskServer:
         if require_reference and not REFERENCE_ROOT.is_dir():
             raise FileNotFoundError(
                 "Reference artwork is not imported. Run python -m "
-                "examples.not_a_robot.reference_assets /path/to/supplement.zip first."
+                "examples.not_a_robot.reference_assets /path/to/reference.zip first."
             )
         assets = {
             path: ((ASSET_ROOT / filename).read_bytes(), mime)
             for path, (filename, mime) in ASSETS.items()
-            if not filename.startswith("reference_assets/") or REFERENCE_ROOT.is_dir()
+            if not filename.startswith("reference_assets/") or (ASSET_ROOT / filename).is_file()
         }
         for name, expected in REFERENCE_HASHES.items():
             asset = assets.get(f"/reference_assets/{name}")

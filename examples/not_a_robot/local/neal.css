@@ -17,6 +17,7 @@ body.neal-mode { margin: 0; background: white; color: #111; font: 16px/1.3 Arial
 .neal-tile-face { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; background-position: center; background-size: cover; transition: transform 160ms ease; }
 .neal-tile[aria-pressed="true"] .neal-tile-face { transform: scale(.75); }
 .neal-tile[aria-pressed="true"]::after { content: "✓"; position: absolute; top: 4px; left: 4px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: white; background: #6398d7; font-size: 21px; line-height: 1; font-weight: 400; }
+.neal-fine-grid .neal-tile[aria-pressed="true"]::after { width: 45%; height: 45%; top: 0; left: 0; font-size: 9px; }
 .neal-footer { display: flex; align-items: center; justify-content: space-between; height: 50px; margin-top: 6px; padding-top: 6px; border-top: 1px solid #ddd; }
 .neal-game .neal-submit { min-width: 84px; height: 40px; padding: 0 18px; background: #638dd0; color: white; font-size: 16px; }
 .neal-game .neal-submit:disabled { background: #d3d3d3; }
@@ -50,6 +51,7 @@ body.neal-mode { margin: 0; background: white; color: #111; font: 16px/1.3 Arial
 .neal-text-picture.neal-plate-picture { height: auto; aspect-ratio: 424 / 280; border: 0; }
 .neal-plate-crop { position: absolute; inset: 0; overflow: hidden; }
 .neal-plate-crop img { position: absolute; display: block; width: 298.3490566%; max-width: none; height: auto; left: -7.0754717%; top: -62.8571429%; user-select: none; }
+.neal-game[data-reference-instance="incremental"] .neal-plate-crop img { width: 174.7641509%; left: -36.7924528%; top: -49.6428571%; }
 .neal-plate-picture .neal-refresh { color: white; }
 .neal-plate-picture .neal-refresh svg { visibility: hidden; }
 .neal-game.neal-checkbox-card { display: flex; align-items: center; justify-content: space-between; width: 316px; height: 76px; padding: 0 16px 0 14px; border: 1px solid #ddd; border-radius: 3px; background: #fafafa; box-shadow: 0 1px 4px #00000016; }

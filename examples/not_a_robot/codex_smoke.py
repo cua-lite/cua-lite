@@ -1,4 +1,4 @@
-"""Run bounded, screenshot-only Codex exec attempts against the first ten tasks.
+"""Run bounded, screenshot-only Codex exec attempts against implemented Neal tasks.
 
 Use ``python -m examples.not_a_robot.codex_smoke --artifact-root /new/run/path
 --browser-executable /path/to/chrome``. The artifact root must not exist.
@@ -21,22 +21,41 @@ import time
 import uuid
 from pathlib import Path
 
-FIRST_TEN = tuple(f"neal_{level:02d}" for level in range(1, 11))
+from .local_tasks import LOCAL_TASKS, task_reference
+
+REFERENCE_TASKS = tuple(task_id for task_id in LOCAL_TASKS if task_id.startswith("neal_"))
 PROMPT = """Evaluate the synthetic visual game using only the local_game MCP tools:
 get_observation, computer, and finish. Call get_observation first. Read the visible
 instructions and reason from screenshots only. Computer coordinates are normalized
-0..1000 across the complete screenshot. Use deliberate, bounded mouse and keyboard
-actions, then observe their results. Do not blindly click every cell or brute-force
-answers. Do not use a shell, files, source code, DOM, selectors, browser evaluation,
+0..1000 across the complete screenshot. For small text or unclear boundaries, use
+get_observation with a region to obtain a magnified crop; actions still use the
+full screenshot's coordinate system. Use deliberate, bounded mouse and keyboard
+actions, then observe their results. Persist toward completion within the supplied
+time and step budgets. A rejected submission is feedback, not a reason to stop:
+reinspect the screenshot and test bounded, visually supported alternatives. You may
+correct input formatting, reconsider ambiguous regions, undo selections, or use
+the visible refresh control. These evidence-based retries are not brute force.
+Do not blindly click every cell or enumerate arbitrary answers. Real-time targets
+continue moving during inference; use deliberate action batches and explicit waits
+when appropriate, and check the next screenshot before revising your plan.
+Do not use a shell, files, source code, DOM, selectors, browser evaluation,
 external sites, other tools, or prior answers. Give only short public action
-summaries, not private reasoning. When the game completes or you are stuck, call
-finish with an honest status and concise summary. A claim alone is not completion.
+summaries, not private reasoning. Call finish after verified completion, budget
+exhaustion, or exhausting reasonable screenshot-grounded approaches. Do not stop
+after one or two rejections while meaningful retries remain. Give an honest status
+and concise summary. A claim alone is not completion. In campaign mode, completing
+one level is not campaign completion: continue from each new level's screenshot
+until the environment reports a terminal outcome or you exhaust reasonable approaches.
 """
 
 
 def _parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tasks", nargs="+", choices=FIRST_TEN, default=list(FIRST_TEN))
+    target = parser.add_mutually_exclusive_group()
+    target.add_argument("--tasks", nargs="+", choices=REFERENCE_TASKS)
+    target.add_argument(
+        "--campaign", action="store_true", help="One ordered local 1-through-48 attempt"
+    )
     parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--browser-executable", required=True)
     parser.add_argument("--max-seconds", type=float, default=600)
@@ -45,11 +64,24 @@ def _parse_args(argv=None):
     parser.add_argument("--codex", default="codex")
     parser.add_argument("--model", default="gpt-6-astra")
     parser.add_argument("--reasoning-effort", default="xhigh")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--reference-instance", default="default")
     args = parser.parse_args(argv)
+    args.tasks = ["full_game"] if args.campaign else (args.tasks or list(REFERENCE_TASKS))
     if args.max_seconds <= 0 or not math.isfinite(args.max_seconds) or args.max_steps <= 0:
         parser.error("Time and step budgets must be finite and positive")
     if len(set(args.tasks)) != len(args.tasks):
         parser.error("Each task may appear only once per run")
+    if not 0 <= args.seed <= 4294967295:
+        parser.error("--seed must be an integer from 0 through 4294967295")
+    if args.campaign and args.reference_instance != "default":
+        parser.error("--reference-instance requires independent local tasks")
+    if not args.campaign:
+        for task in args.tasks:
+            try:
+                task_reference(task, args.reference_instance)
+            except ValueError as error:
+                parser.error(str(error))
     if args.artifact_root.exists():
         parser.error(
             "--artifact-root must name a new directory; existing runs are never overwritten"
@@ -68,8 +100,11 @@ def build_command(args, task: str, task_root: Path, uv: str) -> list[str]:
         "python",
         "-m",
         "examples.not_a_robot.codex_bridge",
-        "--task",
-        task,
+        *(["--campaign"] if args.campaign else ["--task", task]),
+        "--seed",
+        str(args.seed),
+        "--reference-instance",
+        args.reference_instance,
         "--artifact-root",
         str(task_root / "trajectory"),
         "--browser-executable",
@@ -237,6 +272,7 @@ def collect_result(
         "environment_manifest": str(manifests[0]) if len(manifests) == 1 else None,
         "environment_manifest_error": manifest_error,
         "outcome": outcome,
+        "blocked_by_missing_task": outcome == "unsupported_task",
         "recording_complete": recording_complete,
         "cleanup_complete": cleanup_complete,
         "evaluated": evaluated,

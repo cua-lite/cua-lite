@@ -1,16 +1,30 @@
-/* Evidence-bounded reconstructions of ten synthetic game instances.
+/* Evidence-bounded reconstructions of synthetic game instances.
  * The screenshot-only policy does not receive this script or evaluator state.
  * Fixed answers identify captured instances, not a recovered original generator.
  * Timing, refresh, audio, and the tic-tac-toe opponent are documented local rules.
  */
 "use strict";
 
-window.renderNealTask = async ({task, seed, version}) => {
+window.nealTasks = {};
+
+const ticTacToeLines = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+const ticTacToeCandidates = (board) => {
+  const empty = board.flatMap((mark, position) => mark ? [] : [position]);
+  for (const mark of ["O", "X"]) {
+    const candidates = empty.filter((position) => ticTacToeLines.some((line) =>
+      line.every((index) => index === position || board[index] === mark)));
+    if (candidates.length) return candidates;
+  }
+  return empty;
+};
+
+window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
   const level = Number(task.id.slice(-2));
   document.body.classList.add("neal-mode");
   const root = document.createElement("section");
   root.className = "neal-game";
   root.dataset.level = String(level);
+  root.dataset.referenceInstance = referenceInstance;
   root.dataset.status = "loading";
   root.setAttribute("aria-label", task.title);
   document.querySelector("main").append(root);
@@ -20,11 +34,11 @@ window.renderNealTask = async ({task, seed, version}) => {
     2: ["level02_background.webp"],
     4: Array.from({length: 9}, (_, index) => `level04_image_${String(index + 1).padStart(2, "0")}.webp`),
     5: ["level05_intersection.webp"],
-    8: ["level08_reference.jpg"],
+    8: [referenceInstance === "incremental" ? "level08_incremental_reference.jpg" : "level08_reference.jpg"],
     9: ["level09_background.webp"],
     10: ["level10_grass.webp", "level10_mole.png"],
   };
-  await Promise.all((imageNames[level] || []).map(async (name) => {
+  await Promise.all((window.nealTasks[level]?.assets || imageNames[level] || []).map(async (name) => {
     const image = new Image();
     image.src = asset(name);
     try {
@@ -35,7 +49,7 @@ window.renderNealTask = async ({task, seed, version}) => {
   }));
 
   const startTime = performance.now();
-  const state = {task_id: task.id, label: task.title, version, seed,
+  const state = {task_id: task.id, label: task.title, version, seed, reference_instance: referenceInstance,
     status: "in_progress", mistakes: 0, progress: 0, reason: ""};
   const events = [];
   let finishedAt = null;
@@ -133,7 +147,12 @@ window.renderNealTask = async ({task, seed, version}) => {
   const exactSelection = (selected, expected) => selected.size === expected.size &&
     [...selected].every((index) => expected.has(index));
 
-  if (level === 1) {
+  if (window.nealTasks[level]) {
+    const hooks = window.nealTasks[level].render({root, task, level, asset, button, heading,
+      newGrid, newTile, verifyFooter, exactSelection, state, emit, active, finish, reject, random});
+    refresh = hooks.refresh;
+    if (hooks.stopDynamic) stopDynamic = hooks.stopDynamic;
+  } else if (level === 1) {
     root.classList.add("neal-checkbox-card");
     const checkbox = button("neal-checkbox-target", "I'm not a robot");
     checkbox.setAttribute("role", "checkbox");
@@ -168,9 +187,13 @@ window.renderNealTask = async ({task, seed, version}) => {
     heading("Select all the squares with a", subjects[level]);
     const size = level === 2 ? 4 : level === 4 ? 3 : 10;
     const expected = new Set(level === 2 ? [2, 3, 6, 7] : level === 4 ? [1, 2, 5] :
+      referenceInstance === "incremental" ? [26, 36, 46, 56, 66, 76, 86, 96, 77, 75, 74] :
       [87, 76, 65, 54, 43, 32, 21, 10, 95, 96, 97, 98]);
-    const letters = ["UILIBEWESD", "NPVBVFGBUK", "YGVOOLKOYW", "KBIRHOYNDD", "CSUSGUASGP",
-      "LHFAPCWLWO", "KITIYOCWPN", "PMLUBJTFEJ", "JNWIYDVSRA", "IBUGUBIKEK"].join("");
+    const letters = (referenceInstance === "incremental" ?
+      ["PCJYGSFLYT", "FFIWSNMENV", "PLSIWDSUCL", "BSSOGOTHUB", "JOEWVEOWFE",
+        "PMYJDFPOLH", "LDFFRGSESM", "GNMWEKIBOL", "FFFCRAGSTO", "BPMTONNGAY"] :
+      ["UILIBEWESD", "NPVBVFGBUK", "YGVOOLKOYW", "KBIRHOYNDD", "CSUSGUASGP",
+        "LHFAPCWLWO", "KITIYOCWPN", "PMLUBJTFEJ", "JNWIYDVSRA", "IBUGUBIKEK"]).join("");
     const selected = new Set();
     const tiles = [];
     const grid = newGrid(size);
@@ -228,7 +251,8 @@ window.renderNealTask = async ({task, seed, version}) => {
     inputRow.append(input, submit);
     form.append(prompt, picture, inputRow);
     root.append(form);
-    const answer = level === 3 ? "YHRPCD" : "867V 309";
+    // Each captured plate keeps its own observed accepted spelling. No inferred normalization.
+    const answer = level === 3 ? "YHRPCD" : referenceInstance === "incremental" ? "JHB007" : "867V 309";
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (!active()) return;
@@ -298,7 +322,7 @@ window.renderNealTask = async ({task, seed, version}) => {
       const crop = document.createElement("div");
       crop.className = "neal-plate-crop";
       const photo = document.createElement("img");
-      photo.src = asset("level08_reference.jpg");
+      photo.src = asset(imageNames[8][0]);
       photo.alt = "Rear of a car and its license plate";
       photo.draggable = false;
       crop.append(photo);
@@ -349,18 +373,7 @@ window.renderNealTask = async ({task, seed, version}) => {
     grid.classList.add("neal-tic-grid");
     const board = Array(9).fill("");
     board[4] = "O";
-    const lines = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
-    const hasWon = (mark) => lines.some((line) => line.every((index) => board[index] === mark));
-    const winningMove = (mark) => {
-      for (let index = 0; index < 9; index++) {
-        if (board[index]) continue;
-        board[index] = mark;
-        const wins = hasWon(mark);
-        board[index] = "";
-        if (wins) return index;
-      }
-      return -1;
-    };
+    const hasWon = (mark) => ticTacToeLines.some((line) => line.every((index) => board[index] === mark));
     const tiles = [];
     const faces = [];
     let opponentPending = false;
@@ -386,10 +399,11 @@ window.renderNealTask = async ({task, seed, version}) => {
         const pendingRevision = revision;
         opponentTimer = setTimeout(() => {
           if (!active() || pendingRevision !== revision) return;
-          // Inferred candidate fitting both recorded games, not recovered original AI.
-          let move = winningMove("O");
-          if (move < 0) move = winningMove("X");
-          if (move < 0) move = [0, 2, 6, 8, 1, 3, 5, 7].find((position) => !board[position]);
+          // Observed replies fit win/block/free-cell candidates, including edge
+          // openings and either side of a fork. Priority and distribution remain
+          // inferred; the local seed is not an original challenge seed.
+          const candidates = ticTacToeCandidates(board);
+          const move = candidates[Math.floor(random() * candidates.length)];
           if (move !== undefined && move >= 0) {
             board[move] = "O";
             emit("move", {index: move, mark: "O"});
@@ -410,8 +424,10 @@ window.renderNealTask = async ({task, seed, version}) => {
       clearTimeout(opponentTimer);
       opponentPending = false;
       board.fill("");
-      board[4] = "O";
+      // Incremental attempt 602 observes this empty-board/X-first refresh.
+      // Keep the same tactical policy and continuing RNG stream before and after it.
       redraw();
+      emit("board_reset", {first_player: "X"});
     };
     stopDynamic = () => clearTimeout(opponentTimer);
     verifyFooter(() => {
