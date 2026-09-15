@@ -1,0 +1,12 @@
+agent_id: gpt
+agent_kwargs:
+  api_kwargs:
+    reasoning_effort: none
+    max_output_tokens: 4096
+env_id: androidworld
+env_kwargs:
+  loop_detect: 0
+  extra_tools:
+  - open_app
+  - response
+  - terminate
