@@ -16,19 +16,29 @@
 # AgentLab-aligned path — recommended for weak open models), "som" (set-of-marks;
 # qwen families only).
 #
-# WebArena (812 tasks) shares ONE mutable Docker backend, so for a faithful score
-# this runs the strict read/write split (see /lite/gym/envs/browsergym/README.md
+# This runner evaluates the paper-style 241-template subset: one instantiated
+# intent per exact `(intent_template_id, intent_template)` pair from WebArena's
+# 812 raw configs. Generate the committed prompt-data files with:
+#
+#   WebArena_SRC=~/ref/BrowserGym uv run python \
+#     devs/exps/eval/browsergym.webarena/export_template_tasks.py
+#
+# WebArena shares ONE mutable Docker backend, so for a faithful score this runs
+# the strict read/write split (see /lite/gym/envs/browsergym/README.md
 # "Strict read/write split"):
-#   1. READ  pass — non-mutating tasks, fully parallel ($CONCURRENCY), residue-immune
-#      on the clean baseline.
-#   2. WRITE pass — mutating tasks, serial (concurrency 1). WebArena's task-id order
-#      already IS the curated `depends_on` order (every parent has a lower id), so a
-#      serial pass in natural task order never lets an earlier writer's residue
-#      false-satisfy a later task.
-# Both passes write the same $LOG_ROOT; their filters are disjoint and rollout.py
-# skips completed tasks, so re-runs resume cleanly. For a rigorous number, start a
-# scoped singleton env-server and restart it between models so each run rebuilds
-# the WA stack fresh. GitLab cold boot can take 5-15 min; use
+#   1. READ  pass — non-mutating template-sampled tasks, fully parallel
+#      ($CONCURRENCY), residue-immune on the clean baseline.
+#   2. WRITE pass — mutating template-sampled tasks, serial (concurrency 1).
+#      WebArena's task-id order already IS the curated `depends_on` order (every
+#      parent has a lower id), so the write parquet is task-id ordered.
+#   3. RECONCILE — the two passes have disjoint specs, so each rewrites
+#      summary.json over its own subset only. A final read-only pass rebuilds one
+#      combined summary.json over the full 241-task subset after any optional
+#      EVAL_READ_FILTER/EVAL_WRITE_FILTER clauses.
+# All passes write the same $LOG_ROOT and rollout.py skips completed tasks, so
+# re-runs resume cleanly. For a rigorous number, start a scoped singleton
+# env-server and restart it between models so each run rebuilds the WA stack
+# fresh. GitLab cold boot can take 5-15 min; use
 # `--warm-singleton` before launching this runner:
 #
 #   env -u CUA_LITE_ENV_SERVER_URL -u CUA_LITE_ENV_SERVER_TOKEN \
@@ -129,6 +139,9 @@ ENV_ROOT="$ROOT/.exps/eval/browsergym.webarena"
 shopt -s nullglob
 PIPELINE_PATHS=(
   devs/exps/eval/browsergym.webarena/run.sh
+  devs/exps/eval/browsergym.webarena/export_template_tasks.py
+  devs/exps/eval/browsergym.webarena/webarena_241_templates.*.prompt_data.parquet
+  devs/exps/eval/browsergym.webarena/webarena_241_templates.manifest.*
   lite/core
   lite/agents
   lite/agents/extensions/browsergym
@@ -186,11 +199,15 @@ if [ ! -d "$COMMIT_DIR/$RUN_ID" ] && [ -d "$COMMIT_DIR" ]; then
 fi
 
 # model-family → rollout config dir; $MODE picks default.yaml / text_only.yaml / som.yaml.
-# GPT and Claude currently have only default.yaml committed for this env,
+# API and non-Qwen local families currently have only default.yaml committed for this env,
 # so $MODE applies to the Qwen arms only.
 case "$MODEL" in
   Qwen/Qwen3-VL-*-Instruct|Qwen/Qwen3-VL-*-Thinking) CFG=scripts/configs/qwen3_vl/default/browsergym.webarena/${MODE}.yaml ;;
   Qwen/Qwen3.5-*)                                      CFG=scripts/configs/qwen3_5/default/browsergym.webarena/${MODE}.yaml ;;
+  Qwen/Qwen3.8-*)                                      CFG=scripts/configs/qwen3_8/default/browsergym.webarena/${MODE}.yaml ;;
+  ByteDance-Seed/UI-TARS-1.5-7B)                       CFG=scripts/configs/ui_tars_15_v1/default/browsergym.webarena/default.yaml ;;
+  meituan/EvoCUA-*)                                    CFG=scripts/configs/evocua/default/browsergym.webarena/default.yaml ;;
+  inclusionAI/UI-Venus-2-*)                            CFG=scripts/configs/ui_venus_2/default/browsergym.webarena/default.yaml ;;
   gpt-*)                                               CFG=scripts/configs/gpt/default/browsergym.webarena/default.yaml ;;
   claude-*)                                            CFG=scripts/configs/claude/default/browsergym.webarena/default.yaml ;;
   *) echo "unknown model: $MODEL — add a case in $0" >&2; exit 1 ;;
@@ -223,26 +240,146 @@ if [ "${#EXTRA_ROLLOUT_ARGS[@]}" -gt 0 ]; then
   echo "         extra_args=${EXTRA_ROLLOUT_ARGS[*]}"
 fi
 
+PROMPT_DATA_DIR="$ROOT/devs/exps/eval/browsergym.webarena"
+ALL_PROMPT_DATA_BASE="$PROMPT_DATA_DIR/webarena_241_templates.all.prompt_data.parquet"
+READ_PROMPT_DATA_BASE="$PROMPT_DATA_DIR/webarena_241_templates.read.prompt_data.parquet"
+WRITE_PROMPT_DATA_BASE="$PROMPT_DATA_DIR/webarena_241_templates.write.prompt_data.parquet"
+for f in "$ALL_PROMPT_DATA_BASE" "$READ_PROMPT_DATA_BASE" "$WRITE_PROMPT_DATA_BASE"; do
+  if [ ! -f "$f" ]; then
+    echo "[run.sh] ERROR: missing prompt-data file: $f" >&2
+    echo "         regenerate with: WebArena_SRC=~/ref/BrowserGym uv run python devs/exps/eval/browsergym.webarena/export_template_tasks.py" >&2
+    exit 1
+  fi
+done
+
+ALL_PROMPT_DATA="$ALL_PROMPT_DATA_BASE"
+READ_PROMPT_DATA="$READ_PROMPT_DATA_BASE"
+WRITE_PROMPT_DATA="$WRITE_PROMPT_DATA_BASE"
+if [[ "$READ_EXTRA" != "True" || "$WRITE_EXTRA" != "True" ]]; then
+  ALL_PROMPT_DATA="$LOG_ROOT/.webarena_241_templates.filtered.all.prompt_data.parquet"
+  READ_PROMPT_DATA="$LOG_ROOT/.webarena_241_templates.filtered.read.prompt_data.parquet"
+  WRITE_PROMPT_DATA="$LOG_ROOT/.webarena_241_templates.filtered.write.prompt_data.parquet"
+  echo "[run.sh] deriving filtered prompt-data under $LOG_ROOT"
+  WA_ENV_ID="$EVAL_ENV_ID" \
+  WA_READ_FILTER="$READ_EXTRA" WA_WRITE_FILTER="$WRITE_EXTRA" \
+  WA_ALL_IN="$ALL_PROMPT_DATA_BASE" WA_READ_IN="$READ_PROMPT_DATA_BASE" WA_WRITE_IN="$WRITE_PROMPT_DATA_BASE" \
+  WA_ALL_OUT="$ALL_PROMPT_DATA" WA_READ_OUT="$READ_PROMPT_DATA" WA_WRITE_OUT="$WRITE_PROMPT_DATA" \
+    uv run --no-sync python - <<'PY'
+import os
+from pathlib import Path
+
+import pandas as pd
+
+import lite.gym as gym
+from lite.core.utils.filters import parse_filter
+from lite.utils.parquet import write_records_to_parquet
+
+env_id = os.environ["WA_ENV_ID"]
+keep_read = parse_filter(f"lambda m: ({os.environ.get('WA_READ_FILTER') or 'True'})")
+keep_write = parse_filter(f"lambda m: ({os.environ.get('WA_WRITE_FILTER') or 'True'})")
+
+
+def clean(value):
+    if isinstance(value, dict):
+        return {k: clean(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [clean(v) for v in value]
+    if hasattr(value, "tolist"):
+        return clean(value.tolist())
+    return value
+
+
+def load_records(path):
+    return [clean(row) for row in pd.read_parquet(path).to_dict("records")]
+
+
+def keep(row, fn):
+    env_key = row["metadata"]["env_key"]
+    row_env_id, task_id = env_key.split("@", 1)
+    if row_env_id != env_id:
+        raise RuntimeError(f"unexpected env_key {env_key!r}; expected env_id {env_id!r}")
+    return fn(gym.registry.task_metadata(row_env_id, task_id))
+
+
+read_rows = [row for row in load_records(os.environ["WA_READ_IN"]) if keep(row, keep_read)]
+write_rows = [row for row in load_records(os.environ["WA_WRITE_IN"]) if keep(row, keep_write)]
+all_rows = read_rows + write_rows
+
+for rows, out in (
+    (read_rows, os.environ["WA_READ_OUT"]),
+    (write_rows, os.environ["WA_WRITE_OUT"]),
+    (all_rows, os.environ["WA_ALL_OUT"]),
+):
+    if not rows:
+        raise RuntimeError(f"filter produced zero rows for {out}")
+    write_records_to_parquet(rows, Path(out))
+
+print(
+    f"[prompt-data] read={len(read_rows)} write={len(write_rows)} "
+    f"all={len(all_rows)}"
+)
+PY
+fi
+echo "         prompt_data_read=$READ_PROMPT_DATA"
+echo "         prompt_data_write=$WRITE_PROMPT_DATA"
+
 # Common rollout args shared by both passes. max_steps is carried by the config's
 # env_kwargs, so nothing is overridden here.
 COMMON=(
   --model-id "$MODEL"
-  --env-id browsergym.webarena --splits eval
+  --env-id browsergym.webarena
   --config-path "$CFG"
   --log-root "$LOG_ROOT"
   "${EXTRA_ROLLOUT_ARGS[@]}"
 )
 
 # Pass 1 — READ: non-mutating tasks, fully parallel, residue-immune.
-echo "[run.sh] pass 1/2: READ (non-mutating, concurrency=$CONCURRENCY)"
+echo "[run.sh] pass 1/3: READ (non-mutating, concurrency=$CONCURRENCY)"
 HF_HUB_OFFLINE=1 uv run python scripts/rollout.py \
   "${COMMON[@]}" \
   --concurrency "$CONCURRENCY" \
-  --filter "lambda m: (not m.others.get('mutating')) and ($READ_EXTRA)"
+  --prompt-data "$READ_PROMPT_DATA"
 
 # Pass 2 — WRITE: mutating tasks, serial, in task-id (= depends_on) order.
-echo "[run.sh] pass 2/2: WRITE (mutating, concurrency=1)"
-HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
+echo "[run.sh] pass 2/3: WRITE (mutating, concurrency=1)"
+HF_HUB_OFFLINE=1 uv run python scripts/rollout.py \
   "${COMMON[@]}" \
   --concurrency 1 \
-  --filter "lambda m: m.others.get('mutating') and ($WRITE_EXTRA)"
+  --prompt-data "$WRITE_PROMPT_DATA"
+
+# Pass 3 — RECONCILE: rebuild ONE combined summary.json over all prompt-data
+# rows that were supposed to run. The read/write passes each summarize only
+# their own subset.
+echo "[run.sh] pass 3/3: RECONCILE combined summary over template subset"
+WA_ENV_ID="$EVAL_ENV_ID" WA_LOG_ROOT="$LOG_ROOT" WA_MODEL="$MODEL" WA_ALL_PROMPT_DATA="$ALL_PROMPT_DATA" \
+  uv run --no-sync python - <<'PY'
+import os
+from pathlib import Path
+
+from lite.infer.rollout import (
+    print_results,
+    rebuild_results,
+    resolve_prompt_data_tasks,
+    save_summary,
+)
+
+env_id = os.environ["WA_ENV_ID"]
+log_root = Path(os.environ["WA_LOG_ROOT"])
+specs = resolve_prompt_data_tasks(
+    os.environ["WA_ALL_PROMPT_DATA"],
+    effective_env_id=env_id,
+)
+results = rebuild_results(log_root, specs, 1)
+stats = print_results(results, specs, group_size=1)
+save_summary(
+    log_root / "summary.json",
+    results=results,
+    stats=stats,
+    specs=specs,
+    model=os.environ["WA_MODEL"],
+    env_id=env_id,
+    splits=["eval"],
+    group_size=1,
+)
+print(f"[reconcile] combined summary over {len(specs)} tasks -> {log_root / 'summary.json'}")
+PY
