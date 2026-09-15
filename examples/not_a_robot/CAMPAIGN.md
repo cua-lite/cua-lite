@@ -3,9 +3,11 @@
 The experimental controller can now attempt the local levels **1 through 48 in
 order**, using one browser, one global budget and one trajectory. This is not a
 claim that all 48 pages exist or that a full campaign has been completed. The
-catalog still implements 25 captured-instance paths, with level 39 limited to
-its unavailable-camera branch. The first missing sequential task is currently
-level 15; the controller never skips it to reach an implemented later task.
+catalog contains 25 captured-instance paths and 21 local mechanic variants,
+with level 39 limited to its unavailable-camera branch. The first missing
+sequential task is level 42; level 45 is also unavailable. The controller never
+skips missing tasks. Local variant completion is not original-site completion.
+See [variant limits](/examples/not_a_robot/LOCAL_EXPANSION.md).
 
 ## Run
 
@@ -84,6 +86,8 @@ each page. No second JavaScript transition authority is added.
 - Global budget exhaustion is truncation, a task failure terminates the campaign,
   and navigation/observation failures remain infrastructure errors. Only ordered
   completion of all 48 stages earns campaign reward 1.
+  A dependency failure first seen in the next stage's initial observation also
+  truncates that same call with reward 0, preserving the completed prefix.
 - A reset finalizes the old archive and starts a new campaign at 01. In-page
   refresh/retry preserves the current stage's original task behavior and events.
 
@@ -97,17 +101,20 @@ page-local event sequences and elapsed times restart on each page.
 `campaign_boundary` records the pending task and exact unexecuted action tail;
 `campaign_end` records the completed prefix and final campaign outcome.
 
-The bridge returns only the current screenshot, any crop of those same pixels,
-and public progress/budget/error information. Final old-stage frames remain in
-the archive; `controller_result` identifies the exact images actually delivered
-to the model. `model_decision` links back to the preceding delivered image/crop.
+The bridge returns the current screenshot, an optional crop or ordered sequence
+of real screenshots, and public progress/budget/error information. Final old-stage
+frames remain in the archive; `controller_result` identifies images prepared for
+the response, and `model_decision` links back to the preceding prepared frames.
+`controller_response_sent` records a successful transport write and flush while
+the archive is open. Neither event proves model receipt or understanding.
 No evaluator targets, source-reading tool or private chain-of-thought is exposed.
 
 Tests include real 01→02 transitions and a scripted GUI traversal of 01→14 that
-stops at the actual missing level 15 with reward 0. The latter uses known test
-answers and the existing local level-six opponent; it is not a model or original-
-site success. Injected missing-task and mocked final-controller boundary checks
-remain separate. None establishes gameplay through levels 15–48.
+injects a missing level 15 and stops with reward 0. Level 15 is implemented in the
+current catalog; this fixture is not evidence of reaching the real missing 42.
+The traversal uses known test answers and the local level-six opponent; it is not
+a model or original-site success. Mocked asynchronous-error and final-controller
+boundary checks remain separate. None establishes gameplay through levels 15–48.
 See [VALIDATION.md](/examples/not_a_robot/VALIDATION.md) for
 actual test/model outcomes and [ALL48_PLAN.md](/examples/not_a_robot/ALL48_PLAN.md)
 for the remaining full-scope gates.

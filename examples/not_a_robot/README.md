@@ -2,7 +2,13 @@
 
 ## Reference-based local levels
 
-The local catalog contains 25 implemented captured-instance task paths:
+Version 0.7.0 adds **21 source-derived local mechanic variants**, bringing the
+catalog to **46 independently playable Neal task paths**, plus eight older
+authored exercises. Levels 42 and 45 still require the unavailable dialogue
+backend and are not registered as completed tasks. The additions are not
+original-site parity: see [LOCAL_EXPANSION.md](/examples/not_a_robot/LOCAL_EXPANSION.md).
+
+The preserved baseline contains 25 captured-instance task paths:
 levels 01–14, 18, 21–22, 24, 29–31, 33–34, 39 and 46. Level 39 covers only the
 recorded unavailable-camera branch, not expression recognition.
 They are separate from the eight earlier
@@ -17,8 +23,8 @@ An experimental [local campaign controller](/examples/not_a_robot/CAMPAIGN.md)
 preserves one browser and trajectory across ordered levels. It stops at missing
 implementations; it is not a completed all-48 game or campaign result.
 
-Level-six opponent behavior remains inferred; new supplied captures show a normal
-refresh-to-win route, and the seeded local candidate fits the observed replies.
+Level-six opponent decisions and reply delays derive from source module 1121;
+the seeded random stream, timer cancellation and artwork remain local differences.
 Explicit second instances for 07/08 are documented in
 [INCREMENTAL.md](/examples/not_a_robot/INCREMENTAL.md); defaults stay unchanged.
 Dynamic timing and unobserved matching boundaries remain approximate. These are
@@ -215,10 +221,12 @@ produce their usual artifacts separately, but that path needs its own smoke test
 
 ## Further work
 
-For self-hosted work, continue the remaining 23 tasks and campaign according to
-[the reference audit and implementation plan](/examples/not_a_robot/ALL48_PLAN.md),
-with per-task tests and bounded model attempts. The 48 remote placeholders are
-not completed local tasks and must not be counted as such.
+For self-hosted work, complete the missing tasks 42/45 and address the documented
+camera, media and fidelity limits of the 46 registered local paths. Continue the
+campaign according to [the reference audit and implementation plan](/examples/not_a_robot/ALL48_PLAN.md)
+and [current local coverage](/examples/not_a_robot/LOCAL_EXPANSION.md), with per-task
+tests and bounded model attempts. The 48 remote placeholders are not completed
+local tasks and must not be counted as such.
 
 If resuming the remote experiment, validate permitted live access first, then
 verify a few representative levels,

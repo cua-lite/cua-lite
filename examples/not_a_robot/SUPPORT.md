@@ -1,10 +1,12 @@
 # Local Neal task support
 
-The current local catalog implements **25 captured-instance task paths**: 01–14,
-18, 21–22, 24, 29–31, 33–34, 39 and 46. Level 39 supports only its recorded
-unavailable-camera branch, not facial-expression recognition. The other 23 levels
-remain unfinished. An ordered campaign controller is available, but a completed
-1→48 campaign is not: it stops at the first missing implementation (currently 15).
+The local catalog contains **46 Neal task paths**: 25 preserved captured-instance
+paths plus 21 source-derived local mechanic variants. Levels **42 and 45 remain
+unimplemented** because their dialogue backend is unavailable. Level 39 remains
+limited to its unavailable-camera branch. Some spatial and media variants differ
+materially from the original. See [LOCAL_EXPANSION.md](/examples/not_a_robot/LOCAL_EXPANSION.md).
+An ordered campaign controller is available, but there is no completed 1-to-48
+campaign result: it cannot advance beyond missing level 42.
 See [CAMPAIGN.md](/examples/not_a_robot/CAMPAIGN.md) for its explicit mode and limits.
 Eight older authored exercises are separate and are not
 counted as reconstructed Neal levels.
@@ -14,6 +16,18 @@ service, database, GPU requirement or dependency on access to the Neal website.
 Each evaluation owns a loopback listener, Playwright browser and trajectory
 directory. A container can package that same runtime later; a verified container
 image and production multi-user env-server integration are not implemented yet.
+
+Level 44 bundles a pinned official Stockfish 17 Lite JS/WASM pair and chess.js
+1.4.0. The browser runs the engine in a same-origin Worker, offline, at Skill Level
+10 with a one-second search budget. A missing or failed engine is an explicit
+error; no substitute opponent is selected. The server permits same-origin Workers
+and WebAssembly compilation, not arbitrary JavaScript evaluation or external
+connections. See [dependency licenses and provenance](/examples/not_a_robot/local/vendor/spatial/PROVENANCE.md).
+The original chess-rule version and deployed WASM byte identity remain unverified.
+Fatal local runtime errors produce `outcome="infra_error"` and a truncated attempt,
+which is excluded from model success/failure evaluation even when its archive and
+cleanup are complete. A genuine completed White checkmate does not require a
+further engine reply before Verify can accept it.
 
 ## Private import and preview
 
@@ -34,6 +48,10 @@ uv run --no-project --python /path/to/python python \
   /path/to/neal_all48_incremental_20260910_01.zip
 
 uv run --no-project --python /path/to/python python \
+  -m examples.not_a_robot.reference_assets \
+  /path/to/module_1070.js
+
+uv run --no-project --python /path/to/python python \
   -m examples.not_a_robot.local_tasks --port 8765
 ```
 
@@ -49,16 +67,26 @@ Then open your computer's `http://127.0.0.1:8765/`. The preview binds only to
 loopback, has no authentication layer and must not be exposed as a public server.
 Ctrl+C stops this owned preview. Evaluations do not need the preview running.
 
-The first ZIP imports 15 files; the second imports 38; the incremental ZIP adds
+The first ZIP imports 15 files; the second imports 49; the incremental ZIP adds
 one level-eight reference screenshot. The second ZIP's basename says
 31–48, but its reviewed tree also includes levels 11–30. The
 [manifest](/examples/not_a_robot/reference_manifest.json) pins exact archive and
-member hashes. Only the 54 allowlisted images are imported. Arbitrary ZIP paths,
+member hashes. Only 65 allowlisted images are imported, including one captured
+inkblot for level 20, nine face images for level 37 and the level-47 cover.
+Arbitrary ZIP paths,
 capture logs, scripts and bundled executables are not extracted or served.
 Different existing user bytes and symlinks are refused, not overwritten.
 Artwork remains private and Git-ignored because redistribution rights are unknown.
 Importing only one reviewed ZIP does not prevent unrelated already-imported tasks
 from running; a task needing absent images fails with an explicit boot error.
+
+The fourth input is the pinned, locally held analysis module, not a downloaded
+script to execute. The importer derives only `level47_chart.json`, verifies its
+SHA256 and preserves all 336 notes in source order. Neither the JavaScript module
+nor other source files are copied or served. The chart is the 66th allowlisted
+asset and stays private and Git-ignored. A missing chart produces an explicit
+level-47 boot error, not a replacement generated chart. The original song and
+video are still required for original-media fidelity.
 
 Version 0.6.0 adds explicit `incremental` instances for 07 and 08, not two new
 levels. Preview them with `/?task=neal_07&instance=incremental&seed=0` or
@@ -74,14 +102,16 @@ for source limits and the evidence-based level-six opponent refinement.
 
 | Levels | Added behavior | Important limits |
 | --- | --- | --- |
-| 11, 12, 13, 29, 31 | Matched-image grids, toggle selection, exact Verify, refresh | One captured accepted set per task; no recovered random image generator or universal boundary rule |
-| 14 | All 56 statement cards in captured order, real scrolling and checkbox loading | Loading duration and distractor restoration are inferred |
+| 11 | Responsive 25-by-25 Waldo image grid, source-derived two-required-cell predicate with at most one extra cell, refresh | Captured image; no original-site selection-variant replay; shared card chrome and checkmark artwork remain approximate |
+| 12, 13, 31 | Matched-image grids, toggle selection, exact Verify, refresh | Fixed captured instances; refresh variant coverage and original-site boundary replay remain incomplete |
+| 29 | Nine fixed source images, one combined selection error allowed, forbidden fourth image always rejected | Game-specific labels, not factual classification; original-site boundary replay and original selection artwork unverified |
+| 14 | All 56 fixed statement cards; source-derived responsive 4/3/2/1-column embed grid and document scrolling; whole-card clicks, 700 ms green check/1600 ms completion and persistent 800 ms red-cross feedback | Authored branding/mark/spinner artwork, font fallback, missing original audio and local terminal timer cleanup; no original-site pixel-equivalence claim |
 | 21 | Inventory/held stacks, right-click single placement, material-consuming recipes, pickaxe verification | Slot generalization and stack merge/swap are local inferences; not an exact inventory-engine recovery |
 | 24 | Four successive visual-exam stages with live input/selection and Verify | Same captured instance, static recorded blur, untested normalization and color variants |
 | 30 | Adjacent-empty-cell sliding puzzle; verify actual solved image | Captured initial permutation, inferred animation timing; no fixed action-count shortcut |
 | 33 | Captured logo-glyph image with live input/Submit | Original capture quality retained; case/space normalization unverified |
 | 34 | Rendered mathematical expressions and full numerical-order verification | Host font rendering, deselection and reset differ in unmeasured ways |
-| 46 | Full-height 14×57 image grid and real scrolling | Captured accepted floor/cells only, boundary tolerance unknown |
+| 46 | Full-height 14×57 image grid, real scrolling, all eight source floor cells required with at most two extras | Original-site boundary replay and original selection artwork unverified |
 
 Levels 12, 18, 24 and 33 use CSS crops of unchanged reference screenshots; the old
 answers, surrounding capture UI and parent page are not shown in the game.
@@ -104,8 +134,10 @@ reference boundaries, required supplements and continuous-input calibration.
 
 `captured_instance` means an evidence-bounded reconstruction, not exact original
 parity. Metadata records the attempt, source ZIP and remaining limitations.
-Refresh/reset repeats the captured instance; `seed` does not select a recovered
-original random seed. See [first-ten limits](/examples/not_a_robot/FIRST10.md)
+Environment reset restores the initial instance; in-game Refresh follows each
+task's rules. Levels 05/07 generate new arrangements, while level 06 clears the
+board for X to start. `seed` does not select a recovered original random seed.
+See [first-ten limits](/examples/not_a_robot/FIRST10.md)
 and the [all-48 evidence and plan](/examples/not_a_robot/ALL48_PLAN.md).
 
 ## CUA-Lite and screenshot-only attempts
@@ -128,7 +160,7 @@ await env.close()
 For existing entrypoints, set
 `CUA_LITE_REGISTRATION_MODULES=examples.not_a_robot.registration`.
 For a small real Codex smoke, use existing CLI authentication and explicitly
-select tasks (omitting `--tasks` attempts all 25):
+select tasks (omitting `--tasks` attempts all 46 implemented entries):
 
 ```bash
 uv run --no-project --python /path/to/python python \
@@ -143,6 +175,16 @@ only `get_observation`, `computer` and `finish`. No DOM, source, evaluator answe
 shell or web tools are exposed to that client. The existing default requests
 `gpt-6-astra` and `xhigh`; access must already work through the installed CLI.
 No global authentication or configuration is changed.
+
+`get_observation` and `computer` optionally accept
+`sequence={"duration_seconds": 5, "interval_seconds": 0.1}`. A sequence returns
+ordered full-viewport screenshots with actual capture timestamps. It can start
+with the first observation or immediately after an action batch. Each additional
+screenshot is an ordinary environment step; budget, time, terminal and campaign
+boundaries still apply. A sequence is bounded to 10 seconds, 64 frames and 8 MiB
+of PNG bytes, and cannot be combined with a magnified `region`. Late sampling
+skips missed slots instead of claiming to reconstruct them. Check its stop reason
+and returned frame count; nominal spacing is not a capture-time guarantee.
 
 Trajectories archive screenshots/crops and hashes, public action summaries,
 requested and executed mouse/keyboard primitives, timestamps, task/stage events,

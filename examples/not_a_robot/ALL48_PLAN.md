@@ -1,5 +1,10 @@
 # All-48 reference audit and implementation plan
 
+This is the preserved 2026-09-11 audit and baseline evaluation history. For the
+subsequent 21 local mechanic variants and remaining backend/media gaps, see
+[LOCAL_EXPANSION.md](/examples/not_a_robot/LOCAL_EXPANSION.md). Historical
+completion counts and model scores below do not grade those new variants.
+
 Audit date: 2026-09-11 UTC. Scope: all 48 synthetic Neal game tasks, including
 independent task entry and eventual sequential campaign evaluation. This report
 tracks evidence and implementation progress, not completion of all 48 tasks.
@@ -51,7 +56,7 @@ local opponent, not a vision-model policy or proof of original-site fidelity.
 ## Input identity and verification
 
 Inspected input:
-`/mnt/weka/home/lingjie.chen/neal_levels31_48_reference_20260910_040601.zip`.
+`neal_levels31_48_reference_20260910_040601.zip`.
 
 - Size: 383,073,153 bytes.
 - SHA256: `65af97b1434dfdc60ed8bae99b48941edcbdc14d5db1e24f0456d5e0f7769c40`.
@@ -233,7 +238,7 @@ Raw event member SHA256:
 Completion member SHA256:
 `da2f744add95dfb01050434fa69ab2e6e5b7ac2a81f664e3aca59c5bc9b4d619`.
 Independent calculation and all 38 paired records are retained in
-`/mnt/weka/home/lingjie.chen/.tmp/neal-model-coverage.Yr2Fqz/audit_trade.py`
+the private reference workspace as `audit_trade.py`
 and `level28-accounting-audit.json` beside it. No archived program was executed.
 
 ## Level 36 completion and button-state evidence update

@@ -8,7 +8,7 @@ global credentials or remote branch was changed for this increment.
 ## Source and what it establishes
 
 User-supplied archive:
-`/mnt/weka/home/lingjie.chen/.codex/attachments/fc7567ca-f582-48c1-b46d-b32f98f079c2/neal_all48_incremental_20260910_01.zip`
+`neal_all48_incremental_20260910_01.zip`
 
 SHA256: `a887ec7576b86aa933af7818788192f6193f65e99c46bb70d0e6dba0a0981980`.
 Size: 1,734,213 bytes. The 123 files include the manifest itself; all 122 listed
@@ -29,7 +29,7 @@ capture. These limitations are retained rather than repaired into invented data.
 | 01 | Additional visible green-check evidence, correctly marked DOM-assisted | Exact loading duration; blocked parent captures are not gameplay failures |
 | 06 | Empty-board/X-first refresh and a visible win followed by level-seven transition | Full original opponent, tactical priority/tie distribution, reply timing, official message |
 | 07 | Explicit second 10×10 grid; STOPSIGN and BIKE share one selected cell, 11 unique cells | Other placements/generator; missing action return and capture clock continuity |
-| 08 | Separate JHB007 photo/input instance with visible transition to nine | Spaced/case normalization; standalone ambiguous attempt is not a success |
+| 08 | Separate JHB007 photo/input instance with visible transition to nine; source-derived ASCII space/hyphen removal | Original-site input-variant replay; standalone ambiguous attempt is not a success |
 | 36 | More legible analysis of the earlier 25 swaps, 0→1260 score and 30→6 moves | No new run; full match/cascade/refill scoring and exhausted-move behavior |
 | 41 | Useful close-up brushing, return, flame and bouquet references only | Verify remained disabled; cleaning threshold, accepted sequence and completion |
 | 47/48 | Acquisition limitations documented | 47 download: HTTP 403, zero bytes; 48 not downloaded; actual media still absent |
@@ -70,25 +70,42 @@ campaign keeps default instances and rejects nondefault selection. The seed
 controls local dynamics, independently of reference selection. Both the URL and
 recorded state/metadata carry the selected instance and its correct source.
 
-The default 07 grid and 12 accepted cells are unchanged. The incremental grid
-requires 11 unique cells, with the shared I clicked once. Default 08 still
-requires `867V 309`; incremental 08 requires the captured `JHB007`. Each rejects
-the other's answer. Exact matching is a conservative local rule, not proof that
-the original rejects every other whitespace/case spelling. No normalization was
-added to erase an earlier model failure.
+The default 07 initial grid and 12 accepted cells are unchanged. The incremental initial grid
+requires 11 unique cells, with the shared I clicked once. Default 08 compares
+with `867V309`; incremental 08 compares with `JHB007`. Both remove only ASCII
+hyphens (`U+002D`) and ordinary spaces (`U+0020`) before case-sensitive comparison,
+so each still rejects the other's answer. Nonbreaking spaces and Unicode hyphens
+are not removed. The input itself is not rewritten, and level three's exact
+comparison is unchanged.
+
+From catalog 0.7.14, level 07's visible Refresh control creates a new puzzle
+using the source-derived placement rules and the local seeded random stream.
+An environment reset restores the selected captured initial board and resets
+that stream. The original capture evidence above covers the initial boards,
+not the generated refreshes. See [LOCAL_EXPANSION.md](/examples/not_a_robot/LOCAL_EXPANSION.md).
+
+The level-eight predicate is source-derived from reviewed modules 1094 and 414,
+not inferred from the accepted capture spelling. The authored spec bundle has
+SHA256 `2513409ca66c9f2ee15b3845bc66ec1c0064bedf6757d95f81d3c05f865455d4`.
+Catalog version 0.7.1 records the refined predicate separately from the existing
+capture provenance. This does not add original-site input trials or alter any
+historical failed, unknown or successful capture record.
 
 ## Level-six opponent refinement
 
-The same seeded policy runs before/after a normal refresh: choose among O's
-immediate wins, otherwise blocks against X, otherwise all empty cells. This
-admits the newly observed edge opening and fork tie. It replaces corner-first
-inference that could not produce those observations; it does not hardcode the
-recorded winning sequence. Refresh cancels pending moves and continues the RNG;
-environment reset restarts the seed. Only a real X line followed by Verify wins.
+Catalog 0.7.9 uses source module 1121 rather than inferring the opponent from
+captured candidates. Initial O opens center after 100 ms, and later replies wait
+450 ms. After refresh, a 40% branch can select any empty cell before tactical
+checks. Otherwise source-ordered O wins, X blocks, center, corners and the first
+empty cell determine the move. See [FIRST10.md](/examples/not_a_robot/FIRST10.md)
+for random consumption and priority details. Refresh cancels pending moves and
+continues the local RNG; environment reset restarts the seed and game count.
+Timer cancellation deliberately differs from the original stale-callback race.
+Only a real X line followed by Verify wins; no recorded sequence is injected.
 
-Regression tests distinguish candidate compatibility with captured replies,
+Regression tests distinguish pure-policy checks against captured replies,
 actual GUI gameplay, and genuine screenshot-only Codex attempts. The test-only
 minimax player reads visible marks and uses normal input; it is not model evidence
 and is never supplied to the model. The older 22/25 score and failed default
-plate attempts remain untouched. Current checks and fresh model outcomes are in
+plate attempts remain untouched. Prior checks and model outcomes are in
 [VALIDATION.md](/examples/not_a_robot/VALIDATION.md).

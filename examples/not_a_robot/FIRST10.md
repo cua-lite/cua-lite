@@ -74,51 +74,92 @@ unknown: access to the archive does not confer an artwork license.
 
 | Key | Implemented observed mechanism | Unverified or inferred behavior |
 | --- | --- | --- |
-| `neal_01` | Checkbox/label click, loading, green check | Authored logo vector, precise click boundary, 650 ms loading |
+| `neal_01` | Whole-card click, source-derived 700 ms green check and 1600 ms completion | Authored logo/mark animation, local terminal timer cleanup, missing original audio |
 | `neal_02` | One original photo, 4×4 grid, inset/check selection, captured accepted set | Other photos and signpost boundary rules |
 | `neal_03` | Whole-raster distorted text, interference curves, input/Submit | Authored deformation and timing; audio unavailable; broader normalization |
-| `neal_04` | Nine original photos and captured vegetable selection | Other image sets and classification rules |
-| `neal_05` | Click-to-rotate tiles, captured initial orientation and accepted assembly | 160 ms transition and other initial arrangements |
-| `neal_06` | O opens center, legal turns, observed empty-board/X-first refresh and visible winning route | Seeded win/block/free-cell opponent fits observed reply candidates; original AI, tie distribution and 350 ms reply remain inferred |
-| `neal_07` | Two explicit captured 10×10 instances; shared crossing cell selected once in the incremental instance | Other crossing layouts and original random generator |
-| `neal_08` | Two separately selected car photos, real input/Submit, instance-specific accepted strings | Screenshot-derived images; broader whitespace/case behavior |
-| `neal_09` | Quadtree split, depth-four selection toggles, captured 31-cell accepted set | Other photos, boundary tolerance and transition timing |
-| `neal_10` | Real-time moles, original normal/hit sprite frames, five distinct hits then Verify | Spawn/lifetime timing, penalties and universal threshold |
+| `neal_04` | Nine original photos and source-defined required/optional labels with one combined selection error allowed | Game labels are not a general classifier; original-site boundary replay and exact selection artwork unverified |
+| `neal_05` | Captured initial orientation, source-derived random Refresh, clockwise turns, 200 ms ease-out transition and modulo-360 verification | Fixed initial mount, local seeded stream, clipped tile artwork and missing original audio |
+| `neal_06` | Source-derived opponent, 100 ms center opening, 450 ms replies, empty-board/X-first refresh and X-win Verify | Local seeded RNG, safe timer cancellation, authored marks/controls; original animation/audio and full runtime parity unverified |
+| `neal_07` | Two captured initial boards plus source-derived eight-direction, maximum-overlap Refresh generation | Fixed initial mount, local seeded stream, authored grid styling and missing original audio |
+| `neal_08` | Two separately selected car photos, real input/Submit, instance-specific strings with source-derived ASCII space/hyphen removal | Screenshot-derived images; original-site input-variant replay remains unavailable |
+| `neal_09` | Quadtree split, depth-four selection and source-derived two-error tolerance around 31 positive leaves | Other photos, authored split animation and missing original audio |
+| `neal_10` | Source-derived spawn timers, separate selection/hit state and at least five current hits then Verify; original sprite frames | Local RNG, off-grid source index, safe refresh cleanup; original sounds/pop animation and full runtime replay unavailable |
 
 The mole PNG is a 400×200 two-frame sprite sheet (normal left, hit right), not
 a single normal-state image. Both frames are used; the earlier capture review's
 claim that hit artwork was missing was incorrect.
 
+Catalog 0.7.10 uses level four's source module 1125 predicate. Required images
+are carrot, onion, corn and potato; eggplant is optional. Missing required items
+and wrong extra items share a total error budget of one. Thus the captured
+three-item success remains valid but is not the only accepted set. These are
+the game's labels, including the Mr. Potato Head image, not botanical claims.
+The image order and historical capture provenance remain unchanged.
+
+Level eight removes only ordinary spaces (`U+0020`) and ASCII hyphens (`U+002D`)
+before a case-sensitive comparison. The default instance compares with `867V309`;
+the incremental instance compares with `JHB007`. Nonbreaking spaces and Unicode
+hyphens remain significant, and level three still compares its input exactly.
+This rule is derived from reviewed source modules 1094 and 414 in the authored
+spec bundle with SHA256
+`2513409ca66c9f2ee15b3845bc66ec1c0064bedf6757d95f81d3c05f865455d4`.
+It does not establish new original-site input trials or change historical
+capture outcomes. Catalog version 0.7.1 identifies this input-rule refinement.
+
 `reference.fidelity="captured_instance"` identifies this limited evidence scope,
 not pixel-perfect or generator-level parity. Limitations remain in task metadata.
 The fixed captured challenges are not an original random distribution. `seed`
-affects local dynamics, not a recovered original seed. Refresh restarts the
-same captured instance and preserves episode mistakes/events; tic-tac-toe refresh
-clears the board for X to start instead of repeating the initial O opening. Arial/Georgia may
+affects local dynamics, not a recovered original seed. Refresh preserves episode
+mistakes/events. Levels 05 and 07 generate new local-seeded arrangements using
+source-derived algorithms; tic-tac-toe refresh clears the board for X to start
+instead of repeating the initial O opening. Other fixed-instance refresh paths
+retain their documented limits. Arial/Georgia may
 resolve to host fallback fonts; browser/font versions matter for visual parity.
 
-The tic-tac-toe opponent selects uniformly with the local seeded RNG among
-immediate O wins; if none, immediate X threats; otherwise all empty cells. This
-allows the observed edge opening and either side of a fork. Every recorded reply
-in the two earlier draws and new winning flow belongs to these candidates, but
-priority and distribution are inferred: this is not exact replay or recovered AI.
-The same policy runs before and after refresh, whose RNG stream continues;
-environment reset restarts the seed. No move sequence or winning seed is injected.
-Only a real X line followed by Verify succeeds; losses and draws do not.
-Version 0.6.0 replaces the older deterministic corner-first candidate because
-the newly supplied normal-play replies include moves that candidate could not
-make. Historical results remain attached to their frozen earlier runtime.
+Catalog 0.7.9 derives the tic-tac-toe opponent from source module 1121. The first
+board starts empty and O opens in the center after 100 ms. Replies after X moves
+wait 450 ms. With legal cells remaining, every reply first consumes one random
+draw. After at least one refresh, a draw below 0.4 selects uniformly from empty
+cells using a second draw. Otherwise the opponent takes the first O win, first
+X block, center, first corner in order 0/2/6/8, or first empty cell. Winning-line
+priority follows the source's row/column/diagonal order, not empty-cell order.
 
-Moles spawn at inferred 850–1349 ms intervals and remain active for 1200–1999 ms.
-Time continues during inference: stale screenshots may cause genuine missed
-clicks. The windows are not stretched for Astra. Five distinct hits are the
-captured instance's local rule, not a universal claim about the original game.
+Refresh clears the board, makes X start, increments the game count and continues
+the local seeded stream; environment reset restarts both seed and game count.
+Pending timers are cancelled on refresh/shutdown, intentionally not reproducing
+the source's stale-callback race. Only a real X line followed by Verify succeeds;
+losses and draws do not. No recorded move sequence or winning seed is injected.
+Source-rule recovery does not establish original random-stream or audiovisual
+parity. Historical results remain attached to their frozen earlier runtime.
+
+Catalog 0.7.10 also derives mole behavior from modules 1127 and 379. The first
+mole appears immediately; each next spawn is scheduled after `500 + 2000*r`
+milliseconds, with a separate random draw for its location. Lifetime is fixed
+when spawned: 1500, 1000, 750, 625 or 600 ms at zero through four current hits.
+The literal source pool is 1–16 while the grid renders 0–15, so cell zero never
+spawns a mole and source index 16 is off-grid. This discrepancy is preserved,
+not silently corrected or claimed as an independently observed original-site run.
+
+Selection is independent of a hit: an empty click toggles its checkbox without
+awarding a hit or mistake, and clicking a hit again removes it. Preselection
+must be toggled off and on to hit a newly appearing mole. At five hits the source
+cancels only the latest hide and next-spawn timers, leaving other active moles
+and earlier hide callbacks intact. A remaining mole can produce a sixth hit;
+Verify accepts at least five current hits. Cancelling a hit can disable Verify
+without restarting spawns. Refresh restarts play and clears all owned timers,
+an explicit safe-lifecycle difference from the original's stale callbacks.
+
+Time continues during inference; the source windows are not stretched for
+Astra. The local random stream, authored sprite layout, missing 110 ms pop
+animation and missing original sounds remain separate fidelity limits.
 
 ## Engineering tests versus model attempts
 
 Use an authenticated Codex CLI with access to the requested model. The launcher
 defaults to `gpt-6-astra` with `xhigh`. Always select tasks for a bounded smoke:
-omitting `--tasks` now selects all 25 implemented reference paths, not only ten.
+omitting `--tasks` selects all 46 registered Neal paths (25 captured-instance
+paths and 21 local variants), not only ten. Level 39 remains unavailable-camera
+handling only; registration does not establish full gameplay coverage.
 
 ```bash
 uv run --no-project --python /path/to/python python \
