@@ -5,6 +5,11 @@
     "incremental": "a887ec7576b86aa933af7818788192f6193f65e99c46bb70d0e6dba0a0981980"
   },
   "files": {
+    "level47_cover.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_47/assets/implementation_reference/2d0f03f11e55f429fe1a365fe6adae4883efa64979753c7ce3bcbc412f547c6c.webp",
+      "sha256": "2d0f03f11e55f429fe1a365fe6adae4883efa64979753c7ce3bcbc412f547c6c"
+    },
     "level08_incremental_reference.jpg": {
       "archive": "incremental",
       "member": "tasks/level_08/attempts/attempt_602/initial.jpg",
@@ -274,6 +279,64 @@
       "archive": "expansion",
       "member": "neal_levels11_30_complete_20260910_025702/tasks/level_22/assets/net.webp",
       "sha256": "089caa6465cf490c93ba68ff66a6eb57146b6dcbd2359f957371ffd22e30a8ea"
+    },
+    "level20_image_01.webp": {
+      "archive": "expansion",
+      "member": "neal_levels11_30_complete_20260910_025702/tasks/level_20/assets/679aab35f920d010.webp",
+      "sha256": "5a370cb0a0d5c7f11949d1ccdc1c06b35339a65cc977d29725af9af740ddb577"
+    },
+    "level37_image_01.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_37/assets/implementation_reference/16daebe7531b55adf89a6ba7185c0aa342cd01c84a85cbfc0b35e9a45be32470.webp",
+      "sha256": "16daebe7531b55adf89a6ba7185c0aa342cd01c84a85cbfc0b35e9a45be32470"
+    },
+    "level37_image_02.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_37/assets/implementation_reference/b69e5bf12f9f26227cf7f30dfaa9fb083b6825dee910720baee30fd155b487de.webp",
+      "sha256": "b69e5bf12f9f26227cf7f30dfaa9fb083b6825dee910720baee30fd155b487de"
+    },
+    "level37_image_03.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_37/assets/implementation_reference/0801243c3c68e91b8ef294edcd9af6ab2c9df89772e1a24f081f8d02a6c0cb79.webp",
+      "sha256": "0801243c3c68e91b8ef294edcd9af6ab2c9df89772e1a24f081f8d02a6c0cb79"
+    },
+    "level37_image_04.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_37/assets/implementation_reference/d73d5d9fe95546c5469b0aa42aff2f85b37d5789811ed9534a7057b0d0d865df.webp",
+      "sha256": "d73d5d9fe95546c5469b0aa42aff2f85b37d5789811ed9534a7057b0d0d865df"
+    },
+    "level37_image_05.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_37/assets/implementation_reference/a5aa82e573cc004b2b9599c46f6adfef44288cf390f0a0ad5279bf6b01670a65.webp",
+      "sha256": "a5aa82e573cc004b2b9599c46f6adfef44288cf390f0a0ad5279bf6b01670a65"
+    },
+    "level37_image_06.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_37/assets/implementation_reference/9101b7c65774ccbefe16ef878ac3dc92f1a77312fc0208942581d2a539441932.webp",
+      "sha256": "9101b7c65774ccbefe16ef878ac3dc92f1a77312fc0208942581d2a539441932"
+    },
+    "level37_image_07.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_37/assets/implementation_reference/76067021bee6ada78db0b269fb7b378ed8de42f00d3b9a82f6ee1ec5d50d3e60.webp",
+      "sha256": "76067021bee6ada78db0b269fb7b378ed8de42f00d3b9a82f6ee1ec5d50d3e60"
+    },
+    "level37_image_08.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_37/assets/implementation_reference/22a51b7853085f8e5b2e9cd139103a39bb302b70897bab09484d083aee54d232.webp",
+      "sha256": "22a51b7853085f8e5b2e9cd139103a39bb302b70897bab09484d083aee54d232"
+    },
+    "level37_image_09.webp": {
+      "archive": "expansion",
+      "member": "neal_levels31_48_reference_20260910_040601/tasks/level_37/assets/implementation_reference/5cc90294c71e172da0c984dd46cc301dfa6e599b56ce2b491b67429919309d84.webp",
+      "sha256": "5cc90294c71e172da0c984dd46cc301dfa6e599b56ce2b491b67429919309d84"
+    }
+  },
+  "derived_files": {
+    "level47_chart.json": {
+      "source_format": "reviewed_analysis_module_1070",
+      "source_sha256": "5f6bc99d61917917888dd11d50c36196cf6a3f87d703a2469182d2dd8f209441",
+      "derivation": "literal_c_array_json_ascii_compact_with_final_lf",
+      "derived_sha256": "e3ee00ae0e7c3c1ec2250cf41ea8634894416b6d082642470e602d5273b34316"
     }
   }
 }

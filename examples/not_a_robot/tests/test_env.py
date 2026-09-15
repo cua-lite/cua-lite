@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -16,6 +17,7 @@ from examples.not_a_robot import registration  # noqa: F401
 from examples.not_a_robot.catalog import LEVELS
 from examples.not_a_robot.env import LIVE_ENVS, NotARobotEnv
 from examples.not_a_robot.evaluator import GameState
+from examples.not_a_robot.local_tasks import LocalTaskState
 from examples.not_a_robot.recorder import EventRecorder
 from lite import gym
 from lite.core.tools.calls import make_tool_call
@@ -146,11 +148,11 @@ async def test_observation_failure_is_retained_as_infrastructure_error(mock_env,
     recorder.emit.assert_any_call("error", phase="post_action", error=repr(error))
     await mock_env.close()
     recorder.finalize.assert_called_once_with(
-        "infra_error", cleanup_errors=[], cleanup_complete=True
+        "infra_error", video=None, cleanup_errors=[], cleanup_complete=True
     )
 
 
-@pytest.mark.parametrize("terminal_status", [None, "success", "failure"])
+@pytest.mark.parametrize("terminal_status", [None, "success", "failure", "infra_error"])
 @pytest.mark.parametrize("cursor", [False, True])
 async def test_observation_capture_intervals_follow_returned_image(
     tmp_path, monkeypatch, terminal_status, cursor
@@ -306,6 +308,182 @@ async def test_gui_argument_error_returns_current_screenshot(mock_env):
     assert result.results[0].error
     assert result.results[0].images == [b"mock screenshot"]
     mock_env._page.keyboard.press.assert_not_awaited()
+
+
+@pytest.fixture
+def local_mock_env(mock_env):
+    """Unit-only local snapshot fixture, not a played game or victory proof."""
+    snapshot = {
+        "task_id": "click",
+        "label": "Click",
+        "version": "unit-fixture",
+        "seed": 0,
+        "reference_instance": "default",
+        "status": "in_progress",
+        "mistakes": 0,
+        "progress": 0,
+        "reason": "",
+        "elapsed_ms": 500,
+    }
+    mock_env.mode = "local"
+    mock_env.local_task = "click"
+    mock_env.state = LocalTaskState(**snapshot)
+    mock_env._page.url = "http://127.0.0.1/unit-game"
+    mock_env._page.evaluate = AsyncMock(side_effect=lambda _: dict(snapshot, events=[]))
+    mock_env._page.is_closed = Mock(return_value=False)
+    return mock_env, snapshot
+
+
+@pytest.mark.parametrize("finish", [False, True])
+async def test_local_infra_error_wins_over_finish_and_last_step_budget(local_mock_env, finish):
+    env, snapshot = local_mock_env
+    env.max_steps = 1
+    snapshot.update(status="infra_error", reason="engine_worker")
+    call = (
+        make_tool_call("terminate", {"status": "success"}, call_id="finish_after_error")
+        if finish
+        else make_tool_call(
+            "computer",
+            {"actions": [{"action": "click", "coordinate": [500, 500]}]},
+            call_id="input_after_error",
+        )
+    )
+    result = await env.step([call])
+    assert result.truncated and not result.terminated and result.reward == 0
+    assert result.info["outcome"] == "infra_error" and env.outcome == "infra_error"
+    assert env.state.status == "infra_error" and env.state.mistakes == 0
+    assert result.info["executed_actions"] == []
+    env._page.mouse.move.assert_not_awaited()
+    env._page.mouse.click.assert_not_awaited()
+    recorder = env.recorder
+    await env.close()
+    assert recorder.finalize.call_args.args[0] == "infra_error"
+
+
+async def test_local_error_during_capture_recaptures_and_stops_batch_tail(local_mock_env):
+    env, snapshot = local_mock_env
+    frames = [b"before asynchronous failure", b"visible infrastructure failure"]
+    captured = []
+
+    async def capture(**kwargs):
+        frame = frames[len(captured)]
+        captured.append(frame)
+        snapshot.update(status="infra_error", reason="engine_search_timeout")
+        return frame
+
+    env._page.screenshot.side_effect = capture
+    result = await env.step(
+        [
+            make_tool_call(
+                "computer",
+                {
+                    "actions": [
+                        {"action": "screenshot"},
+                        {"action": "type", "text": "UNEXECUTED_ERROR_TAIL"},
+                    ]
+                },
+                call_id="capture_crossing",
+            )
+        ]
+    )
+    assert captured == frames
+    assert result.results[0].images[-1] == frames[-1]
+    assert result.truncated and not result.terminated and result.info["outcome"] == "infra_error"
+    assert [action["call"] for action in result.info["executed_actions"]] == ["screenshot"]
+    env._page.keyboard.type.assert_not_awaited()
+    assert any(
+        call.kwargs.get("variant") == "before_terminal_transition"
+        for call in env.recorder.image.call_args_list
+    )
+
+
+@pytest.mark.parametrize("initial_outcome", ["in_progress", "controller_timeout", "agent_stopped"])
+async def test_close_last_read_detects_async_error_before_archive(local_mock_env, initial_outcome):
+    env, snapshot = local_mock_env
+    env.outcome = initial_outcome
+    snapshot.update(status="infra_error", reason="engine_worker")
+    page, recorder = env._page, env.recorder
+    await env.close()
+    page.evaluate.assert_awaited_once()
+    assert env.outcome == "infra_error" and env.state.status == "infra_error"
+    assert recorder.finalize.call_args.args[0] == "infra_error"
+    assert recorder.finalize.call_args.kwargs["cleanup_complete"]
+
+
+@pytest.mark.parametrize("settled_outcome", ["success", "failure", "infra_error"])
+async def test_close_preserves_settled_result_without_reading_unrelated_errors(
+    local_mock_env, settled_outcome
+):
+    env, snapshot = local_mock_env
+    # A result-contract fixture is not evidence that an actual game was won.
+    snapshot.update(status=settled_outcome)
+    env.state = LocalTaskState(**snapshot)
+    env.outcome = settled_outcome
+    env._terminal = True
+    env._page.evaluate.side_effect = RuntimeError("late unrelated browser failure")
+    page, recorder = env._page, env.recorder
+    await env.close()
+    page.evaluate.assert_not_awaited()
+    assert env.outcome == settled_outcome
+    assert recorder.finalize.call_args.args[0] == settled_outcome
+    assert recorder.finalize.call_args.kwargs["cleanup_complete"]
+
+
+async def test_close_failed_final_read_is_infrastructure_not_controller_failure(local_mock_env):
+    env, _ = local_mock_env
+    env.outcome = "controller_timeout"
+    env._page.evaluate.side_effect = RuntimeError("page unavailable during final read")
+    recorder = env.recorder
+    await env.close()
+    assert env.outcome == "infra_error"
+    assert recorder.finalize.call_args.args[0] == "infra_error"
+
+
+async def test_close_timed_out_final_read_still_closes_owned_resources(local_mock_env):
+    env, _ = local_mock_env
+    env.outcome = "controller_timeout"
+    never = asyncio.Event()
+
+    async def blocked_read(_):
+        await never.wait()
+
+    env._page.evaluate.side_effect = blocked_read
+    context, browser = SimpleNamespace(close=AsyncMock()), SimpleNamespace(close=AsyncMock())
+    env._context, env._browser = context, browser
+    recorder = env.recorder
+    await asyncio.wait_for(env.close(), timeout=4.0)
+    context.close.assert_awaited_once()
+    browser.close.assert_awaited_once()
+    assert env.outcome == "infra_error"
+    assert recorder.finalize.call_args.args[0] == "infra_error"
+    assert recorder.finalize.call_args.kwargs["cleanup_complete"]
+
+
+async def test_cancel_during_close_final_read_preserves_cleanup_and_archive(local_mock_env):
+    """Unit-only external cancellation, not a game or model completion fixture."""
+    env, _ = local_mock_env
+    env.outcome = "controller_timeout"
+    entered, never = asyncio.Event(), asyncio.Event()
+
+    async def blocked_read(_):
+        entered.set()
+        await never.wait()
+
+    env._page.evaluate.side_effect = blocked_read
+    context, browser = SimpleNamespace(close=AsyncMock()), SimpleNamespace(close=AsyncMock())
+    env._context, env._browser = context, browser
+    recorder = env.recorder
+    closing = asyncio.create_task(env.close())
+    await asyncio.wait_for(entered.wait(), timeout=1.0)
+    closing.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await closing
+    context.close.assert_awaited_once()
+    browser.close.assert_awaited_once()
+    recorder.finalize.assert_called_once()
+    assert env.outcome == "infra_error"
+    assert recorder.finalize.call_args.args[0] == "infra_error"
+    assert recorder.finalize.call_args.kwargs["cleanup_complete"]
 
 
 @pytest.mark.live

@@ -10,6 +10,7 @@ import hashlib
 import http.client
 import json
 import os
+import sys
 from unittest.mock import AsyncMock, Mock
 from urllib.parse import urlsplit
 
@@ -51,6 +52,39 @@ def test_unknown_local_task_rejected():
         NotARobotEnv(mode="local", local_task="unknown", target_level=None)
 
 
+@pytest.mark.parametrize(
+    "invalid_field", [None, "task_id", "status", "version", "seed", "reference_instance"]
+)
+async def test_local_navigation_waits_for_game_readiness_and_checks_identity(invalid_field):
+    env = NotARobotEnv(mode="local", local_task="click", target_level=None, seed=17)
+    env._local_server = Mock(origin="http://127.0.0.1:8765")
+    page = Mock(goto=AsyncMock(), wait_for_function=AsyncMock())
+    env._page = page
+    env._read_local_state = AsyncMock()
+    page.attach_mock(env._read_local_state, "read_state")
+    env.state = Mock(
+        task_id="click",
+        status="in_progress",
+        version=CATALOG["version"],
+        seed=17,
+        reference_instance="default",
+    )
+    if invalid_field:
+        setattr(env.state, invalid_field, "unexpected")
+        with pytest.raises(RuntimeError, match="Unexpected local page"):
+            await env._open_local_task()
+    else:
+        await env._open_local_task()
+    page.goto.assert_awaited_once_with(
+        "http://127.0.0.1:8765/?task=click&seed=17&instance=default&runner=1",
+        wait_until="domcontentloaded",
+        timeout=10_000,
+    )
+    page.wait_for_function.assert_awaited_once_with("() => window.syntheticTask !== undefined")
+    env._read_local_state.assert_awaited_once_with()
+    assert [item[0] for item in page.mock_calls] == ["goto", "wait_for_function", "read_state"]
+
+
 def test_local_server_only_serves_bundled_assets():
     server = LocalTaskServer()
     parsed = urlsplit(server.origin)
@@ -62,6 +96,9 @@ def test_local_server_only_serves_bundled_assets():
         assert response.status == 200
         assert b"Visual Tasks" in body
         assert "default-src 'none'" in response.getheader("Content-Security-Policy")
+        assert "worker-src 'self'" in response.getheader("Content-Security-Policy")
+        assert "'wasm-unsafe-eval'" in response.getheader("Content-Security-Policy")
+        assert "'unsafe-eval'" not in response.getheader("Content-Security-Policy")
         assert hashlib.sha256(body).hexdigest() == server.asset_hashes["index.html"]
         for path in ("/../env.py", "/%2e%2e/env.py", "/env.py", "/local/", "/index.html"):
             connection.request("GET", path)
@@ -72,6 +109,42 @@ def test_local_server_only_serves_bundled_assets():
         connection.close()
         server.close()
     assert not server._thread.is_alive()
+
+
+def test_local_server_serves_pinned_stockfish_dependency_and_license():
+    expected = {
+        "stockfish-17-lite-single.js": (
+            "text/javascript; charset=utf-8",
+            "ef06615dc8cf5974e9f3e73d1663b9ca87f2bd59b97e661af0b22e80801b6409",
+        ),
+        "stockfish-17-lite-single.wasm": (
+            "application/wasm",
+            "8e7d58fd36242f9163fb4881781cbb59b73c2b00067e6f4b02d31a48c58e5fe8",
+        ),
+        "LICENSE.stockfish": (
+            "text/plain; charset=utf-8",
+            "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+        ),
+    }
+    server = LocalTaskServer()
+    parsed = urlsplit(server.origin)
+    connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
+    try:
+        for name, (mime, digest) in expected.items():
+            connection.request("GET", f"/vendor/spatial/{name}")
+            response = connection.getresponse()
+            content = response.read()
+            assert response.status == 200
+            assert response.getheader("Content-Type") == mime
+            assert hashlib.sha256(content).hexdigest() == digest
+            assert server.asset_hashes[f"vendor/spatial/{name}"] == digest
+        connection.request("GET", "/vendor/spatial/other-engine.wasm")
+        response = connection.getresponse()
+        response.read()
+        assert response.status == 404
+    finally:
+        connection.close()
+        server.close()
 
 
 def test_local_server_serves_partial_reference_import(tmp_path, monkeypatch):
@@ -501,3 +574,16 @@ async def test_local_boundary_blocks_external_requests_without_sending_them(loca
     route.abort.assert_awaited_once_with("blockedbyclient")
     route.continue_.assert_not_awaited()
     assert page.url.startswith(env.unwrapped._local_server.origin)
+
+
+def test_preview_ctrl_c_closes_only_owned_listener(monkeypatch):
+    owned = Mock(origin="http://127.0.0.1:8765")
+    factory = Mock(return_value=owned)
+    poll = Mock(side_effect=KeyboardInterrupt)
+    monkeypatch.setattr(sys, "argv", ["local_tasks", "--port", "8765"])
+    monkeypatch.setattr(local_tasks, "LocalTaskServer", factory)
+    monkeypatch.setattr(local_tasks.time, "sleep", poll)
+    local_tasks.main()
+    factory.assert_called_once_with(8765)
+    poll.assert_called_once_with(0.25)
+    owned.close.assert_called_once_with()

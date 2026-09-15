@@ -25,7 +25,7 @@ from examples.not_a_robot.codex_bridge import CodexBridge
 from examples.not_a_robot.env import LIVE_ENVS, LOCAL_CAMPAIGN_TASKS, NotARobotEnv
 from examples.not_a_robot.local_tasks import CATALOG, LocalTaskState
 from examples.not_a_robot.recorder import EventRecorder
-from examples.not_a_robot.tests.test_expansion_grids import GRIDS
+from examples.not_a_robot.tests.test_expansion_grids import GRIDS, scroll_click
 from examples.not_a_robot.tests.test_first10 import (
     ACCEPTED_SELECTIONS,
     RECURSIVE_ROWS,
@@ -103,7 +103,7 @@ async def test_first_stage_transition_preserves_episode_and_stops_action_tail(ca
         env,
         [
             {"action": "click", "coordinate": await center(env, page.get_by_role("checkbox"))},
-            {"action": "wait", "duration": 0.8},
+            {"action": "wait", "duration": 1.7},
             {"action": "type", "text": "UNEXECUTED_CAMPAIGN_TAIL"},
         ],
     )
@@ -207,7 +207,7 @@ async def test_transition_releases_held_keys_and_buttons_on_old_page(campaign_en
             # Disabled controls suppress mouse events after success. Observe the
             # eventual release over ordinary page background instead.
             {"action": "mouse_move", "coordinate": [950, 950]},
-            {"action": "wait", "duration": 0.8},
+            {"action": "wait", "duration": 1.7},
         ],
     )
     assert not result.terminated and raw.state.task_id == "neal_02"
@@ -250,11 +250,15 @@ async def test_transition_releases_held_keys_and_buttons_on_old_page(campaign_en
 
 
 @pytest.mark.live
-async def test_real_first_fourteen_stages_stop_at_actual_missing_fifteen(campaign_env):
-    """Exercise the implemented prefix, not a model or original-site benchmark."""
+async def test_real_first_fourteen_stages_respect_missing_next_task(campaign_env, monkeypatch):
+    """Solve the real prefix, then exercise an explicitly missing-catalog fixture."""
     prefix = [f"neal_{level:02d}" for level in range(1, 15)]
     assert all(task in env_module.LOCAL_TASKS for task in prefix)
-    assert "neal_15" not in env_module.LOCAL_TASKS, "Extend this oracle when level 15 is built"
+    monkeypatch.setattr(
+        env_module,
+        "LOCAL_TASKS",
+        {key: value for key, value in env_module.LOCAL_TASKS.items() if key != "neal_15"},
+    )
     env = await campaign_env(max_steps=300, max_seconds=180, seed=0)
     raw, page = env.unwrapped, env.unwrapped._page
     owned = (raw._browser, raw._context, page, raw.recorder, raw._local_server)
@@ -274,7 +278,7 @@ async def test_real_first_fourteen_stages_stop_at_actual_missing_fifteen(campaig
                         "action": "click",
                         "coordinate": await center(env, page.get_by_role("checkbox")),
                     },
-                    {"action": "wait", "duration": 0.8},
+                    {"action": "wait", "duration": 1.7},
                 ],
             )
         elif task_id in ACCEPTED_SELECTIONS or task_id in GRIDS:
@@ -284,8 +288,8 @@ async def test_real_first_fourteen_stages_stop_at_actual_missing_fifteen(campaig
                 else GRIDS[task_id][2]
             )
             for index in accepted:
-                await click(env, tiles.nth(index))
-            result = await click(env, verify)
+                await scroll_click(env, tiles.nth(index))
+            result = await scroll_click(env, verify)
         elif level in (3, 8):
             await click(env, page.locator("#neal-answer"))
             result = await gui(
@@ -350,28 +354,10 @@ async def test_real_first_fourteen_stages_stop_at_actual_missing_fifteen(campaig
             result = await click(env, verify)
         else:
             assert level == 14
-            await gui(
-                env,
-                [
-                    {
-                        "action": "scroll",
-                        "direction": "down",
-                        "amount": 26,
-                        "coordinate": [200, 300],
-                    },
-                    {"action": "wait", "duration": 0.15},
-                ],
-            )
             target = page.get_by_role("checkbox", name="I'm not a robot", exact=True)
-            # Completion may happen during the click's screenshot. One batch
-            # lets the environment discard the wait if it is already terminal.
-            result = await gui(
-                env,
-                [
-                    {"action": "click", "coordinate": await center(env, target)},
-                    {"action": "wait", "duration": 0.8},
-                ],
-            )
+            result = await scroll_click(env, target)
+            if not result.terminated:
+                result = await gui(env, [{"action": "wait", "duration": 1.7}])
         assert raw._completed_tasks == prefix[:level], (task_id, raw.state)
         assert (raw._browser, raw._context, raw._page, raw.recorder, raw._local_server) == owned
         assert (raw.attempt_dir, raw.external_resource_id, raw._started) == identity
@@ -427,7 +413,7 @@ async def test_injected_missing_next_task_stops_without_skipping(campaign_env, m
         env,
         [
             {"action": "click", "coordinate": await center(env, page.get_by_role("checkbox"))},
-            {"action": "wait", "duration": 0.8},
+            {"action": "wait", "duration": 1.7},
         ],
     )
     assert result.truncated and not result.terminated and result.reward == 0
@@ -467,7 +453,7 @@ async def test_step_budget_at_boundary_does_not_start_next_stage(campaign_env):
         env,
         [
             {"action": "click", "coordinate": await center(env, page.get_by_role("checkbox"))},
-            {"action": "wait", "duration": 0.8},
+            {"action": "wait", "duration": 1.7},
         ],
     )
     assert result.truncated and not result.terminated and result.reward == 0
@@ -485,7 +471,7 @@ async def test_reset_starts_fresh_campaign_and_finalizes_previous_archive(campai
         env,
         [
             {"action": "click", "coordinate": await center(env, page.get_by_role("checkbox"))},
-            {"action": "wait", "duration": 0.8},
+            {"action": "wait", "duration": 1.7},
         ],
     )
     assert raw._completed_tasks == ["neal_01"] and raw.state.task_id == "neal_02"
@@ -549,6 +535,7 @@ async def test_mocked_final_stage_awards_success_only_after_48th_completion(tmp_
         url="http://127.0.0.1/unit-fixture",
         evaluate=AsyncMock(side_effect=lambda *_: {**snapshot, "events": []}),
         screenshot=AsyncMock(return_value=png),
+        is_closed=lambda: False,
     )
     env.outcome = "in_progress"
     env._started = time.monotonic()
@@ -561,6 +548,103 @@ async def test_mocked_final_stage_awards_success_only_after_48th_completion(tmp_
         assert result.info["executed_actions"] == []
     finally:
         await env.close()
+
+
+@pytest.mark.parametrize("failure_phase", ["before_capture", "during_capture"])
+async def test_mocked_next_stage_async_infra_error_truncates_same_step(tmp_path, failure_phase):
+    """Mock page I/O only; exercise real transition grading, not game traversal."""
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
+    )
+    env = NotARobotEnv(
+        mode="local", target_level=None, local_campaign=True, cursor=False, max_steps=10
+    )
+    snapshot = {
+        "task_id": "neal_01",
+        "label": "Mocked asynchronous stage boundary",
+        "version": CATALOG["version"],
+        "seed": 0,
+        "status": "success",
+        "mistakes": 0,
+        "progress": 1,
+        "reason": "unit_fixture",
+        "elapsed_ms": 10,
+    }
+    next_stage_reads = 0
+    next_stage_captures = 0
+
+    async def navigate(url, **kwargs):
+        env._page.url = url
+        snapshot.update(task_id="neal_02", status="in_progress", progress=0, reason="")
+
+    async def read_snapshot(*args):
+        nonlocal next_stage_reads
+        if snapshot["task_id"] == "neal_02":
+            next_stage_reads += 1
+            # Navigation's initial read is healthy. The failure first appears in
+            # _observe's pre-capture read, after _open_local_task validated it.
+            if next_stage_reads == 2 and failure_phase == "before_capture":
+                snapshot.update(status="infra_error", reason="fixture_dependency_error")
+        events = (
+            [{"sequence": 1, "elapsed_ms": 11, "kind": "fixture_async_dependency_error"}]
+            if snapshot["status"] == "infra_error"
+            else []
+        )
+        return {**snapshot, "events": events}
+
+    async def capture(**kwargs):
+        nonlocal next_stage_captures
+        if snapshot["task_id"] == "neal_02":
+            next_stage_captures += 1
+            # The post-capture read must also grade a failure that occurs while
+            # page.screenshot is pending; _observe then captures terminal pixels.
+            if failure_phase == "during_capture":
+                snapshot.update(status="infra_error", reason="fixture_dependency_error")
+        return png
+
+    env._page = SimpleNamespace(
+        url="http://127.0.0.1/unit-fixture?task=neal_01",
+        goto=AsyncMock(side_effect=navigate),
+        wait_for_function=AsyncMock(),
+        evaluate=AsyncMock(side_effect=read_snapshot),
+        screenshot=AsyncMock(side_effect=capture),
+        is_closed=lambda: False,
+    )
+    env._local_server = SimpleNamespace(origin="http://127.0.0.1", close=lambda: None)
+    env.outcome = "in_progress"
+    env._started = time.monotonic()
+    env.attempt_dir = tmp_path / f"mock-next-stage-{failure_phase}"
+    env.recorder = EventRecorder(env.attempt_dir, {"unit_fixture": True, "real_gameplay": False})
+    try:
+        result = await gui(env, [{"action": "screenshot"}])
+        assert env.state.task_id == "neal_02" and env.state.status == "infra_error"
+        assert env.outcome == "infra_error" and env._completed_tasks == ["neal_01"]
+        assert next_stage_reads == 3
+        assert next_stage_captures == (2 if failure_phase == "during_capture" else 1)
+        assert (result.truncated, result.terminated, result.reward, env._terminal) == (
+            True,
+            False,
+            0,
+            True,
+        )
+        assert result.info["campaign"]["displayed_task"] == "neal_02"
+        assert result.info["executed_actions"] == []
+        with pytest.raises(RuntimeError, match="not active"):
+            await gui(env, [{"action": "screenshot"}])
+    finally:
+        await env.close()
+
+    events = [
+        json.loads(line) for line in (env.attempt_dir / "events.jsonl").read_text().splitlines()
+    ]
+    completed = [event for event in events if event["type"] == "campaign_stage_completed"]
+    assert [event["data"]["state"]["task_id"] for event in completed] == ["neal_01"]
+    assert completed[0]["data"]["observation"]["task_id"] == "neal_01"
+    boundary = next(event for event in events if event["type"] == "campaign_boundary")
+    assert boundary["data"]["outcome"] == "infra_error"
+    manifest = json.loads((env.attempt_dir / "manifest.json").read_text())
+    assert manifest["outcome"] == "infra_error" and manifest["recording_complete"]
+    assert manifest["data"]["cleanup_complete"]
 
 
 @pytest.mark.parametrize(
@@ -593,6 +677,7 @@ async def test_mocked_controller_deadline_is_not_infrastructure_failure(tmp_path
         url="http://127.0.0.1/unit-fixture",
         evaluate=AsyncMock(side_effect=lambda *_: {**snapshot, "events": []}),
         screenshot=AsyncMock(return_value=png),
+        is_closed=lambda: False,
     )
     env.outcome = "in_progress"
     env._started = time.monotonic()
@@ -635,6 +720,10 @@ async def test_mocked_controller_deadline_is_not_infrastructure_failure(tmp_path
         assert env._completed_tasks == expected_prefix
         with pytest.raises(RuntimeError, match="not active"):
             await gui(env, [{"action": "screenshot"}])
+        # This fixture isolates a controller deadline with an otherwise healthy
+        # page. The interrupted read can subsequently recover during close;
+        # persistent final-read failure has separate infrastructure regressions.
+        env._page.evaluate = AsyncMock(side_effect=lambda *_: {**snapshot, "events": []})
         # Use the real bridge classification/finalizer, not a fabricated manifest.
         await bridge.close("controller_timeout")
         assert env.outcome == "controller_timeout" and bridge.closed

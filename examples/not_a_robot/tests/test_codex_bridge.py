@@ -38,7 +38,9 @@ class FakeEnv:
         self.calls = []
         self.reset_count = self.close_count = 0
         self._steps = 0
+        self._terminal = False
         self._started = time.monotonic()
+        self.timestamp = time.time
         self.png = PNG
 
     async def reset(self):
@@ -48,8 +50,8 @@ class FakeEnv:
         self.last_observation = self.recorder.image(
             self.png,
             variant="model_visible",
-            capture_started_unix_s=time.time(),
-            capture_completed_unix_s=time.time(),
+            capture_started_unix_s=self.timestamp(),
+            capture_completed_unix_s=self.timestamp(),
         )
         return LiteEnvObservation(image=self.png, text="Complete the visible task.")
 
@@ -64,10 +66,11 @@ class FakeEnv:
         self.last_observation = self.recorder.image(
             self.png,
             variant="model_visible",
-            capture_started_unix_s=time.time(),
-            capture_completed_unix_s=time.time(),
+            capture_started_unix_s=self.timestamp(),
+            capture_completed_unix_s=self.timestamp(),
         )
         terminal = self.outcome != "in_progress"
+        self._terminal = terminal
         return LiteEnvStepResult(
             results=[LiteToolResult(tool_call_id=calls[0]["id"], images=[self.png])],
             reward=float(self.outcome == "success") if terminal else None,
@@ -91,6 +94,7 @@ def setup_bridge(tmp_path, monkeypatch):
         campaign=False,
         seed=12,
         reference_instance="default",
+        record_video=False,
         artifact_root=str(tmp_path),
         browser_executable=None,
         max_steps=20,
@@ -140,6 +144,8 @@ def test_tools_reuse_canonical_actions_without_dom_or_source_tools():
     assert not {"evaluate", "javascript", "selector", "read_file", "shell"} & set(actions)
     assert '["ctrl", "a"]' in first[1]["description"]
     assert "lowercase canonical tokens" in first[1]["description"]
+    assert '"up", "down", "left", "right"' in first[1]["description"]
+    assert 'for ArrowDown use ["down"]' in first[1]["description"]
 
 
 async def test_handshake_notifications_and_shutdown_are_lazy(setup_bridge):
@@ -183,8 +189,10 @@ async def test_protocol_errors_do_not_break_following_requests(setup_bridge):
     assert replies[6]["result"] == {}
 
 
-async def test_actual_image_provenance_and_terminal_action_suppression(setup_bridge):
+@pytest.mark.parametrize("record_video", [False, True])
+async def test_actual_image_provenance_and_terminal_action_suppression(setup_bridge, record_video):
     args, env, created = setup_bridge
+    args.record_video = record_video
     summary = "Click the visible checkbox."
     click = {"actions": [{"action": "click", "coordinate": [50, 50]}], "decision_summary": summary}
     lines = [
@@ -199,6 +207,7 @@ async def test_actual_image_provenance_and_terminal_action_suppression(setup_bri
     assert created[0][0] == "visual_tasks@click"
     assert created[0][1]["seed"] == 12
     assert created[0][1]["post_action_delay"] == 0
+    assert created[0][1]["record_video"] is record_video
     assert env.reset_count == env.close_count == 1
     assert len(env.calls) == 1
     for reply in replies[1:]:
@@ -757,7 +766,7 @@ async def test_campaign_bridge_returns_new_page_and_keeps_previous_crop_provenan
                         "action": "click",
                         "coordinate": await center(bridge.env, raw._page.get_by_role("checkbox")),
                     },
-                    {"action": "wait", "duration": 0.8},
+                    {"action": "wait", "duration": 1.7},
                     {"action": "click", "coordinate": [500, 500]},
                 ],
                 "decision_summary": "Scripted boundary test: click the visible checkbox then wait.",
@@ -823,3 +832,599 @@ async def test_serve_enforces_the_same_bridge_deadline(setup_bridge, monkeypatch
     finally:
         os.close(reader)
     assert code == 1 and bridge.closed and env.reset_count == 0
+
+
+@pytest.mark.asyncio
+async def test_windows_break_cancels_serve_and_restores_signal_handlers(monkeypatch):
+    """CTRL_BREAK must enter graceful shutdown, not kill the bridge before finalize."""
+    from examples.not_a_robot import codex_bridge
+
+    previous = {2: object(), 15: object(), 21: object()}
+    registered = dict(previous)
+    closed = []
+
+    def install(signum, handler):
+        old, registered[signum] = registered[signum], handler
+        return old
+
+    async def transport(*args, **kwargs):
+        assert all(callable(registered[number]) for number in previous)
+        registered[21](21, None)
+        try:
+            await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            closed.append(True)
+            return 1
+
+    monkeypatch.setattr(codex_bridge, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        codex_bridge,
+        "signal",
+        SimpleNamespace(
+            SIGTERM=15,
+            SIGINT=2,
+            SIGBREAK=21,
+            signal=install,
+        ),
+    )
+    monkeypatch.setattr(
+        codex_bridge,
+        "sys",
+        SimpleNamespace(
+            stdin=SimpleNamespace(fileno=lambda: 99),
+        ),
+    )
+    monkeypatch.setattr(codex_bridge, "serve", transport)
+    assert await codex_bridge._main(SimpleNamespace(), None) == 1
+    assert closed == [True]
+    assert registered == previous
+
+
+@pytest.fixture
+def sequence_bridge(setup_bridge, monkeypatch):
+    """Synthetic protocol clock and PNGs, never model gameplay or video evidence."""
+    from PIL import Image
+
+    args, env, created = setup_bridge
+    args.max_seconds, args.max_steps = 60, 200
+    clock = SimpleNamespace(now=1000.0)
+
+    async def advance(seconds):
+        clock.now += seconds
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(
+        bridge_module,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock.now, time=lambda: 1700000000 + clock.now),
+    )
+    monkeypatch.setattr(
+        bridge_module, "asyncio", SimpleNamespace(**(vars(asyncio) | {"sleep": advance}))
+    )
+    env.timestamp = bridge_module.time.time
+    original_step = env.step
+
+    async def numbered_step(calls):
+        buffer = io.BytesIO()
+        Image.new("RGB", (2, 2), ((env._steps + 1) % 256, 20, 30)).save(buffer, format="PNG")
+        env.png = buffer.getvalue()
+        return await original_step(calls)
+
+    env.step = numbered_step
+    return args, env, clock, created
+
+
+@pytest.mark.parametrize("tool", ["get_observation", "computer"])
+@pytest.mark.parametrize(
+    "sequence",
+    [
+        None,
+        {},
+        [],
+        {"duration_seconds": 1},
+        {"duration_seconds": 1, "interval_seconds": 0.25, "selector": "body"},
+        {"duration_seconds": 0, "interval_seconds": 0.25},
+        {"duration_seconds": 10.01, "interval_seconds": 0.25},
+        {"duration_seconds": 1, "interval_seconds": 0.099},
+        {"duration_seconds": 1, "interval_seconds": 10.01},
+        {"duration_seconds": True, "interval_seconds": 0.25},
+        {"duration_seconds": 1, "interval_seconds": False},
+        {"duration_seconds": "1", "interval_seconds": 0.25},
+        {"duration_seconds": float("nan"), "interval_seconds": 0.25},
+        {"duration_seconds": 1, "interval_seconds": float("inf")},
+        {"duration_seconds": 10**400, "interval_seconds": 0.25},
+    ],
+)
+async def test_sequence_invalid_fields_rejected_without_capture(setup_bridge, tool, sequence):
+    args, env, created = setup_bridge
+    bridge = CodexBridge(args)
+    arguments = {"sequence": sequence}
+    if tool == "computer":
+        arguments.update(actions=[{"action": "screenshot"}], decision_summary="Protocol fixture.")
+    with pytest.raises(ValueError):
+        await bridge.call_tool(tool, arguments, "invalid sequence fixture")
+    assert not created and env.reset_count == 0 and not env.calls
+    await bridge.close("unit_fixture_done")
+
+
+async def test_sequence_region_is_exclusive_before_environment_start(setup_bridge):
+    args, env, created = setup_bridge
+    bridge = CodexBridge(args)
+    with pytest.raises(ValueError):
+        await bridge.call_tool(
+            "get_observation",
+            {"sequence": {"duration_seconds": 1, "interval_seconds": 0.25}, "region": [0, 0, 1, 1]},
+            "mutually exclusive fixture",
+        )
+    assert not created and env.reset_count == 0
+    await bridge.close("unit_fixture_done")
+
+
+@pytest.mark.parametrize("after_action", [False, True])
+async def test_sequence_ordered_frames_real_steps_and_private_info_not_returned(
+    sequence_bridge, after_action
+):
+    args, env, _, _ = sequence_bridge
+    bridge = CodexBridge(args)
+    sequence = {"duration_seconds": 1, "interval_seconds": 0.25}
+    try:
+        if after_action:
+            await bridge.call_tool("get_observation", {}, "initial fixture")
+            response = await bridge.call_tool(
+                "computer",
+                {
+                    "actions": [{"action": "click", "coordinate": [30, 30]}],
+                    "decision_summary": "Protocol-only action, not a game win.",
+                    "sequence": sequence,
+                },
+                "action and sequence fixture",
+            )
+        else:
+            response = await bridge.call_tool(
+                "get_observation", {"sequence": sequence}, "first sequence fixture"
+            )
+        feedback = json.loads(response["content"][0]["text"])
+        sampled = feedback["sequence"]
+        frames = sampled["frames"]
+        assert sampled["status"] == "complete" and sampled["stop_reason"] == "duration_elapsed"
+        assert sampled["frame_count"] == len(frames) == 5
+        assert [item["target_seconds"] for item in frames] == [0, 0.25, 0.5, 0.75, 1]
+        assert frames[0]["request_relative_seconds"] is frames[0]["lag_seconds"] is None
+        assert [item["index"] for item in frames] == list(range(5))
+        assert env._steps == len(env.calls) == 4 + int(after_action)
+        assert all(
+            call["function"]["arguments"] == {"actions": [{"action": "screenshot"}]}
+            for call in env.calls[int(after_action) :]
+        )
+        assert [block["type"] for block in response["content"]] == ["text"] + ["image"] * 5
+        pngs = [base64.b64decode(block["data"]) for block in response["content"][1:]]
+        assert len(set(pngs)) == 5
+        assert sampled["png_bytes"] == sum(map(len, pngs))
+        for frame, png in zip(frames, pngs, strict=True):
+            assert frame["sha256"] == hashlib.sha256(png).hexdigest()
+            assert frame["viewport"] == list(env.display_resolution)
+            assert frame["capture_started_unix_s"] <= frame["capture_completed_unix_s"]
+            assert frame["capture_relative_seconds"] == pytest.approx(
+                frame["capture_started_unix_s"] - sampled["window_started_unix_s"]
+            )
+        assert feedback["observation"]["sha256"] == frames[-1]["sha256"]
+        assert "evaluation_only_secret" not in json.dumps(response)
+        assert str(env.attempt_dir) not in json.dumps(response)
+        assert "state" not in feedback and "reference" not in feedback
+        events = [
+            json.loads(line) for line in (env.attempt_dir / "events.jsonl").read_text().splitlines()
+        ]
+        prepared = [row["data"] for row in events if row["type"] == "controller_result"][-1]
+        assert prepared["response_delivery"] == "prepared"
+        assert [item["sha256"] for item in prepared["model_visible_frames"]] == [
+            item["sha256"] for item in frames
+        ]
+        assert not any(row["type"] == "controller_response_sent" for row in events)
+    finally:
+        await bridge.close("unit_fixture_done")
+
+
+async def test_sequence_actual_maximum_frame_limit(sequence_bridge):
+    args, env, _, _ = sequence_bridge
+    bridge = CodexBridge(args)
+    try:
+        response = await bridge.call_tool(
+            "get_observation",
+            {"sequence": {"duration_seconds": 10, "interval_seconds": 0.1}},
+            "frame limit fixture",
+        )
+        sampled = json.loads(response["content"][0]["text"])["sequence"]
+        assert sampled["status"] == "partial" and sampled["stop_reason"] == "frame_limit"
+        assert sampled["frame_count"] == 64 and len(response["content"]) == 65
+        assert env._steps == 63
+    finally:
+        await bridge.close("unit_fixture_done")
+
+
+async def test_sequence_oversized_first_png_is_not_returned(sequence_bridge):
+    args, env, _, _ = sequence_bridge
+    # Byte accounting fixture: valid PNG prefix with intentionally oversized padding.
+    env.png = PNG + b"\0" * (8 * 1024 * 1024)
+    bridge = CodexBridge(args)
+    try:
+        response = await bridge.call_tool(
+            "get_observation",
+            {"sequence": {"duration_seconds": 1, "interval_seconds": 0.25}},
+            "byte limit fixture",
+        )
+        feedback = json.loads(response["content"][0]["text"])
+        assert feedback["sequence"]["stop_reason"] == "byte_limit"
+        assert feedback["sequence"]["frame_count"] == feedback["sequence"]["png_bytes"] == 0
+        assert feedback["observation"] is None and len(response["content"]) == 1
+        assert env._steps == 0
+    finally:
+        await bridge.close("unit_fixture_done")
+
+
+async def test_sequence_late_capture_skips_slots_without_catchup(sequence_bridge):
+    args, env, clock, _ = sequence_bridge
+    original_step = env.step
+
+    async def delayed_step(calls):
+        if env._steps == 0:
+            clock.now += 0.6
+        return await original_step(calls)
+
+    env.step = delayed_step
+    bridge = CodexBridge(args)
+    try:
+        response = await bridge.call_tool(
+            "get_observation",
+            {"sequence": {"duration_seconds": 1, "interval_seconds": 0.25}},
+            "synthetic late capture fixture",
+        )
+        sampled = json.loads(response["content"][0]["text"])["sequence"]
+        assert sampled["skipped_slots"] == [2, 3]
+        assert [frame["target_seconds"] for frame in sampled["frames"]] == [0, 0.25, 1]
+        assert sampled["frames"][1]["capture_relative_seconds"] == pytest.approx(0.85)
+        assert sampled["frames"][2]["request_relative_seconds"] == pytest.approx(1)
+        assert env._steps == 2
+    finally:
+        await bridge.close("unit_fixture_done")
+
+
+async def test_sequence_archived_overflow_frame_cannot_be_next_decision_basis(
+    sequence_bridge, monkeypatch
+):
+    args, env, _, _ = sequence_bridge
+    monkeypatch.setattr(bridge_module, "SEQUENCE_MAX_PNG_BYTES", len(PNG) + 1)
+    bridge = CodexBridge(args)
+    try:
+        response = await bridge.call_tool(
+            "get_observation",
+            {"sequence": {"duration_seconds": 1, "interval_seconds": 0.25}},
+            "synthetic overflow fixture",
+        )
+        feedback = json.loads(response["content"][0]["text"])
+        sampled = feedback["sequence"]
+        assert sampled["stop_reason"] == "byte_limit" and sampled["frame_count"] == 1
+        returned_hash = hashlib.sha256(base64.b64decode(response["content"][1]["data"])).hexdigest()
+        assert feedback["observation"]["sha256"] == returned_hash
+        assert env.last_observation["sha256"] != returned_hash and env._steps == 1
+        await bridge.call_tool(
+            "computer",
+            {
+                "actions": [{"action": "click", "coordinate": [30, 30]}],
+                "decision_summary": "Use only actually returned fixture pixels.",
+            },
+            "next decision fixture",
+        )
+        events = [
+            json.loads(line) for line in (env.attempt_dir / "events.jsonl").read_text().splitlines()
+        ]
+        decision = [row["data"] for row in events if row["type"] == "model_decision"][-1]
+        assert decision["based_on"]["sha256"] == returned_hash
+        assert decision["based_on_sequence"]["frames"][-1]["sha256"] == returned_hash
+    finally:
+        await bridge.close("unit_fixture_done")
+
+
+@pytest.mark.parametrize("limit", ["step", "time"])
+async def test_sequence_stops_at_actual_budget(sequence_bridge, limit):
+    args, env, _, _ = sequence_bridge
+    if limit == "step":
+        args.max_steps = 2
+    else:
+        args.max_seconds = 0.4
+    bridge = CodexBridge(args)
+    try:
+        response = await bridge.call_tool(
+            "get_observation",
+            {"sequence": {"duration_seconds": 1, "interval_seconds": 0.25}},
+            "synthetic budget fixture",
+        )
+        sampled = json.loads(response["content"][0]["text"])["sequence"]
+        assert sampled["status"] == "partial"
+        assert sampled["stop_reason"] == ("step_budget" if limit == "step" else "time_budget")
+        assert env._steps == (2 if limit == "step" else 1)
+        assert sampled["frame_count"] == env._steps + 1
+    finally:
+        await bridge.close("unit_fixture_done")
+
+
+@pytest.mark.parametrize("stop", ["terminal", "infra_error", "tool_error", "campaign_boundary"])
+async def test_sequence_stops_on_current_result_and_retains_intermediate_errors(
+    sequence_bridge, stop
+):
+    args, env, _, _ = sequence_bridge
+    original_step = env.step
+    if stop == "campaign_boundary":
+        args.campaign = True
+        env.state = SimpleNamespace(task_id="neal_01")
+
+    async def stop_step(calls):
+        result = await original_step(calls)
+        if stop == "terminal":
+            env.outcome, env._terminal = "success", True
+            result.terminated, result.reward = True, 1
+        elif stop == "infra_error":
+            env.outcome, env._terminal = "infra_error", True
+            result.truncated, result.reward = True, 0
+        elif stop == "tool_error":
+            result.results[0].error = "Synthetic intermediate GUI error"
+        else:
+            env.state.task_id = "neal_02"
+            result.info["campaign"] = {
+                "displayed_task": "neal_02",
+                "completed_tasks": ["neal_01"],
+                "total_tasks": 48,
+                "next_task": "neal_02",
+                "unexecuted_actions": 0,
+                "notice": "Completed neal_01; now displaying neal_02.",
+            }
+        return result
+
+    env.step = stop_step
+    bridge = CodexBridge(args)
+    try:
+        response = await bridge.call_tool(
+            "get_observation",
+            {"sequence": {"duration_seconds": 1, "interval_seconds": 0.25}},
+            "synthetic state boundary, not actual game completion",
+        )
+        feedback = json.loads(response["content"][0]["text"])
+        assert feedback["sequence"]["stop_reason"] == stop
+        assert env._steps == 1 and feedback["sequence"]["frame_count"] == 2
+        if stop == "tool_error":
+            assert response["isError"] and feedback["errors"] == [
+                "Synthetic intermediate GUI error"
+            ]
+        if stop == "infra_error":
+            assert feedback["outcome"] == "infra_error" and feedback["truncated"]
+    finally:
+        await bridge.close("unit_fixture_done")
+
+
+async def test_sequence_computer_action_error_is_not_overwritten_by_sampling(sequence_bridge):
+    args, env, _, _ = sequence_bridge
+    bridge = CodexBridge(args)
+    try:
+        await bridge.call_tool("get_observation", {}, "initial fixture")
+        original_step = env.step
+
+        async def errored_step(calls):
+            result = await original_step(calls)
+            result.results[0].error = "Synthetic action error before sampling"
+            return result
+
+        env.step = errored_step
+        response = await bridge.call_tool(
+            "computer",
+            {
+                "actions": [{"action": "key", "keys": ["bad_fixture_key"]}],
+                "decision_summary": "Protocol-only error fixture.",
+                "sequence": {"duration_seconds": 1, "interval_seconds": 0.25},
+            },
+            "action error fixture",
+        )
+        feedback = json.loads(response["content"][0]["text"])
+        assert env._steps == 1 and response["isError"]
+        assert feedback["errors"] == ["Synthetic action error before sampling"]
+        assert feedback["sequence"]["stop_reason"] == "tool_error"
+        assert feedback["sequence"]["frame_count"] == 1
+    finally:
+        await bridge.close("unit_fixture_done")
+
+
+@pytest.mark.parametrize("flush_outcome", ["sent", "broken_pipe", "cancelled"])
+async def test_sequence_sent_proof_requires_successful_protocol_flush(
+    sequence_bridge, flush_outcome
+):
+    args, env, _, _ = sequence_bridge
+
+    class CheckedOutput(io.StringIO):
+        reply_id = None
+
+        def write(self, text):
+            self.reply_id = json.loads(text)["id"]
+            return super().write(text)
+
+        def flush(self):
+            if self.reply_id == 2:
+                events = [
+                    json.loads(line)
+                    for line in (env.attempt_dir / "events.jsonl").read_text().splitlines()
+                ]
+                assert not any(row["type"] == "controller_response_sent" for row in events)
+                if flush_outcome == "broken_pipe":
+                    raise BrokenPipeError("Synthetic sequence flush failure")
+                if flush_outcome == "cancelled":
+                    raise asyncio.CancelledError("Synthetic cancellation at flush")
+            return super().flush()
+
+    reader, writer = os.pipe()
+    output = CheckedOutput()
+    try:
+        requests = [
+            rpc("initialize", protocolVersion="2025-11-25"),
+            rpc(
+                "tools/call",
+                2,
+                name="get_observation",
+                arguments={"sequence": {"duration_seconds": 1, "interval_seconds": 0.25}},
+            ),
+            rpc(
+                "tools/call",
+                3,
+                name="finish",
+                arguments={"status": "failure", "summary": "End protocol fixture."},
+            ),
+        ]
+        os.write(writer, ("\n".join(requests) + "\n").encode())
+        os.close(writer)
+        writer = None
+        code = await serve(args, input_fd=reader, output=output)
+    finally:
+        os.close(reader)
+        if writer is not None:
+            os.close(writer)
+    events = [
+        json.loads(line) for line in (env.attempt_dir / "events.jsonl").read_text().splitlines()
+    ]
+    sent = [row for row in events if row["type"] == "controller_response_sent"]
+    assert code == int(flush_outcome != "sent") and env.close_count == 1
+    if flush_outcome == "sent":
+        assert len(sent) == 1 and sent[0]["data"]["turn"] == 1
+        assert sent[0]["data"]["response_id"] == 2
+        prepared = next(row for row in events if row["type"] == "controller_result")
+        assert prepared["sequence"] < sent[0]["sequence"]
+    else:
+        assert sent == []
+    manifest = json.loads((env.attempt_dir / "manifest.json").read_text())
+    assert manifest["recording_complete"] and manifest["data"]["cleanup_complete"]
+
+
+async def test_cancel_during_sequence_capture_keeps_archive_without_sent_claim(sequence_bridge):
+    args, env, _, _ = sequence_bridge
+    entered, never = asyncio.Event(), asyncio.Event()
+
+    async def blocked_capture(calls):
+        entered.set()
+        await never.wait()
+
+    env.step = blocked_capture
+    reader, writer = os.pipe()
+    serving = None
+    try:
+        requests = [
+            rpc("initialize", protocolVersion="2025-11-25"),
+            rpc(
+                "tools/call",
+                2,
+                name="get_observation",
+                arguments={"sequence": {"duration_seconds": 1, "interval_seconds": 0.25}},
+            ),
+        ]
+        os.write(writer, ("\n".join(requests) + "\n").encode())
+        os.close(writer)
+        writer = None
+        output = io.StringIO()
+        serving = asyncio.create_task(serve(args, input_fd=reader, output=output))
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        serving.cancel()
+        assert await asyncio.wait_for(serving, timeout=2) == 1
+        replies = [json.loads(line) for line in output.getvalue().splitlines()]
+        assert [reply["id"] for reply in replies] == [1]
+    finally:
+        if serving is not None and not serving.done():
+            serving.cancel()
+            await serving
+        os.close(reader)
+        if writer is not None:
+            os.close(writer)
+    events = [
+        json.loads(line) for line in (env.attempt_dir / "events.jsonl").read_text().splitlines()
+    ]
+    assert any(row["type"] == "observation" for row in events)
+    assert not any(row["type"] == "controller_response_sent" for row in events)
+    manifest = json.loads((env.attempt_dir / "manifest.json").read_text())
+    assert manifest["outcome"] == "controller_cancelled" and env.close_count == 1
+    assert manifest["recording_complete"] and manifest["data"]["cleanup_complete"]
+
+
+@pytest.mark.live
+async def test_sequence_real_level35_captures_without_answer_or_mouse_input(tmp_path):
+    """Bounded real screenshot-channel smoke, not Astra or a game-success proof."""
+    args = _parse_args(
+        [
+            "--task",
+            "neal_35",
+            "--artifact-root",
+            str(tmp_path),
+            "--model",
+            "scripted-channel-test",
+            "--reasoning-effort",
+            "none",
+            "--max-seconds",
+            "30",
+            "--max-steps",
+            "100",
+            *(
+                ["--browser-executable", os.environ["NEAL_BROWSER_EXECUTABLE"]]
+                if "NEAL_BROWSER_EXECUTABLE" in os.environ
+                else []
+            ),
+        ]
+    )
+    code, replies = await exchange(
+        args,
+        [
+            rpc("initialize", protocolVersion="2025-11-25"),
+            rpc(
+                "tools/call",
+                2,
+                name="get_observation",
+                arguments={"sequence": {"duration_seconds": 8, "interval_seconds": 0.25}},
+            ),
+            rpc(
+                "tools/call",
+                3,
+                name="finish",
+                arguments={
+                    "status": "failure",
+                    "summary": "End the bounded screenshot-channel test without guessing.",
+                },
+            ),
+        ],
+    )
+    assert code == 0 and not replies[1]["result"]["isError"]
+    content = replies[1]["result"]["content"]
+    feedback = json.loads(content[0]["text"])
+    sampled = feedback["sequence"]
+    frames = sampled["frames"]
+    assert feedback["task"] == "neal_35" and feedback["outcome"] == "in_progress"
+    assert sampled["stop_reason"] == "duration_elapsed"
+    assert 8 <= sampled["frame_count"] <= 33 and len(content) == len(frames) + 1
+    assert frames[-1]["capture_started_unix_s"] - frames[0]["capture_started_unix_s"] >= 7
+    assert len({frame["sha256"] for frame in frames}) >= 3
+    manifests = list(tmp_path.glob("*/manifest.json"))
+    assert len(manifests) == 1
+    archive = manifests[0].parent
+    events = [json.loads(line) for line in (archive / "events.jsonl").read_text().splitlines()]
+    prepared = next(row["data"] for row in events if row["type"] == "controller_result")
+    for index, (frame, block, reference) in enumerate(
+        zip(frames, content[1:], prepared["model_visible_frames"], strict=True)
+    ):
+        png = base64.b64decode(block["data"])
+        assert png.startswith(b"\x89PNG") and png == (archive / reference["path"]).read_bytes()
+        assert frame["index"] == index and hashlib.sha256(png).hexdigest() == frame["sha256"]
+        assert frame["sha256"] == reference["sha256"]
+        assert frame["capture_started_unix_s"] == reference["capture_started_unix_s"]
+        assert frame["capture_completed_unix_s"] == reference["capture_completed_unix_s"]
+    assert not any(
+        row["type"] == "input_started" and row["data"]["call"].startswith(("mouse.", "keyboard."))
+        for row in events
+    )
+    assert not any(
+        row["type"] == "game_event" and row["data"]["kind"] in {"rejected", "completed"}
+        for row in events
+    )
+    assert len([row for row in events if row["type"] == "controller_response_sent"]) == 1
+    manifest = json.loads(manifests[0].read_text())
+    assert manifest["outcome"] == "agent_stopped"
+    assert manifest["recording_complete"] and manifest["data"]["cleanup_complete"]

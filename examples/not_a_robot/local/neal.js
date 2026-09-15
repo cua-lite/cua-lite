@@ -1,21 +1,26 @@
 /* Evidence-bounded reconstructions of synthetic game instances.
  * The screenshot-only policy does not receive this script or evaluator state.
  * Fixed answers identify captured instances, not a recovered original generator.
- * Timing, refresh, audio, and the tic-tac-toe opponent are documented local rules.
+ * Per-task provenance distinguishes source-derived rules and local differences.
  */
 "use strict";
 
 window.nealTasks = {};
 
 const ticTacToeLines = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
-const ticTacToeCandidates = (board) => {
+const ticTacToeMove = (board, gameNum, random) => {
   const empty = board.flatMap((mark, position) => mark ? [] : [position]);
+  if (!empty.length) return -1;
+  // Source 1121 consumes this chance draw even on the first, tactical-only game.
+  if (random() < 0.4 && gameNum > 0) return empty[Math.floor(random() * empty.length)];
   for (const mark of ["O", "X"]) {
-    const candidates = empty.filter((position) => ticTacToeLines.some((line) =>
-      line.every((index) => index === position || board[index] === mark)));
-    if (candidates.length) return candidates;
+    for (const line of ticTacToeLines) {
+      const open = line.find((index) => !board[index]);
+      if (open !== undefined && line.filter((index) => board[index] === mark).length === 2) return open;
+    }
   }
-  return empty;
+  for (const index of [4, 0, 2, 6, 8]) if (!board[index]) return index;
+  return empty[0];
 };
 
 window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
@@ -98,7 +103,7 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
       if (!active()) return;
       revision++;
       state.progress = 0;
-      emit("retry", {reason: "refresh_same_reference_instance", revision});
+      emit("retry", {reason: "refresh_challenge", revision});
       refresh();
     });
     return node;
@@ -146,10 +151,47 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
   };
   const exactSelection = (selected, expected) => selected.size === expected.size &&
     [...selected].every((index) => expected.has(index));
+  const wireCheckbox = ({card, checkbox, mark, wrong = false, details = {}, reason}) => {
+    const timers = new Set();
+    const spinner = document.createElement("span");
+    spinner.className = "neal-checkbox-spinner";
+    mark.append(spinner);
+    card.style.cursor = "pointer";
+    card.addEventListener("click", () => {
+      if (!active()) return;
+      // Source 478 permits repeated card clicks without clearing earlier marks
+      // or callbacks. A previous click can end loading for a later click.
+      mark.classList.add("loading");
+      emit("checkbox_loading", details);
+      const feedbackTimer = setTimeout(() => {
+        timers.delete(feedbackTimer);
+        if (!active()) return;
+        mark.classList.remove("loading");
+        mark.classList.add(wrong ? "wrong" : "checked");
+        checkbox.setAttribute("aria-checked", "true");
+        if (!wrong) state.progress = 1;
+        emit(wrong ? "checkbox_wrong" : "checkbox_checked", details);
+      }, wrong ? 800 : 700);
+      timers.add(feedbackTimer);
+      if (!wrong) {
+        const completionTimer = setTimeout(() => {
+          timers.delete(completionTimer);
+          finish(reason);
+        }, 1600);
+        timers.add(completionTimer);
+      }
+    });
+    // Local terminal cleanup suppresses stale callbacks after the single result.
+    return () => {
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
+      mark.classList.remove("loading");
+    };
+  };
 
   if (window.nealTasks[level]) {
-    const hooks = window.nealTasks[level].render({root, task, level, asset, button, heading,
-      newGrid, newTile, verifyFooter, exactSelection, state, emit, active, finish, reject, random});
+    const hooks = await window.nealTasks[level].render({root, task, level, asset, button, heading,
+      newGrid, newTile, verifyFooter, exactSelection, wireCheckbox, state, emit, active, finish, reject, random});
     refresh = hooks.refresh;
     if (hooks.stopDynamic) stopDynamic = hooks.stopDynamic;
   } else if (level === 1) {
@@ -157,36 +199,25 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
     const checkbox = button("neal-checkbox-target", "I'm not a robot");
     checkbox.setAttribute("role", "checkbox");
     checkbox.setAttribute("aria-checked", "false");
+    const markContainer = document.createElement("span");
+    markContainer.className = "neal-checkbox-mark-container";
     const mark = document.createElement("span");
     mark.className = "neal-checkbox-mark";
+    markContainer.append(mark);
     const caption = document.createElement("span");
+    caption.className = "neal-checkbox-caption";
     caption.textContent = "I'm not a robot";
-    checkbox.append(mark, caption);
+    checkbox.append(markContainer, caption);
     const logo = document.createElement("div");
     logo.className = "neal-recaptcha-mark";
     logo.innerHTML = '<svg viewBox="0 0 36 36" aria-hidden="true"><path fill="#6083c5" d="M31 14A14 14 0 0 0 7 6L4 3v13h13l-5-5a8 8 0 0 1 14 3h5Z"/><path fill="#5264a3" d="M5 22a14 14 0 0 0 24 8l3 3V20H19l5 5a8 8 0 0 1-14-3H5Z"/></svg><span>reCAPTCHA</span>';
     root.append(checkbox, logo);
-    let loading = false;
-    checkbox.addEventListener("click", () => {
-      if (!active() || loading) return;
-      loading = true;
-      mark.classList.add("loading");
-      emit("checkbox_loading");
-      // A loading phase is observed; its 650 ms duration is an inferred parameter.
-      setTimeout(() => {
-        if (!active()) return;
-        mark.classList.remove("loading");
-        mark.classList.add("checked");
-        checkbox.setAttribute("aria-checked", "true");
-        state.progress = 1;
-        finish("checkbox_checked");
-      }, 650);
-    });
+    stopDynamic = wireCheckbox({card: root, checkbox, mark, reason: "checkbox_checked"});
   } else if (level === 2 || level === 4 || level === 7) {
     const subjects = {2: "Stop Sign", 4: "Vegetable", 7: "Stop Sign and Bike"};
     heading("Select all the squares with a", subjects[level]);
     const size = level === 2 ? 4 : level === 4 ? 3 : 10;
-    const expected = new Set(level === 2 ? [2, 3, 6, 7] : level === 4 ? [1, 2, 5] :
+    const expected = new Set(level === 2 ? [2, 3, 6, 7] : level === 4 ? [1, 2, 5, 7] :
       referenceInstance === "incremental" ? [26, 36, 46, 56, 66, 76, 86, 96, 77, 75, 74] :
       [87, 76, 65, 54, 43, 32, 21, 10, 95, 96, 97, 98]);
     const letters = (referenceInstance === "incremental" ?
@@ -224,9 +255,61 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
     refresh = () => {
       selected.clear();
       tiles.forEach((tile) => tile.setAttribute("aria-pressed", "false"));
+      if (level === 7) {
+        const generated = Array(100).fill("");
+        const directions = [[1, 0], [-1, 0], [0, 1], [0, -1],
+          [1, 1], [1, -1], [-1, 1], [-1, -1]];
+        expected.clear();
+        // Source 1072 sorts the words alphabetically, then samples maximum-overlap
+        // candidates in direction order and row-major order within each direction.
+        for (const word of ["BIKE", "STOPSIGN"]) {
+          let bestOverlap = 0;
+          let candidates = [];
+          for (const [dx, dy] of directions) {
+            for (let y = 0; y < 10; y++) {
+              for (let x = 0; x < 10; x++) {
+                const endX = x + dx * (word.length - 1);
+                const endY = y + dy * (word.length - 1);
+                if (endX < 0 || endX >= 10 || endY < 0 || endY >= 10) continue;
+                const cells = Array.from(word, (_, index) => (y + dy * index) * 10 + x + dx * index);
+                let overlap = 0;
+                let conflict = false;
+                for (let index = 0; index < word.length; index++) {
+                  const letter = generated[cells[index]];
+                  if (letter === word[index]) overlap++;
+                  else if (letter) { conflict = true; break; }
+                }
+                if (conflict || overlap < bestOverlap) continue;
+                if (overlap > bestOverlap) { bestOverlap = overlap; candidates = []; }
+                candidates.push(cells);
+              }
+            }
+          }
+          // BIKE occupies at most four rows, leaving an empty row for STOPSIGN.
+          // Thus the generic source generator's retry/growth branches are unreachable here.
+          const placement = candidates[Math.floor(random() * candidates.length)];
+          placement.forEach((cell, index) => {
+            generated[cell] = word[index];
+            expected.add(cell);
+          });
+        }
+        const alphabet = "abcdefghijklmnoprstuvwy";
+        tiles.forEach((tile, index) => {
+          if (!generated[index]) generated[index] = alphabet[Math.floor(random() * 23)];
+          const letter = generated[index].toUpperCase();
+          tile.firstElementChild.textContent = letter;
+          tile.setAttribute("aria-label", `Row ${Math.floor(index / 10) + 1}, column ${index % 10 + 1}, ${letter}`);
+        });
+        emit("word_search_regenerated");
+      }
     };
     verifyFooter(() => {
-      if (exactSelection(selected, expected)) finish("exact_reference_selection");
+      if (level === 4) {
+        const missing = [...expected].filter((index) => !selected.has(index)).length;
+        const extra = [...selected].filter((index) => !expected.has(index) && index !== 8).length;
+        if (missing + extra <= 1) finish("vegetable_selection_within_tolerance");
+        else reject("vegetable_selection_exceeds_tolerance");
+      } else if (exactSelection(selected, expected)) finish("exact_reference_selection");
       else reject("selection_does_not_match_reference_instance");
     });
   } else if (level === 3 || level === 8) {
@@ -251,13 +334,14 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
     inputRow.append(input, submit);
     form.append(prompt, picture, inputRow);
     root.append(form);
-    // Each captured plate keeps its own observed accepted spelling. No inferred normalization.
-    const answer = level === 3 ? "YHRPCD" : referenceInstance === "incremental" ? "JHB007" : "867V 309";
+    const answer = level === 3 ? "YHRPCD" : referenceInstance === "incremental" ? "JHB007" : "867V309";
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (!active()) return;
       emit("submit", {input_length: input.value.length});
-      if (input.value === answer) {
+      // The source plate rule removes only ASCII hyphens and spaces, preserving case.
+      const submitted = level === 8 ? input.value.replaceAll("-", "").replaceAll(" ", "") : input.value;
+      if (submitted === answer) {
         state.progress = 1;
         finish("reference_text_accepted");
       } else reject("text_does_not_match_reference_instance");
@@ -359,10 +443,14 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
       faces.push(face);
       grid.append(tile);
     }
-    refresh = () => initial.forEach((rotation, index) => {
-      rotations[index] = rotation;
-      faces[index].style.transform = `rotate(${rotation * 90}deg)`;
-    });
+    refresh = () => {
+      // Source 1111 samples each tile independently, in grid order.
+      faces.forEach((face, index) => {
+        rotations[index] = Math.floor(4 * random());
+        face.style.transform = `rotate(${rotations[index] * 90}deg)`;
+      });
+      emit("rotations_regenerated");
+    };
     verifyFooter(() => {
       if (rotations.every((rotation) => rotation % 4 === 0)) finish("intersection_reassembled");
       else reject("intersection_not_reassembled");
@@ -372,16 +460,29 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
     const grid = newGrid(3);
     grid.classList.add("neal-tic-grid");
     const board = Array(9).fill("");
-    board[4] = "O";
     const hasWon = (mark) => ticTacToeLines.some((line) => line.every((index) => board[index] === mark));
     const tiles = [];
     const faces = [];
-    let opponentPending = false;
+    let gameNum = 0;
+    let opponentPending = true;
     let opponentTimer = null;
     const redraw = () => board.forEach((mark, index) => {
       faces[index].className = `neal-tile-face${mark ? ` neal-mark-${mark.toLowerCase()}` : ""}`;
       tiles[index].setAttribute("aria-pressed", String(mark === "X"));
     });
+    const playOpponent = () => {
+      if (!active()) return;
+      const move = ticTacToeMove(board, gameNum, random);
+      if (move >= 0) {
+        board[move] = "O";
+        emit("move", {index: move, mark: "O"});
+      }
+      opponentPending = false;
+      redraw();
+      if (hasWon("O") || board.every(Boolean)) {
+        emit("board_finished", {outcome: hasWon("O") ? "opponent_win" : "draw"});
+      }
+    };
     for (let index = 0; index < 9; index++) {
       const {tile, face} = newTile(index);
       tile.addEventListener("click", () => {
@@ -398,34 +499,21 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
         opponentPending = true;
         const pendingRevision = revision;
         opponentTimer = setTimeout(() => {
-          if (!active() || pendingRevision !== revision) return;
-          // Observed replies fit win/block/free-cell candidates, including edge
-          // openings and either side of a fork. Priority and distribution remain
-          // inferred; the local seed is not an original challenge seed.
-          const candidates = ticTacToeCandidates(board);
-          const move = candidates[Math.floor(random() * candidates.length)];
-          if (move !== undefined && move >= 0) {
-            board[move] = "O";
-            emit("move", {index: move, mark: "O"});
-          }
-          opponentPending = false;
-          redraw();
-          if (hasWon("O") || board.every(Boolean)) {
-            emit("board_finished", {outcome: hasWon("O") ? "opponent_win" : "draw"});
-          }
-        }, 350);
+          if (pendingRevision === revision) playOpponent();
+        }, 450);
       });
       tiles.push(tile);
       faces.push(face);
       grid.append(tile);
     }
     redraw();
+    opponentTimer = setTimeout(playOpponent, 100);
     refresh = () => {
       clearTimeout(opponentTimer);
       opponentPending = false;
       board.fill("");
-      // Incremental attempt 602 observes this empty-board/X-first refresh.
-      // Keep the same tactical policy and continuing RNG stream before and after it.
+      gameNum++;
+      // Keep safe cancellation instead of the source's stale-timer refresh race.
       redraw();
       emit("board_reset", {first_player: "X"});
     };
@@ -481,7 +569,10 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
       addLeaf(0, 0, 1, 0);
     };
     verifyFooter(() => {
-      if (exactSelection(selected, expected)) finish("exact_recursive_reference_selection");
+      // Source 1100 counts missing and extra terminal leaves together.
+      const errors = [...expected].filter((index) => !selected.has(index)).length
+        + [...selected].filter((index) => !expected.has(index)).length;
+      if (errors <= 2) finish("recursive_source_selection");
       else reject("recursive_selection_does_not_match_reference_instance");
     });
   } else if (level === 10) {
@@ -489,37 +580,48 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
     const grid = newGrid(4);
     grid.classList.add("neal-mole-grid");
     const selected = new Set();
-    const visibleUntil = Array(16).fill(0);
+    const whacked = new Set();
+    const visible = new Set();
     const tiles = [];
-    let nextSpawn = performance.now() + 700;
-    let timer = null;
+    const hideTimers = new Set();
+    let latestHideTimer = null;
+    let spawnTimer = null;
     let verify;
-    const redraw = (now) => tiles.forEach((tile, index) => {
-      tile.classList.toggle("mole-visible", visibleUntil[index] > now);
-      tile.setAttribute("aria-pressed", String(selected.has(index)));
-    });
-    updateDynamic = () => {
-      if (!active()) return;
-      const now = performance.now();
-      visibleUntil.forEach((until, index) => {
-        if (until > 0 && until <= now) {
-          visibleUntil[index] = 0;
-          emit("mole_hidden", {index});
-        }
+    const redraw = () => {
+      tiles.forEach((tile, index) => {
+        tile.classList.toggle("mole-visible", visible.has(index));
+        tile.classList.toggle("mole-whacked", whacked.has(index));
+        tile.setAttribute("aria-pressed", String(selected.has(index)));
       });
-      if (now >= nextSpawn && selected.size < 5) {
-        const candidates = Array.from({length: 16}, (_, index) => index)
-          .filter((index) => !selected.has(index) && !visibleUntil[index]);
-        if (candidates.length) {
-          const index = candidates[Math.floor(random() * candidates.length)];
-          // Real-time intervals are explicit approximations: no continuous video exists.
-          const duration = 1200 + Math.floor(random() * 800);
-          visibleUntil[index] = now + duration;
-          emit("mole_shown", {index, duration_ms: duration});
+      state.progress = whacked.size;
+      verify.disabled = whacked.size < 5;
+    };
+    const stopTimers = () => {
+      clearTimeout(spawnTimer);
+      hideTimers.forEach((timer) => clearTimeout(timer));
+      hideTimers.clear();
+    };
+    const showRandomMole = () => {
+      if (!active()) return;
+      // Source 1127 uses 1..16 even though Grid 379 renders only cells 0..15.
+      const candidates = Array.from({length: 16}, (_, index) => index + 1)
+        .filter((index) => !whacked.has(index) && !visible.has(index));
+      if (!candidates.length) return;
+      const index = candidates[Math.floor(random() * candidates.length)];
+      const duration = [1500, 1000, 750, 625, 600][whacked.size];
+      visible.add(index);
+      emit("mole_shown", {index, duration_ms: duration});
+      const hideTimer = setTimeout(() => {
+        hideTimers.delete(hideTimer);
+        if (active() && !whacked.has(index) && visible.delete(index)) {
+          emit("mole_hidden", {index});
+          redraw();
         }
-        nextSpawn = now + 850 + Math.floor(random() * 500);
-      }
-      redraw(now);
+      }, duration);
+      hideTimers.add(hideTimer);
+      latestHideTimer = hideTimer;
+      spawnTimer = setTimeout(showRandomMole, 500 + 2000 * random());
+      redraw();
     };
     for (let index = 0; index < 16; index++) {
       const {tile, face} = newTile(index);
@@ -532,48 +634,51 @@ window.renderNealTask = async ({task, seed, version, referenceInstance}) => {
       face.append(mole);
       tile.addEventListener("click", () => {
         if (!active()) return;
-        updateDynamic();
-        if (selected.has(index)) {
-          emit("ignored_click", {index, reason: "already_hit"});
-        } else if (selected.size >= 5) {
-          emit("ignored_click", {index, reason: "hit_requirement_reached"});
-        } else if (visibleUntil[index] > performance.now()) {
-          selected.add(index);
-          visibleUntil[index] = 0;
-          state.progress = selected.size;
-          emit("mole_hit", {index, hit_count: selected.size});
-          verify.disabled = selected.size < 5;
-          if (selected.size === 5) {
-            visibleUntil.fill(0);
-            clearInterval(timer);
+        if (selected.has(index)) selected.delete(index);
+        else selected.add(index);
+        emit("selection_changed", {index, selected: selected.has(index), selected_count: selected.size});
+        if (whacked.delete(index)) emit("mole_unhit", {index, hit_count: whacked.size});
+        if (visible.has(index) && selected.has(index)) {
+          whacked.add(index);
+          visible.delete(index);
+          emit("mole_hit", {index, hit_count: whacked.size});
+          if (whacked.size >= 5) {
+            // The source cancels only its latest hide and next-spawn handles here.
+            clearTimeout(latestHideTimer);
+            hideTimers.delete(latestHideTimer);
+            clearTimeout(spawnTimer);
           }
-          redraw(performance.now());
-        } else reject("no_visible_mole_at_click");
+        }
+        redraw();
       });
       tiles.push(tile);
       grid.append(tile);
     }
     verify = verifyFooter(() => {
-      if (selected.size === 5) finish("five_moles_hit_and_verified");
+      if (whacked.size >= 5) finish("five_moles_hit_and_verified");
       else reject("mole_hit_requirement_not_reached");
     });
-    verify.disabled = true;
-    timer = setInterval(updateDynamic, 40);
     refresh = () => {
+      // Refresh/shutdown cancel every owned hide, not the original stale timers.
+      stopTimers();
       selected.clear();
-      visibleUntil.fill(0);
-      nextSpawn = performance.now() + 700;
-      verify.disabled = true;
-      redraw(performance.now());
-      clearInterval(timer);
-      timer = setInterval(updateDynamic, 40);
+      whacked.clear();
+      visible.clear();
+      showRandomMole();
     };
-    stopDynamic = () => clearInterval(timer);
+    refresh();
+    stopDynamic = stopTimers;
   } else {
     throw new Error(`Unsupported reference level: ${level}`);
   }
 
-  root.dataset.status = "in_progress";
+  root.dataset.status = state.status;
+  if (task.reference.fidelity === "local_variant") {
+    const note = document.createElement("p");
+    note.className = "neal-variant-note";
+    note.textContent = "Local mechanic variant. Artwork, media or dynamics differ from the original game.";
+    root.append(note);
+  }
   Object.defineProperty(window, "syntheticTask", {value: Object.freeze({
     snapshot: () => {
       updateDynamic();

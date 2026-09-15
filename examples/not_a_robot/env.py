@@ -74,6 +74,7 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
         browser_executable: str | None = None,
         display_resolution: tuple[int, int] = (1280, 800),
         headless: bool = True,
+        record_video: bool = False,
         max_steps: int = 20,
         max_seconds: float = 180,
         post_action_delay: float = 0.2,
@@ -121,12 +122,14 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
         self.browser_executable = browser_executable
         self.display_resolution = tuple(display_resolution)
         self.headless = headless
+        self.record_video = record_video
         self.max_steps = max_steps
         self.max_seconds = max_seconds
         self.post_action_delay = post_action_delay
         self.cursor = cursor
         self._extra_tools = ["terminate"] if extra_tools is None else extra_tools
         self._playwright = self._browser = self._context = self._page = None
+        self._video = None
         self.recorder: EventRecorder | None = None
         self.attempt_dir: Path | None = None
         self.last_observation: dict[str, Any] | None = None
@@ -192,6 +195,9 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
                 provenance["reference"] = dict(task_reference(local_task, reference_instance))
                 if provenance["reference"]["fidelity"] == "captured_instance":
                     provenance["source"] = "neal_reference_reconstruction"
+                    provenance["seed_scope"] = "local_dynamics_not_original_challenge_seed"
+                elif provenance["reference"]["fidelity"] == "local_variant":
+                    provenance["source"] = "neal_source_derived_local_variant"
                     provenance["seed_scope"] = "local_dynamics_not_original_challenge_seed"
         return LiteCUAMetadata(
             dims=("browser", "use"),
@@ -269,6 +275,7 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
         self.last_observation = None
         self._game_event_sequence = 0
         self._completed_tasks = []
+        self._video = None
         self._pressed_keys.clear()
         self._pressed_buttons.clear()
         self._scope_violation = self._main_status = self._main_gate = None
@@ -283,6 +290,7 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
                 "viewport": list(self.display_resolution),
                 "browser_executable": self.browser_executable,
                 "headless": self.headless,
+                "record_video": self.record_video,
             },
         )
         LIVE_ENVS[self._resource_id] = self
@@ -321,16 +329,29 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
                 executable_path=self.browser_executable,
             )
             w, h = self.display_resolution
+            if self.record_video:
+                self.recorder.emit(
+                    "video_context_requested",
+                    requested_size=[w, h],
+                    audio=False,
+                    model_input=False,
+                    timing="event timestamps bracket lifecycle; video zero is not synchronized",
+                )
             self._context = await self._browser.new_context(
                 viewport={"width": w, "height": h},
                 device_scale_factor=1,
                 locale="en-US",
                 timezone_id="UTC",
                 service_workers="block",
+                record_video_dir=str(self.attempt_dir / "videos") if self.record_video else None,
+                record_video_size={"width": w, "height": h} if self.record_video else None,
             )
             await self._context.route("**/*", self._route)
             await self._context.route_web_socket("**/*", self._block_socket)
             self._page = await self._context.new_page()
+            if self.record_video:
+                self._video = self._page.video
+                self.recorder.emit("video_page_created", artifact_available=self._video is not None)
             self._page.set_default_timeout(10_000)
             self._page.on("response", self._response)
             self._page.on(
@@ -401,7 +422,9 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
             )
         )
         self._game_event_sequence = 0
-        await self._page.goto(self._local_url, wait_until="networkidle", timeout=10_000)
+        # A terminated Worker can leave network-idle accounting pending even
+        # after the page is ready. The game owns asset decoding and readiness.
+        await self._page.goto(self._local_url, wait_until="domcontentloaded", timeout=10_000)
         await self._page.wait_for_function("() => window.syntheticTask !== undefined")
         await self._read_local_state()
         if (
@@ -427,11 +450,13 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
             snapshot = await self._page.evaluate("window.syntheticTask.snapshot()")
             events = snapshot.pop("events")
             self.state = LocalTaskState(**snapshot)
-            if self.state.status not in ("in_progress", "success", "failure"):
+            if self.state.status not in ("in_progress", "success", "failure", "infra_error"):
                 raise RuntimeError(f"Invalid local task status: {self.state.status}")
             for event in events[self._game_event_sequence :]:
                 self.recorder.emit("game_event", task_id=self.state.task_id, **event)
             self._game_event_sequence = len(events)
+            if self.state.status == "infra_error":
+                self.outcome, self._terminal = "infra_error", True
         except asyncio.CancelledError:
             # The controller owns deadline/cancellation classification. A cancelled
             # observation cannot be resumed as another active environment step.
@@ -672,6 +697,11 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
             stop_requested = name in LiteFinishToolSet.get_tool_names()
             if self.mode == "local":
                 await self._read_local_state()
+                if self.state.status == "infra_error":
+                    truncated = True
+                    if stop_requested and action.get("call_id"):
+                        terminal_ids.add(action["call_id"])
+                    break
                 if self.state.status in ("success", "failure"):
                     terminated = True
                     if name in LiteFinishToolSet.get_tool_names() and action.get("call_id"):
@@ -719,6 +749,9 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
             if self._scope_violation:
                 self.outcome, truncated = "scope_blocked", True
                 break
+            if self.mode == "local" and self.state.status == "infra_error":
+                truncated = True
+                break
             if self.mode == "local" and self.state.status in ("success", "failure"):
                 terminated = True
                 break
@@ -731,6 +764,8 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
             self.outcome, terminated, truncated = "access_blocked", False, True
         elif self._scope_violation:
             self.outcome, terminated, truncated = "scope_blocked", False, True
+        elif self.mode == "local" and self.state.status == "infra_error":
+            self.outcome, terminated, truncated = "infra_error", False, True
         elif self.mode == "local" and self.state.status in ("success", "failure"):
             # A page's success is not an episode success until campaign grading.
             # Keep this true even if the final-frame capture is cancelled.
@@ -775,6 +810,9 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
                             await self._primitive("keyboard.up", key=key)
                         await self._open_local_task()
                         frames.append(await self._observe("campaign_stage_start"))
+                        # Dependencies can fail after navigation's readiness check.
+                        if self.state.status == "infra_error":
+                            self.outcome, truncated = "infra_error", True
                     except asyncio.CancelledError:
                         self._terminal = True
                         raise
@@ -853,14 +891,66 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
         )
 
     async def close(self) -> None:
+        """Close the owned context before hashing video or publishing the archive."""
         cleanup_errors = []
+        final_read_cancelled = None
+        video = None
+        if self.record_video and self.recorder is not None:
+            video = {
+                "status": "missing",
+                "requested_size": list(self.display_resolution),
+                "error": "No main-page video artifact was created",
+            }
         try:
+            if (
+                self.mode == "local"
+                and self.recorder is not None
+                and self._page is not None
+                and not self._page.is_closed()
+                and self.outcome not in ("success", "failure", "infra_error")
+            ):
+                # An asynchronous page failure can follow the last model observation.
+                try:
+                    await asyncio.wait_for(self._read_local_state(), timeout=2.0)
+                    self.recorder.emit(
+                        "task_state", state=dataclasses.asdict(self.state), phase="close"
+                    )
+                except asyncio.CancelledError as error:
+                    # Preserve cleanup and the archive before propagating cancellation.
+                    final_read_cancelled = error
+                    self.outcome, self._terminal = "infra_error", True
+                    self.recorder.emit("error", phase="close_local_state", error=repr(error))
+                except Exception as error:
+                    self.outcome, self._terminal = "infra_error", True
+                    self.recorder.emit("error", phase="close_local_state", error=repr(error))
+            if self._context is not None:
+                if video is not None:
+                    self.recorder.emit("video_context_close_started")
+                try:
+                    await self._context.close()
+                    if video is not None:
+                        self.recorder.emit("video_context_closed")
+                        if self._video is not None:
+                            try:
+                                path = Path(await self._video.path()).resolve()
+                                video = {
+                                    "status": "saved",
+                                    "path": path.relative_to(self.attempt_dir).as_posix(),
+                                    "requested_size": list(self.display_resolution),
+                                }
+                            except Exception as error:
+                                video.update(status="failed", error=repr(error))
+                except Exception as error:
+                    cleanup_errors.append(repr(error))
+                    if video is not None:
+                        video.update(status="failed", error=repr(error))
             if self._browser is not None:
                 await self._browser.close()
         except Exception as error:
             cleanup_errors.append(repr(error))
         finally:
             self._browser = self._context = self._page = None
+            self._video = None
             if self._playwright is not None:
                 try:
                     await self._playwright.stop()
@@ -890,5 +980,10 @@ class NotARobotEnv(LiteBaseEnv, EnvServerResource):
                 )
             self.recorder = None
             recorder.finalize(
-                self.outcome, cleanup_errors=cleanup_errors, cleanup_complete=not cleanup_errors
+                self.outcome,
+                video=video,
+                cleanup_errors=cleanup_errors,
+                cleanup_complete=not cleanup_errors,
             )
+        if final_read_cancelled is not None:
+            raise final_read_cancelled

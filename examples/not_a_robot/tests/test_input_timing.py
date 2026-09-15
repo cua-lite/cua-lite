@@ -1,7 +1,7 @@
 """Owned-browser calibration for future driving and continuous drawing tasks.
 
-Test-only DOM listeners observe genuine browser inputs and animation frames;
-they neither change the game nor expose a new tool to model clients.
+Test-only DOM listeners and a calibration surface observe genuine browser inputs
+and animation frames; they never change grading or add tools to model clients.
 """
 
 from __future__ import annotations
@@ -75,6 +75,12 @@ async def test_mouse_press_path_release_is_continuous_and_recorded(local_env):
     raw, page = env.unwrapped, env.unwrapped._page
     await page.evaluate("""() => {
       window.pointerCalibration = [];
+      const surface = document.createElement('div');
+      surface.setAttribute('aria-label', 'Pointer calibration surface');
+      Object.assign(surface.style, {position: 'fixed', left: '75vw', top: '80vh',
+        width: '25vw', height: '20vh', userSelect: 'none', touchAction: 'none',
+        background: 'white', zIndex: '100'});
+      document.body.append(surface);
       for (const type of ['mousedown', 'mousemove', 'mouseup', 'dragstart']) {
         document.addEventListener(type, event => window.pointerCalibration.push({
           type, x: event.clientX, y: event.clientY, buttons: event.buttons,
@@ -82,8 +88,8 @@ async def test_mouse_press_path_release_is_continuous_and_recorded(local_env):
         }));
       }
     }""")
-    # Stay below the footer: crossing selectable text would test browser-native
-    # text drag-and-drop, which suppresses mousemove, not a drawing surface.
+    # A nonselectable fixture surface avoids native text drag, including the
+    # whitespace-selection behavior of Windows Chromium below the page footer.
     await gui(env, [{"action": "mouse_down", "coordinate": [850, 900]}])
     await gui(env, [{"action": "mouse_move", "coordinate": [880, 920]}])
     await gui(env, [{"action": "wait", "duration": 0.1}])

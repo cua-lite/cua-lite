@@ -23,12 +23,16 @@
       event.preventDefault();
       location.search = new URLSearchParams({seed: document.getElementById("seed").value});
     });
-    catalog.tasks.forEach((task, index) => {
+    const galleryTasks = [...catalog.tasks].sort((left, right) =>
+      (left.id.startsWith("neal_") ? left.reference.level : 100) -
+      (right.id.startsWith("neal_") ? right.reference.level : 100));
+    galleryTasks.forEach((task, index) => {
       const link = document.createElement("a");
       link.className = "card";
       link.href = `/?${new URLSearchParams({task: task.id, seed})}`;
       const number = document.createElement("small");
-      number.textContent = task.reference ? `NEAL L${task.reference.level} / ${task.reference.fidelity === "mechanic_adaptation" ? "ADAPTED" : "REFERENCE"}` : `0${index + 1} / ORIGINAL`;
+      const kind = task.reference?.fidelity === "captured_instance" ? "REFERENCE" : "LOCAL VARIANT";
+      number.textContent = task.reference ? `NEAL L${task.reference.level} / ${kind}` : `${index + 1} / ORIGINAL`;
       const title = document.createElement("h2");
       title.textContent = task.title;
       const description = document.createElement("p");
@@ -44,7 +48,7 @@
   if (referenceInstance !== "default" && !Object.hasOwn(task.reference_variants || {}, referenceInstance)) {
     throw new Error(`Unknown reference instance ${referenceInstance} for ${taskId}`);
   }
-  if (task.reference?.fidelity === "captured_instance") {
+  if (task.id.startsWith("neal_")) {
     await window.renderNealTask({task, seed, version: catalog.version, referenceInstance});
     return;
   }

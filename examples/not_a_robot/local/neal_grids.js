@@ -8,7 +8,7 @@
   const grids = {
     11: {
       prefix: "Select all the squares with", subject: "Waldo", columns: 25, rows: 25,
-      assets: ["level11_background.webp"], expected: [218, 243, 244], fine: true,
+      assets: ["level11_background.webp"], expected: [218, 243], fine: true,
     },
     12: {
       prefix: "Select all the squares with a", subject: "Chihuahua", columns: 4, rows: 4,
@@ -25,7 +25,7 @@
       prefix: "Select all the items with a", subject: "Soul", columns: 3, rows: 3,
       assets: Array.from({length: 9}, (_, index) =>
         `level29_image_${String(index + 1).padStart(2, "0")}.webp`),
-      expected: [0, 2, 5, 7], separateImages: true,
+      expected: [0, 5, 7], separateImages: true,
     },
     31: {
       prefix: "Select all the squares with a", subject: "Traffic Light", columns: 4, rows: 4,
@@ -47,6 +47,11 @@
         exactSelection, state, emit, active, finish, reject}) {
         const {columns, rows} = definition;
         if (definition.width) root.style.width = definition.width;
+        if (level === "11") {
+          root.classList.add("neal-waldo-card");
+          // The source chooses the cell border at mount, independently of its CSS width breakpoint.
+          root.style.setProperty("--neal-waldo-border", window.innerWidth < 800 ? "0.2px" : "1px");
+        }
         heading(definition.prefix, definition.subject);
         const grid = newGrid(columns);
         grid.classList.add("neal-reference-selection");
@@ -54,7 +59,7 @@
         grid.style.aspectRatio = definition.imageAspectRatio || `${columns} / ${rows}`;
         if (definition.fine) {
           grid.classList.add("neal-fine-grid");
-          grid.style.gap = "1px";
+          grid.style.gap = level === "11" ? "0" : "1px";
         }
         const expected = new Set(definition.expected);
         const selected = new Set();
@@ -91,7 +96,22 @@
           grid.append(tile);
         }
         verifyFooter(() => {
-          if (exactSelection(selected, expected)) finish("exact_reference_selection");
+          let accepted;
+          let reason = "exact_reference_selection";
+          if (level === "11" || level === "46") {
+            // Both source rules require every target but permit a bounded number of extras.
+            accepted = [...expected].every((index) => selected.has(index))
+              && selected.size <= (level === "11" ? 3 : 10);
+            reason = level === "11" ? "waldo_source_selection" : "floor_source_selection";
+          } else if (level === "29") {
+            const errors = [...expected].filter((index) => !selected.has(index)).length
+              + [...selected].filter((index) => !expected.has(index)).length;
+            accepted = !selected.has(3) && errors <= 1;
+            reason = "soul_source_selection";
+          } else {
+            accepted = exactSelection(selected, expected);
+          }
+          if (accepted) finish(reason);
           else reject("selection_does_not_match_reference_instance");
         });
         return {refresh() {

@@ -1,7 +1,8 @@
 """Append-only, single-writer archives for the Not a Robot experiment.
 
 ``root`` names a new attempt directory, not a shared run directory. Only a
-verified ``manifest.json`` marks recording complete; task success is separate.
+verified ``manifest.json`` marks the event/PNG archive complete; task success and
+optional video saving are separate. Saving a video does not verify playback.
 """
 
 from __future__ import annotations
@@ -64,14 +65,49 @@ class EventRecorder:
         self.emit("observation", image=reference)
         return reference
 
-    def finalize(self, outcome: str, **data: Any) -> dict:
+    def finalize(self, outcome: str, *, video: dict | None = None, **data: Any) -> dict:
         """Verify the archive and atomically publish its completion manifest.
 
-        Missing/corrupt artifacts raise and leave no manifest. A failed task may
-        still have a complete recording. This method closes the writer even if
-        verification fails; a retry must use a new attempt directory.
+        Missing/corrupt events or PNGs prevent a manifest. Video failures remain
+        explicit alongside the intact event/PNG archive. A saved video's hash
+        establishes file identity, not playback validity or audio capture.
         """
-        self.emit("attempt_end", outcome=outcome, **data)
+        video_record = {
+            "status": "not_requested",
+            "source": "playwright_context_screencast",
+            "audio": False,
+            "model_input": False,
+            "playback_validation": "not_performed",
+        }
+        if video is not None:
+            video_record.update(video)
+            if video_record["status"] == "saved":
+                try:
+                    relative = video_record["path"]
+                    path = self.root / relative
+                    if (
+                        not isinstance(relative, str)
+                        or relative != f"videos/{Path(relative).name}"
+                        or path.suffix != ".webm"
+                        or path.resolve().parent != self.root / "videos"
+                    ):
+                        raise ValueError(
+                            "Video path must belong to this attempt's videos directory"
+                        )
+                    digest = hashlib.sha256()
+                    size = 0
+                    with path.open("rb") as stream:
+                        while chunk := stream.read(1024 * 1024):
+                            digest.update(chunk)
+                            size += len(chunk)
+                    if not size:
+                        raise ValueError("Video file is empty")
+                    video_record.update(bytes=size, sha256=digest.hexdigest())
+                except FileNotFoundError as error:
+                    video_record.update(status="missing", error=str(error))
+                except (OSError, ValueError, TypeError) as error:
+                    video_record.update(status="failed", error=str(error))
+        self.emit("attempt_end", outcome=outcome, video=video_record, **data)
         self.close()
 
         event_hash = hashlib.sha256()
@@ -117,6 +153,8 @@ class EventRecorder:
             "outcome": outcome,
             "data": data,
             "recording_complete": True,
+            "recording_scope": "events_and_png_images",
+            "video": video_record,
             "completed_at_utc": datetime.now(UTC).isoformat(),
             "events": {
                 "path": "events.jsonl",
@@ -134,12 +172,16 @@ class EventRecorder:
             manifest_file.flush()
             os.fsync(manifest_file.fileno())
         os.replace(manifest_file.name, self.root / "manifest.json")
-        for directory in (self.root / "images", self.root):
-            descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
+        # Windows cannot open directories with POSIX O_DIRECTORY. File contents
+        # are fsynced above and the manifest is atomically replaced on both hosts;
+        # only POSIX hosts additionally synchronize directory metadata.
+        if os.name != "nt":
+            for directory in (self.root / "images", self.root):
+                descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
         return manifest
 
     def close(self) -> None:

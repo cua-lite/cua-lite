@@ -1,16 +1,18 @@
 """Reference-instance GUI regression tests, separate from model gameplay.
 
-These scripted oracles use the uploaded accepted inputs and visible control
-geometry. They do not measure screenshot-only policy accuracy.
+These scripted oracles use uploaded reference inputs, source-derived rules,
+and visible control geometry. They do not measure screenshot-only policy accuracy.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from functools import cache
 
 import pytest
 
+from examples.not_a_robot.env import NotARobotEnv
 from examples.not_a_robot.tests.test_local_tasks import click, gui
 from examples.not_a_robot.tests.test_local_tasks import local_env as local_env
 
@@ -57,6 +59,30 @@ async def tic_board(page):
     )
 
 
+async def wait_for_tic_reply(page, previous_count):
+    """Observe the real callback's visible O mark, not an exact-duration sleep."""
+    await page.wait_for_function(
+        "count => document.querySelectorAll('.neal-mark-o').length > count",
+        arg=previous_count,
+        timeout=2500,
+    )
+
+
+@pytest.fixture
+async def tic_clock_env(local_env, monkeypatch):
+    """Pause only the test browser before navigation to expose the opening timer."""
+    original = NotARobotEnv._open_local_task
+
+    async def open_with_clock(env):
+        epoch = datetime(2026, 1, 1, tzinfo=UTC)
+        await env._page.clock.install(time=epoch)
+        await env._page.clock.pause_at(epoch)
+        await original(env)
+
+    monkeypatch.setattr(NotARobotEnv, "_open_local_task", open_with_clock)
+    return local_env
+
+
 async def win_tic_tac_toe(env):
     """Bounded GUI oracle using a normal refresh and visible-board minimax."""
     page = env.unwrapped._page
@@ -69,7 +95,11 @@ async def win_tic_tac_toe(env):
                 empty, key=lambda index: tic_value(board[:index] + ("X",) + board[index + 1 :], "O")
             )
             await click(env, page.locator(".neal-tile").nth(move))
-            await gui(env, [{"action": "wait", "duration": 0.45}])
+            after_x = await tic_board(page)
+            if any(all(after_x[index] == "X" for index in line) for line in TIC_LINES):
+                return await click(env, page.get_by_role("button", name="Verify", exact=True))
+            if not all(after_x):
+                await wait_for_tic_reply(page, board.count("O"))
             board = await tic_board(page)
             if any(all(board[index] == "X" for index in line) for line in TIC_LINES):
                 return await click(env, page.get_by_role("button", name="Verify", exact=True))
@@ -100,6 +130,8 @@ async def test_reference_reset_is_game_only_and_independent(local_env, task_id):
         assert max(box["height"] for box in boxes) - min(box["height"] for box in boxes) < 1
     if task_id == "neal_08":
         assert not await page.locator(".neal-refresh svg").is_visible()
+    if task_id == "neal_06":
+        await wait_for_tic_reply(page, 0)
     await page.screenshot(path=str(raw.attempt_dir / "initial.png"))
     first_attempt = raw.attempt_dir
     initial = await page.locator(".neal-game").inner_html()
@@ -107,6 +139,8 @@ async def test_reference_reset_is_game_only_and_independent(local_env, task_id):
     assert raw.attempt_dir != first_attempt
     assert raw.state.status == "in_progress"
     assert raw.state.progress == raw.state.mistakes == 0
+    if task_id == "neal_06":
+        await wait_for_tic_reply(raw._page, 0)
     if task_id not in {"neal_03", "neal_10"}:
         assert await raw._page.locator(".neal-game").inner_html() == initial
     assert not raw._scope_violation
@@ -114,6 +148,84 @@ async def test_reference_reset_is_game_only_and_independent(local_env, task_id):
         json.loads(line) for line in (first_attempt / "events.jsonl").read_text().splitlines()
     ]
     assert not any(row["type"] == "page_error" for row in events)
+
+
+@pytest.mark.live
+async def test_distorted_text_does_not_use_plate_normalization(local_env):
+    env = await local_env("neal_03")
+    raw, page = env.unwrapped, env.unwrapped._page
+    await click(env, page.locator("#neal-answer"))
+    for mistakes, answer in enumerate(("YHR PCD", "YHR-PCD", "yhrpcd"), start=1):
+        result = await gui(
+            env,
+            [
+                {"action": "key", "keys": ["ctrl", "a"]},
+                {"action": "type", "text": answer, "press_enter": True},
+            ],
+        )
+        assert not result.terminated and raw.state.mistakes == mistakes
+    result = await gui(
+        env,
+        [
+            {"action": "key", "keys": ["ctrl", "a"]},
+            {"action": "type", "text": "YHRPCD", "press_enter": True},
+        ],
+    )
+    assert result.terminated and result.reward == 1
+
+
+@pytest.mark.live
+@pytest.mark.parametrize(
+    "selected,accepted",
+    [
+        pytest.param([1, 2, 5], True, id="one-missing-required"),
+        pytest.param([1, 2, 5, 7], True, id="all-required"),
+        pytest.param([1, 2, 5, 8], True, id="optional-plus-one-missing"),
+        pytest.param([0, 1, 2, 5, 7], True, id="one-wrong-extra"),
+        pytest.param([0, 1, 2, 5], False, id="missing-plus-wrong-extra"),
+        pytest.param([1, 2], False, id="two-missing-required"),
+        pytest.param([], False, id="empty-selection"),
+        pytest.param(list(range(9)), False, id="all-selected"),
+    ],
+)
+async def test_vegetable_source_error_tolerance_through_canonical_gui(
+    local_env, selected, accepted
+):
+    """Source module 1125 cases, tested through real GUI, not a predicate substitute."""
+    env = await local_env("neal_04")
+    raw, page = env.unwrapped, env.unwrapped._page
+    tiles = page.locator(".neal-grid .neal-tile")
+    assert await tiles.count() == 9
+    # Manifest-verified pictures follow tomato/carrot/onion/banana/grape/corn/
+    # avocado/potato/eggplant; the potato picture depicts Mr. Potato Head.
+    backgrounds = await page.locator(".neal-tile-face").evaluate_all(
+        "els => els.map(el => el.style.backgroundImage)"
+    )
+    for index, background in enumerate(backgrounds, start=1):
+        assert f"level04_image_{index:02d}.webp" in background
+    for index in selected:
+        await click(env, tiles.nth(index))
+    assert (
+        await tiles.evaluate_all(
+            "els => els.flatMap((el, index) => "
+            "el.getAttribute('aria-pressed') === 'true' ? [index] : [])"
+        )
+        == selected
+    )
+    assert raw.state.mistakes == 0
+    await page.screenshot(path=str(raw.attempt_dir / "before_submit.png"))
+    result = await click(env, page.get_by_role("button", name="Verify", exact=True))
+    await page.screenshot(path=str(raw.attempt_dir / "after_submit.png"))
+    assert not result.truncated
+    assert result.terminated is accepted
+    if accepted:
+        assert result.reward == 1
+        assert raw.state.status == raw.outcome == "success"
+        assert raw.state.mistakes == 0
+    else:
+        assert result.reward is None
+        assert raw.state.status == "in_progress"
+        assert raw.state.mistakes == 1
 
 
 @pytest.mark.live
@@ -128,7 +240,7 @@ async def test_reference_success_through_canonical_gui(local_env, task_id):
         assert await page.locator(".neal-checkbox-mark").evaluate(
             "el => el.classList.contains('loading')"
         )
-        result = await gui(env, [{"action": "wait", "duration": 0.8}])
+        result = await gui(env, [{"action": "wait", "duration": 1.7}])
         assert await page.get_by_role("checkbox").get_attribute("aria-checked") == "true"
     elif task_id in ACCEPTED_SELECTIONS:
         result = await click(env, page.get_by_role("button", name="Verify", exact=True))
@@ -239,28 +351,37 @@ async def test_reference_success_through_canonical_gui(local_env, task_id):
 
 @pytest.mark.live
 @pytest.mark.parametrize(
-    "initial,player,opponent",
+    "initial,player,opponent,game_num,samples",
     [
-        ([4], [0, 6, 5, 1], [2, 3, 8, 7]),
-        ([4], [1, 8, 6, 3], [0, 2, 7, 5]),
-        ([], [0, 4, 6], [7, 8, 3]),
+        ([4], [0, 6, 5, 1], [2, 3, 8, 7], 0, [[0.1]] * 4),
+        ([4], [1, 8, 6, 3], [0, 2, 7, 5], 0, [[0.1]] * 4),
+        ([], [0, 4, 6], [7, 8, 3], 1, [[0.1, 0.75], [0.9], [0.9]]),
     ],
 )
-async def test_tic_tac_toe_candidates_include_recorded_replies(
-    local_env, initial, player, opponent
+async def test_tic_tac_toe_source_policy_exact_recorded_replies(
+    local_env, initial, player, opponent, game_num, samples
 ):
-    """Candidate compatibility is not exact original AI or fixed-seed replay."""
+    """Recorded moves checked against pure policy, not original RNG or GUI replay."""
     env = await local_env("neal_06")
     page = env.unwrapped._page
     board = [""] * 9
     for index in initial:
         board[index] = "O"
-    for x, o in zip(player, opponent, strict=True):
+    for x, o, draws in zip(player, opponent, samples, strict=True):
         assert not board[x] and not board[o]
         board[x] = "X"
-        candidates = await page.evaluate("board => ticTacToeCandidates(board)", board)
-        assert o in candidates
-        assert all(not board[index] for index in candidates)
+        actual = await page.evaluate(
+            """({board, gameNum, samples}) => {
+                let calls = 0;
+                const move = ticTacToeMove(board, gameNum, () => {
+                    if (calls === samples.length) throw new Error('Unexpected random draw');
+                    return samples[calls++];
+                });
+                return {move, calls, board};
+            }""",
+            {"board": board, "gameNum": game_num, "samples": draws},
+        )
+        assert actual == {"move": o, "calls": len(draws), "board": board}
         board[o] = "O"
     if initial:
         assert all(board) and tic_value(tuple(board), "X") == 0
@@ -270,9 +391,10 @@ async def test_tic_tac_toe_candidates_include_recorded_replies(
 
 
 @pytest.mark.live
-async def test_tic_tac_toe_refresh_allows_a_legal_win_without_changing_opponent(local_env):
+async def test_tic_tac_toe_source_refresh_policy_allows_a_legal_gui_win(local_env):
     env = await local_env("neal_06", seed=0)
     raw, page = env.unwrapped, env.unwrapped._page
+    await wait_for_tic_reply(page, 0)
     assert await page.locator(".neal-mark-o").count() == 1
     result = await click(env, page.get_by_role("button", name="Verify", exact=True))
     assert not result.terminated and raw.state.mistakes == 1
@@ -282,46 +404,60 @@ async def test_tic_tac_toe_refresh_allows_a_legal_win_without_changing_opponent(
 
 
 @pytest.mark.live
-async def test_tic_tac_toe_refresh_cancels_pending_opponent_move(local_env):
-    env = await local_env("neal_06")
+async def test_tic_tac_toe_opening_and_reply_timer_boundaries(tic_clock_env):
+    """Synthetic-clock timing regression through genuine GUI actions."""
+    env = await tic_clock_env("neal_06")
     raw, page = env.unwrapped, env.unwrapped._page
-    # Dispatch normal UI clicks in one browser task: the 350 ms opponent callback
-    # cannot run between them, regardless of screenshot or recorder latency.
-    await page.evaluate(
-        """() => {
-            document.querySelector('.neal-tile').click();
-            document.querySelector('.neal-refresh').click();
-        }"""
-    )
-    await gui(env, [{"action": "wait", "duration": 0.5}])
-    assert await page.locator(".neal-mark-o, .neal-mark-x").count() == 0
-    events = [
-        row["data"]
-        for line in (raw.attempt_dir / "events.jsonl").read_text().splitlines()
-        if (row := json.loads(line))["type"] == "game_event"
+    assert await tic_board(page) == ("",) * 9
+    await click(env, page.locator(".neal-tile").nth(0))
+    assert await tic_board(page) == ("",) * 9
+    await page.clock.run_for(99)
+    assert await tic_board(page) == ("",) * 9
+    await page.clock.run_for(1)
+    assert await tic_board(page) == ("", "", "", "", "O", "", "", "", "")
+    await click(env, page.locator(".neal-tile").nth(0))
+    await page.clock.run_for(449)
+    assert (await tic_board(page)).count("O") == 1
+    await page.clock.run_for(1)
+    assert await tic_board(page) == ("X", "", "O", "", "O", "", "", "", "")
+    assert raw.state.progress == 1
+
+
+@pytest.mark.live
+async def test_tic_tac_toe_early_refresh_cancels_opening_timer(tic_clock_env):
+    env = await tic_clock_env("neal_06")
+    page = env.unwrapped._page
+    assert await tic_board(page) == ("",) * 9
+    await page.clock.run_for(99)
+    await click(env, page.get_by_role("button", name="Refresh challenge"))
+    await page.clock.run_for(1000)
+    assert await tic_board(page) == ("",) * 9
+    events = await page.evaluate("window.syntheticTask.snapshot().events")
+    assert not any(event["kind"] == "move" for event in events)
+    assert events[-1]["kind"] == "board_reset" and events[-1]["first_player"] == "X"
+
+
+@pytest.mark.live
+async def test_tic_tac_toe_refresh_cancels_pending_opponent_move(tic_clock_env):
+    env = await tic_clock_env("neal_06")
+    page = env.unwrapped._page
+    await page.clock.run_for(100)
+    await click(env, page.locator(".neal-tile").nth(0))
+    await page.clock.run_for(449)
+    await click(env, page.get_by_role("button", name="Refresh challenge"))
+    await page.clock.run_for(1000)
+    assert await tic_board(page) == ("",) * 9
+    events = await page.evaluate("window.syntheticTask.snapshot().events")
+    assert [(event["mark"], event["index"]) for event in events if event["kind"] == "move"] == [
+        ("O", 4),
+        ("X", 0),
     ]
-    before_new_turn = [(event["kind"], event.get("mark"), event.get("index")) for event in events]
-    assert before_new_turn == [
-        ("ready", None, None),
-        ("move", "X", 0),
-        ("retry", None, None),
-        ("board_reset", None, None),
-    ]
-    assert events[-1]["first_player"] == "X"
+    # A fresh turn still works; the cancelled old callback never consumes RNG.
     await click(env, page.locator(".neal-tile").nth(4))
-    await gui(env, [{"action": "wait", "duration": 0.5}])
-    assert await page.locator(".neal-mark-x").count() == 1
-    assert await page.locator(".neal-mark-o").count() == 1
-    events = [
-        row["data"]
-        for line in (raw.attempt_dir / "events.jsonl").read_text().splitlines()
-        if (row := json.loads(line))["type"] == "game_event"
-    ]
-    assert len(events) == len(before_new_turn) + 2
-    assert events[-2]["kind"] == "move" and events[-2]["mark"] == "X"
-    assert events[-2]["index"] == 4
-    assert events[-1]["kind"] == "move" and events[-1]["mark"] == "O"
-    assert events[-1]["index"] in set(range(9)) - {4}
+    await page.clock.run_for(449)
+    assert (await tic_board(page)).count("O") == 0
+    await page.clock.run_for(1)
+    assert await tic_board(page) == ("", "", "", "", "X", "O", "", "", "")
 
 
 @pytest.mark.live

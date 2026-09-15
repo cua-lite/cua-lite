@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import threading
+import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -33,12 +34,38 @@ ASSETS = {
     "/neal_replacements.js": ("neal_replacements.js", "text/javascript; charset=utf-8"),
     "/neal_ducks.js": ("neal_ducks.js", "text/javascript; charset=utf-8"),
     "/neal_camera.js": ("neal_camera.js", "text/javascript; charset=utf-8"),
+    "/neal_motion.js": ("neal_motion.js", "text/javascript; charset=utf-8"),
+    "/neal_spatial.js": ("neal_spatial.js", "text/javascript; charset=utf-8"),
+    "/neal_spatial.css": ("neal_spatial.css", "text/css; charset=utf-8"),
+    "/neal_puzzles.js": ("neal_puzzles.js", "text/javascript; charset=utf-8"),
+    "/neal_puzzles.css": ("neal_puzzles.css", "text/css; charset=utf-8"),
+    "/vendor/spatial/chess-1.4.0.js": (
+        "vendor/spatial/chess-1.4.0.js",
+        "text/javascript; charset=utf-8",
+    ),
+    "/vendor/spatial/stockfish-17-lite-single.js": (
+        "vendor/spatial/stockfish-17-lite-single.js",
+        "text/javascript; charset=utf-8",
+    ),
+    "/vendor/spatial/stockfish-17-lite-single.wasm": (
+        "vendor/spatial/stockfish-17-lite-single.wasm",
+        "application/wasm",
+    ),
+    "/vendor/spatial/LICENSE.stockfish": (
+        "vendor/spatial/LICENSE.stockfish",
+        "text/plain; charset=utf-8",
+    ),
 }
 ASSETS.update(
     {
         f"/reference_assets/{name}": (
             f"reference_assets/{name}",
-            {".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg"}[Path(name).suffix],
+            {
+                ".webp": "image/webp",
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".json": "application/json",
+            }[Path(name).suffix],
         )
         for name in REFERENCE_HASHES
     }
@@ -66,7 +93,7 @@ class LocalTaskState:
     label: str
     version: str
     seed: int
-    status: Literal["in_progress", "success", "failure"]
+    status: Literal["in_progress", "success", "failure", "infra_error"]
     mistakes: int
     progress: int
     reason: str
@@ -111,7 +138,8 @@ class LocalTaskServer:
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header(
                     "Content-Security-Policy",
-                    "default-src 'none'; script-src 'self'; style-src 'self'; "
+                    "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; "
+                    "worker-src 'self'; style-src 'self'; "
                     "connect-src 'self'; img-src 'self'; base-uri 'none'; "
                     "form-action 'none'; frame-ancestors 'none'",
                 )
@@ -142,7 +170,9 @@ def main():
     server = LocalTaskServer(args.port)
     print(f"Visual Tasks: {server.origin}/ (Ctrl+C to stop)", flush=True)
     try:
-        threading.Event().wait()
+        # A timed wait lets Python dispatch Ctrl+C on Windows as well as POSIX.
+        while True:
+            time.sleep(0.25)
     except KeyboardInterrupt:
         pass
     finally:

@@ -11,7 +11,7 @@ from examples.not_a_robot import codex_bridge, codex_smoke
 from examples.not_a_robot.env import NotARobotEnv
 from examples.not_a_robot.local_tasks import CATALOG, task_reference
 from examples.not_a_robot.reference_assets import REFERENCE_CATALOG
-from examples.not_a_robot.tests.test_first10 import tic_board
+from examples.not_a_robot.tests.test_first10 import tic_board, wait_for_tic_reply
 from examples.not_a_robot.tests.test_local_tasks import click, gui
 from examples.not_a_robot.tests.test_local_tasks import local_env as local_env
 from lite import gym
@@ -160,17 +160,6 @@ async def test_plate_instances_do_not_share_images_or_answers(local_env, instanc
     await click(env, page.locator("#neal-answer"))
     result = await gui(env, [{"action": "type", "text": other, "press_enter": True}])
     assert not result.terminated and raw.state.mistakes == 1
-    # Exact matching is the conservative local rule, not evidence that the
-    # original site rejected every other spelling or whitespace variation.
-    variant = "JHB 007" if instance == "incremental" else "867V309"
-    result = await gui(
-        env,
-        [
-            {"action": "key", "keys": ["ctrl", "a"]},
-            {"action": "type", "text": variant, "press_enter": True},
-        ],
-    )
-    assert not result.terminated and raw.state.mistakes == 2
     result = await gui(
         env,
         [
@@ -181,20 +170,114 @@ async def test_plate_instances_do_not_share_images_or_answers(local_env, instanc
     assert result.terminated and result.reward == 1
 
 
+def test_plate_normalization_source_is_separate_from_capture_provenance():
+    expected = {
+        "basis": "source_derived",
+        "removed_codepoints": ["U+002D", "U+0020"],
+        "case_sensitive": True,
+        "source_modules": [1094, 414],
+        "reviewed_spec_bundle_sha256": (
+            "2513409ca66c9f2ee15b3845bc66ec1c0064bedf6757d95f81d3c05f865455d4"
+        ),
+    }
+    for instance, attempt in (("default", "attempt_101"), ("incremental", "attempt_602")):
+        reference = task_reference("neal_08", instance)
+        assert reference["input_normalization"] == expected
+        assert reference["evidence_attempt"] == attempt
+        assert reference["completion_recorded"]
+        assert "original_site_input_variant_replay_not_performed" in reference["limitations"]
+    assert "input_normalization" not in task_reference("neal_03")
+
+
+@pytest.mark.live
+@pytest.mark.parametrize("instance,canonical", [("default", "867V309"), ("incremental", "JHB007")])
+async def test_plate_normalizes_only_ascii_separators(local_env, instance, canonical):
+    """Exercise the source-derived predicate through real input and submission."""
+    env = await local_env("neal_08", reference_instance=instance)
+    raw, page = env.unwrapped, env.unwrapped._page
+    await click(env, page.locator("#neal-answer"))
+    rejected = (
+        canonical.lower(),
+        canonical[:3] + "\u00a0" + canonical[3:],
+        canonical[:3] + "\u2010" + canonical[3:],
+        canonical[:-1] + "X",
+        " - -- ",
+    )
+    for mistakes, answer in enumerate(rejected, start=1):
+        result = await gui(
+            env,
+            [
+                {"action": "key", "keys": ["ctrl", "a"]},
+                {"action": "type", "text": answer, "press_enter": True},
+            ],
+        )
+        assert await page.locator("#neal-answer").input_value() == answer
+        assert not result.terminated and raw.state.mistakes == mistakes
+
+    accepted = (
+        canonical,
+        " ".join(canonical),
+        "-".join(canonical),
+        " -- " + " - ".join(canonical) + " -- ",
+    )
+    for index, answer in enumerate(accepted):
+        if index:
+            await env.reset()
+            page = raw._page
+            assert await page.locator("#neal-answer").input_value() == ""
+            assert raw.state.progress == raw.state.mistakes == 0
+            assert raw.state.reference_instance == instance
+            await click(env, page.locator("#neal-answer"))
+        result = await gui(
+            env,
+            [
+                {"action": "key", "keys": ["ctrl", "a"]},
+                {"action": "type", "text": answer, "press_enter": True},
+            ],
+        )
+        assert await page.locator("#neal-answer").input_value() == answer
+        assert result.terminated and result.reward == 1
+
+
 @pytest.mark.live
 async def test_tic_policy_priority_ties_and_immutability(local_env):
+    """Given-board pure policy cases, not injected game states or GUI win evidence."""
     env = await local_env("neal_06")
     page = env.unwrapped._page
-    for board, expected in [
-        (["X", "", "", "", "", "", "", "", ""], [1, 2, 3, 4, 5, 6, 7, 8]),
-        (["O", "O", "", "X", "X", "", "", "", ""], [2]),
-        (["X", "", "", "", "X", "", "", "O", ""], [8]),
-        (["X", "", "", "", "X", "", "X", "O", "O"], [2, 3]),
+    tactical = ["O", "O", "", "X", "X", "", "", "", ""]
+    for board, game_num, samples, expected in [
+        (["X", "O", "X", "X", "O", "O", "O", "X", "X"], 1, [], -1),
+        ([""] * 9, 0, [0.1], 4),
+        ([""] * 9, 1, [0.1, 0.9999999999999999], 8),
+        (["X", "", "", "", "", "", "", "", ""], 0, [0.1], 4),
+        (tactical, 0, [0.1], 2),
+        (["X", "", "", "", "X", "", "", "O", ""], 0, [0.9], 8),
+        # Fixed winning-line order chooses square 3 before square 2, not index order.
+        (["X", "", "", "", "X", "", "X", "O", "O"], 0, [0.9], 3),
+        (["X", "", "", "", "O", "O", "X", "", "O"], 0, [0.9], 3),
+        (["", "", "", "", "X", "", "", "", ""], 0, [0.9], 0),
+        (["X", "", "", "", "O", "", "", "", ""], 0, [0.9], 2),
+        (["O", "", "X", "X", "X", "O", "O", "", "X"], 0, [0.9], 1),
+        # Random play precedes even a winning tactical move after Refresh.
+        (tactical, 1, [0.39999999999999997, 0.9999999999999999], 8),
+        (tactical, 1, [0.1, 0], 2),
+        (tactical, 1, [0.1, 0.2], 5),
+        (tactical, 1, [0.4], 2),
+        (tactical, 1, [0.4000000000000001], 2),
     ]:
         result = await page.evaluate(
-            "board => ({candidates: ticTacToeCandidates(board), board})", board
+            """({board, gameNum, samples}) => {
+                let calls = 0;
+                const move = ticTacToeMove(board, gameNum, () => {
+                    if (calls === samples.length) throw new Error('Unexpected random draw');
+                    return samples[calls++];
+                });
+                return {move, calls, board};
+            }""",
+            {"board": board, "gameNum": game_num, "samples": samples},
         )
-        assert result == {"candidates": expected, "board": board}
+        assert result == {"move": expected, "calls": len(samples), "board": board}
+    assert await page.evaluate("typeof ticTacToeCandidates") == "undefined"
 
 
 @pytest.mark.live
@@ -203,14 +286,20 @@ async def test_tic_seed_reset_repeats_reply_and_refresh_clears_marks(local_env):
     boards = []
     for _ in range(2):
         page = env.unwrapped._page
+        await wait_for_tic_reply(page, 0)
+        assert await tic_board(page) == ("", "", "", "", "O", "", "", "", "")
         await click(env, page.locator(".neal-tile").nth(4))
         assert env.unwrapped.state.progress == 0  # Occupied cell cannot be overwritten.
+        await click(env, page.locator(".neal-tile").nth(1))
+        await wait_for_tic_reply(page, 1)
+        # Independent reset restores gameNum=0: the <.4 draw cannot randomize this reply.
+        assert await tic_board(page) == ("O", "X", "", "", "O", "", "", "", "")
         await click(env, page.get_by_role("button", name="Refresh challenge"))
         assert await tic_board(page) == ("",) * 9
         await click(env, page.locator(".neal-tile").nth(0))
-        await gui(env, [{"action": "wait", "duration": 0.45}])
+        await wait_for_tic_reply(page, 0)
         board = await tic_board(page)
-        assert board[0] == "X" and board.count("O") == 1
+        assert board == ("X", "", "O", "", "", "", "", "", "")
         boards.append(board)
         result = await click(env, page.get_by_role("button", name="Verify", exact=True))
         assert not result.terminated and result.reward is None
@@ -224,9 +313,11 @@ async def test_local_seed_zero_loss_and_draw_never_award_success(local_env, move
     """Local fixed-seed regression paths, not original-site reply replay."""
     env = await local_env("neal_06", seed=0)
     raw, page = env.unwrapped, env.unwrapped._page
+    await wait_for_tic_reply(page, 0)
     for index in moves:
+        previous = (await tic_board(page)).count("O")
         await click(env, page.locator(".neal-tile").nth(index))
-        await gui(env, [{"action": "wait", "duration": 0.45}])
+        await wait_for_tic_reply(page, previous)
     result = await click(env, page.get_by_role("button", name="Verify", exact=True))
     assert not result.terminated and result.reward is None
     assert raw.outcome == "in_progress" and raw.state.status == "in_progress"

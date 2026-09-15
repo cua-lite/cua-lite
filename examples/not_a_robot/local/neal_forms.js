@@ -24,7 +24,7 @@
 
   window.nealTasks[14] = {
     assets: [],
-    render({root, button, state, emit, active, finish}) {
+    render({root, button, wireCheckbox}) {
       // All 56 labels and their order come from attempt_301's initial AX tree.
       const labels = [
         "I'm a robot", "I'm not not a robot", "I'm potentially a robot", "I'm a chatbot",
@@ -47,69 +47,40 @@
         "I'm an easy-bake oven", "I'm a hot single in your area",
       ];
       root.classList.add("neal-statements");
-      Object.assign(root.style, {width: "600px", height: "590px", overflowY: "scroll",
-        padding: "14px", border: "0"});
-      const timers = new Map();
       const controls = [];
       for (const [index, label] of labels.entries()) {
         const card = document.createElement("div");
         card.className = "neal-statement-card";
-        Object.assign(card.style, {display: "flex", alignItems: "center", justifyContent: "space-between",
-          minHeight: "76px", padding: "0 14px", marginBottom: "10px", border: "1px solid #ddd",
-          borderRadius: "2px", background: "#fafafa", boxShadow: "0 1px 4px #00000016"});
         const checkbox = button("neal-checkbox-target", label);
         checkbox.setAttribute("role", "checkbox");
         checkbox.setAttribute("aria-checked", "false");
-        Object.assign(checkbox.style, {display: "flex", alignItems: "center", gap: "14px",
-          textAlign: "left", background: "transparent"});
+        const markContainer = document.createElement("span");
+        markContainer.className = "neal-checkbox-mark-container";
         const mark = document.createElement("span");
         mark.className = "neal-checkbox-mark";
-        mark.style.flex = "0 0 28px";
+        markContainer.append(mark);
         const caption = document.createElement("span");
+        caption.className = "neal-checkbox-caption";
         caption.textContent = label;
-        checkbox.append(mark, caption);
+        checkbox.append(markContainer, caption);
         const logo = document.createElement("div");
         logo.className = "neal-recaptcha-mark";
-        logo.style.flex = "0 0 57px";
         // Authored branding approximation, shared in appearance with level 01.
         logo.innerHTML = '<svg viewBox="0 0 36 36" aria-hidden="true"><path fill="#6083c5" d="M31 14A14 14 0 0 0 7 6L4 3v13h13l-5-5a8 8 0 0 1 14 3h5Z"/><path fill="#5264a3" d="M5 22a14 14 0 0 0 24 8l3 3V20H19l5 5a8 8 0 0 1-14-3H5Z"/></svg><span>reCAPTCHA</span>';
         card.append(checkbox, logo);
         root.append(card);
-        controls.push({checkbox, mark});
-        checkbox.addEventListener("click", () => {
-          if (!active() || timers.has(index)) return;
-          mark.classList.add("loading");
-          emit("checkbox_loading", {index});
-          // Loading is observed; 650 ms and distractor restoration are inferred.
-          timers.set(index, setTimeout(() => {
-            timers.delete(index);
-            if (!active()) return;
-            mark.classList.remove("loading");
-            if (label === "I'm not a robot") {
-              mark.classList.add("checked");
-              checkbox.setAttribute("aria-checked", "true");
-              state.progress = 1;
-              finish("exact_robot_statement_checked");
-            } else {
-              // The source never captured final distractor feedback. Do not
-              // relabel that observation as a confirmed original rejection.
-              emit("local_distractor_reset", {index, original_feedback: "unknown"});
-            }
-          }, 650));
-        });
+        const stop = wireCheckbox({card, checkbox, mark, wrong: label !== "I'm not a robot",
+          details: {index}, reason: "exact_robot_statement_checked"});
+        controls.push({checkbox, mark, stop});
       }
-      const stopDynamic = () => {
-        timers.forEach((timer) => clearTimeout(timer));
-        timers.clear();
-        controls.forEach(({mark}) => mark.classList.remove("loading"));
-      };
+      const stopDynamic = () => controls.forEach(({stop}) => stop());
       return {stopDynamic, refresh: () => {
         stopDynamic();
         controls.forEach(({checkbox, mark}) => {
           checkbox.setAttribute("aria-checked", "false");
-          mark.classList.remove("loading", "checked");
+          mark.classList.remove("loading", "checked", "wrong");
         });
-        root.scrollTop = 0;
+        window.scrollTo(0, 0);
       }};
     },
   };

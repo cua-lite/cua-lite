@@ -1,0 +1,39 @@
+/* Original local visuals. Shape categories and game geometry follow the rules. */
+.neal-puzzle-info { margin: 10px 8px; font: 14px/1.4 Arial, sans-serif; }
+.neal-game .neal-puzzle-answer { box-sizing: border-box; width: 100%; padding: 12px; font: 20px Arial; border: 1px solid #aaa; }
+.neal-puzzle-answer[aria-invalid="true"] { outline: 2px solid #d34b45; }
+.neal-inkblot { display: block; width: 100%; height: 340px; object-fit: contain; }
+.neal-network-grid { position: relative; gap: 0; touch-action: none; }
+.neal-network-grid .neal-tile { border: 1px solid #ddd; background: #fafafa; touch-action: none; }
+.neal-network-grid .neal-tile-face { font-size: 55px; position: relative; z-index: 2; background: transparent; pointer-events: none; }
+.neal-network-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.neal-memory-grid .neal-tile { opacity: .5; }
+.neal-memory-grid .neal-tile.lit { opacity: 1; box-shadow: inset 0 0 0 5px white; filter: brightness(1.7); }
+.neal-memory-grid .neal-tile:disabled { pointer-events: none; }
+.neal-candy-grid { background: #faf0fa; gap: 2px; }
+.neal-candy-grid .neal-tile { background: transparent; touch-action: none; }
+.neal-candy-grid .neal-tile-face { width: 75%; height: 75%; margin: 12.5%; transition: opacity 180ms, transform 180ms; }
+.neal-candy-grid .candy-1 { background: #e5be26; clip-path: polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%); }
+.neal-candy-grid .candy-2 { background: #df3848; clip-path: polygon(50% 0,100% 50%,50% 100%,0 50%); }
+.neal-candy-grid .candy-3 { background: #9853c0; clip-path: polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%); }
+.neal-candy-grid .candy-4 { background: #62b748; clip-path: polygon(50% 0,100% 100%,0 100%); }
+.neal-candy-grid .candy-5 { background: #429bdf; border-radius: 50%; }
+.neal-candy-grid .candy-6 { background: #ea9232; clip-path: polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); }
+.neal-candy-grid .neal-tile[aria-pressed="true"] { outline: 3px solid #e660b7; outline-offset: -3px; }
+.neal-candy-grid .neal-tile[aria-pressed="true"]::after { display: none; }
+.neal-candy-grid .matched .neal-tile-face { opacity: 0; transform: scale(.3); }
+.neal-slot-cabinet { display: flex; gap: 8px; background: #482851; padding: 50px 10px; margin: 8px 0; }
+.neal-slot-window { height: 70px; flex: 1; overflow: hidden; background: #fff5dc; border: 2px solid #dca743; }
+.neal-slot-reel { animation: neal-local-slot 4500ms linear infinite; translate: 0 0; }
+.neal-slot-reel span { display: grid; place-items: center; height: 70px; font: bold 42px Georgia, serif; }
+@keyframes neal-local-slot { to { translate: 0 -50%; } }
+.neal-rhythm-board { height: 360px; position: relative; overflow: hidden; container-type: size; background-size: cover; background-position: center; }
+.neal-rhythm-targets { position: absolute; bottom: 8px; left: 5px; display: flex; gap: 10px; width: calc(100% - 10px); z-index: 2; }
+.neal-game .neal-rhythm-target { flex: 1; width: 100%; height: 45px; box-sizing: border-box; background: #667ab466; border: 2px solid #b9e8ff; color: white; font: bold 38px Arial; touch-action: none; transition: background-color .1s ease, box-shadow .1s ease, transform .1s ease, border-color .1s ease; }
+.neal-game .neal-rhythm-target.pressed { background-color: rgba(199,62,199,.7); border-color: #913891; box-shadow: 0 0 20px #913891; transform: scale(1.06); }
+.neal-rhythm-note { position: absolute; top: 0; height: 45px; width: calc(25% - 10px); display: flex; align-items: center; justify-content: center; font: bold 38px Arial; color: #60edf2; pointer-events: none; animation: neal-source-rhythm-drop 2s linear forwards; transform-origin: center center; transition: opacity .2s ease, scale .2s ease; }
+.neal-rhythm-note.played { animation-play-state: paused; opacity: 0; scale: 1.3; }
+.neal-rhythm-note.missed { opacity: .4; scale: .8; }
+@keyframes neal-source-rhythm-drop { from { translate: 0 -100%; } to { translate: 0 100cqh; } }
+.neal-finale-canvas { display: block; width: 100%; height: auto; }
+.neal-local-terminal { padding: 25px 15px; color: #23754f; text-align: center; }

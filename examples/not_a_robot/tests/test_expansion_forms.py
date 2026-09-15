@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from examples.not_a_robot.tests.test_expansion_grids import scroll_click
 from examples.not_a_robot.tests.test_local_tasks import click, gui
 from examples.not_a_robot.tests.test_local_tasks import local_env as local_env
 
@@ -47,24 +48,20 @@ async def test_statement_task_scrolls_past_distractors_to_exact_checkbox(local_e
     target = page.get_by_role("checkbox", name="I'm not a robot", exact=True)
     assert (await target.bounding_box())["y"] > raw.display_resolution[1]
     await click(env, page.get_by_role("checkbox", name="I'm potentially a robot", exact=True))
-    result = await gui(env, [{"action": "wait", "duration": 0.8}])
+    result = await gui(env, [{"action": "wait", "duration": 0.9}])
     assert not result.terminated and raw.state.progress == 0
-    # No original rejection was observed: preserve unknown feedback in the log.
+    # Source 478 retains the wrong mark without emitting completion.
     state = await page.evaluate("window.syntheticTask.snapshot()")
-    assert any(event["kind"] == "local_distractor_reset" for event in state["events"])
+    assert any(event["kind"] == "checkbox_wrong" for event in state["events"])
+    assert await page.locator(".neal-checkbox-mark.wrong").count() == 1
     assert not any(event["kind"] == "rejected" for event in state["events"])
-    await gui(
-        env,
-        [
-            {"action": "scroll", "direction": "down", "amount": 26, "coordinate": [200, 300]},
-            {"action": "wait", "duration": 0.15},
-        ],
-    )
+    result = await scroll_click(env, target)
     bounds = await target.bounding_box()
-    assert 0 < bounds["y"] < 550
-    result = await click(env, target)
+    assert 0 <= bounds["y"] < raw.display_resolution[1] - bounds["height"]
+    assert await page.evaluate("window.scrollY") > 0
+    assert await page.locator(".neal-game").evaluate("el => el.scrollTop") == 0
     assert not result.terminated
-    result = await gui(env, [{"action": "wait", "duration": 0.8}])
+    result = await gui(env, [{"action": "wait", "duration": 1.7}])
     assert result.terminated and result.reward == 1
     assert await target.get_attribute("aria-checked") == "true"
     assert await page.locator(".neal-checkbox-mark.loading").count() == 0
