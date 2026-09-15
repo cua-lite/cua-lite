@@ -16,7 +16,7 @@ from lite.data.staging import coerce_image_paths, coerce_messages, coerce_meta, 
 
 _spec = importlib.util.spec_from_file_location(
     "browser_sft_filter",
-    Path(__file__).resolve().parents[1] / "filter.py",
+    Path(__file__).resolve().parents[1] / "utils" / "filter.py",
 )
 assert _spec is not None and _spec.loader is not None
 browser_filter = importlib.util.module_from_spec(_spec)

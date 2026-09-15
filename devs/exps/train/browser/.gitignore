@@ -1,0 +1,4 @@
+# Step 1 anchor candidates are reproducible intermediate artifacts. Keep the
+# calibrated final manifest trackable when it is produced.
+data/webgym.train.gpt55_anchor.nogoto.site.candidates.seed42.parquet
+data/webgym.train.gpt55_anchor.nogoto.site.candidates.seed42.summary.json

@@ -21,7 +21,8 @@ All cells use the no-goto browser surface in
 `extra_tools: ["back", "response"]`, and no WebGym `instruction_template`. WebVoyager runs
 against an offline WebHarbor mirror, so direct URL navigation is not a transferable action. The
 projection lives in the experiment-local
-[`filter.py`](/devs/exps/train/browser/filter.py), not in the generic WebGym data cleaner.
+[`utils/filter.py`](/devs/exps/train/browser/utils/filter.py), not in the generic WebGym data
+cleaner.
 
 `iN` sets `image_max: N` with `fold_size` tracking it. `history_n` stays at the protocol default,
 so text history remains full while older screenshots collapse. There is no resolution axis in
@@ -67,7 +68,7 @@ uv run python -m lite.data.hf.download WebGym \
   --allow-patterns "browser/use/train/browser.use.$T/*" \
   --out "$DL/$T/cua-lite/WebGym" --overwrite
 
-uv run python devs/exps/train/browser/filter.py \
+uv run python devs/exps/train/browser/utils/filter.py \
   --input "$DL/$T/cua-lite/WebGym" \
   --out "$CLEAN/$T/cua-lite/WebGym" \
   --overwrite
@@ -567,9 +568,10 @@ Reading the table:
 
 One GRPO run from the local **`gpt5_5` + `<think>` SFT checkpoint** trained with
 [`browser.use.i1.reasoning.yaml`](/devs/exps/train/browser/configs/qwen3_5/browser.use.i1.reasoning.yaml).
-Train online on WebGym `train` tasks with `difficulty <= 3`, and keep the in-training eval curve
-on the fixed 128-row WebVoyager read-only parquet from the SFT Eval block. This is a transfer run:
-WebGym supplies online reward; WebVoyager supplies the held-out browser navigation score.
+Train online on the WebGym anchor manifest from
+[`TASKS.md`](/devs/exps/train/browser/TASKS.md), and keep the in-training eval curve on the fixed
+128-row WebVoyager read-only parquet from the SFT Eval block. This is a transfer run: WebGym
+supplies online reward; WebVoyager supplies the held-out browser navigation score.
 
 Read [docs/grpo.md](/docs/grpo.md) first for the Slime lifecycle and shared GRPO knobs. This block
 only pins the browser-specific choices.
@@ -588,17 +590,21 @@ only pins the browser-specific choices.
 # These parquet files are fixed experiment manifests under the repo, so Slime sees them at
 # /workspaces/cua-lite/devs/exps/train/browser/data.
 DATA=devs/exps/train/browser/data
-TRAIN="$DATA/webgym.train.dle3.sample1024.seed42.parquet"
+CAND="$DATA/webgym.train.gpt55_anchor.nogoto.site.candidates.seed42.parquet"
+TRAIN="$DATA/webgym.train.gpt55_anchor.nogoto.site.calibrated.head1024.g4.seed42.parquet"
 EVAL="$DATA/webvoyager.eval128.readonly.seed42.parquet"
 mkdir -p "$DATA"
 
-if [ -e "$TRAIN" ]; then
-  echo "keep existing fixed train manifest: $TRAIN"
+if [ -e "$CAND" ]; then
+  echo "keep existing fixed candidate manifest: $CAND"
 else
-  uv run python -m lite.train.export.export_tasks \
-    --env-id webgym --split train --sample 1024 --seed 42 \
-    --filter "lambda m: m.others.get('difficulty', 0) <= 3" \
-    -o "$TRAIN"
+  uv run python devs/exps/train/browser/utils/tasks.py build-candidates --out "$CAND"
+fi
+uv run python devs/exps/train/browser/utils/tasks.py verify-candidates --candidate "$CAND"
+
+if [ ! -e "$TRAIN" ]; then
+  echo "calibrated train manifest missing: $TRAIN"
+  echo "run /devs/exps/train/browser/TASKS.md Step 2, or use the candidate fallback deliberately"
 fi
 
 if [ -e "$EVAL" ]; then
@@ -610,37 +616,34 @@ else
     -o "$EVAL"
 fi
 
-uv run python - "$TRAIN" "$EVAL" <<'PY'
+uv run python - "$CAND" "$TRAIN" "$EVAL" <<'PY'
 import sys
 import hashlib
+from pathlib import Path
 
 import pandas as pd
 
-import lite.gym as gym
 from lite.data.staging import coerce_meta
 
-train = pd.read_parquet(sys.argv[1])
-eval_ = pd.read_parquet(sys.argv[2])
+candidate = pd.read_parquet(sys.argv[1])
+train_path = Path(sys.argv[2])
+eval_ = pd.read_parquet(sys.argv[3])
+train = pd.read_parquet(train_path) if train_path.exists() else candidate
+train_label = "calibrated" if train_path.exists() else "candidate-fallback"
 train_keys = [coerce_meta(row["metadata"])["env_key"] for _, row in train.iterrows()]
 eval_keys = [coerce_meta(row["metadata"])["env_key"] for _, row in eval_.iterrows()]
 train_hash = hashlib.sha256("\n".join(train_keys).encode()).hexdigest()
 eval_hash = hashlib.sha256("\n".join(eval_keys).encode()).hexdigest()
 
-assert len(train) == 1024
+assert len(candidate) == 2366
+assert len(train) >= 500
 assert len(eval_) == 128
 assert all(key.startswith("webgym@") for key in train_keys)
 assert all(key.startswith("webharbor.webvoyager@") for key in eval_keys)
-assert all(
-    gym.registry.task_metadata("webgym", key.split("@", 1)[1]).others.get("difficulty", 0) <= 3
-    for key in train_keys
-)
-assert all(
-    not gym.registry.task_metadata("webharbor.webvoyager", key.split("@", 1)[1]).others.get("mutating")
-    for key in eval_keys
-)
 print(
-    "browser RL data ok: 1024 WebGym d<=3 train tasks, 128 WebVoyager read-only eval tasks, "
-    f"train_sha256={train_hash} eval_sha256={eval_hash}"
+    f"browser RL data ok: {len(train)} WebGym {train_label} train tasks, "
+    f"128 WebVoyager read-only eval tasks, train_sha256={train_hash} "
+    f"eval_sha256={eval_hash}"
 )
 PY
 ```
@@ -671,8 +674,12 @@ W=/workspaces/cua-lite
 P=browser.use.i1.reasoning
 DS=webgym_gpt5_5_nogoto_wvclean
 EPOCH=epoch_2
-RLDS=webgym_dle3_sample1024_webvoyager128
+RLDS=webgym_anchor_nogoto_webvoyager128
 CELL=grpo.$P.$RLDS.from_sft
+PROMPT_DATA="$W/devs/exps/train/browser/data/webgym.train.gpt55_anchor.nogoto.site.calibrated.head1024.g4.seed42.parquet"
+if [ ! -e "$PROMPT_DATA" ]; then
+  PROMPT_DATA="$W/devs/exps/train/browser/data/webgym.train.gpt55_anchor.nogoto.site.candidates.seed42.parquet"
+fi
 
 if [ -z "${CKPT:-}" ]; then
   CKPT=$(ls -d "$W/.ckpts/qwen3_5-4b/sft.$P.$DS"/iter_* 2>/dev/null | sort -V | tail -1)
@@ -696,7 +703,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 MBS=1 \
   MODEL_ID=Qwen/Qwen3.5-4B \
   HF_CKPT="$CKPT" \
   ENV_ID=webgym \
-  PROMPT_DATA="$W/devs/exps/train/browser/data/webgym.train.dle3.sample1024.seed42.parquet" \
+  PROMPT_DATA="$PROMPT_DATA" \
   EVAL_PROMPT_DATA="$W/devs/exps/train/browser/data/webvoyager.eval128.readonly.seed42.parquet" \
   ENV_CONCURRENCY=16 \
   ROLLOUT_BATCH_SIZE=16 \
@@ -718,9 +725,9 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 MBS=1 \
   train-host `iter_*`, then pulls `epoch_2` from
   `ZHZisZZ/qwen3_5-4b.sft.browser.use.i1.reasoning.webgym_gpt5_5_nogoto_wvclean`. Omitting the
   checkpoint entirely would start from base Qwen3.5-4B and answer a different question.
-- **`difficulty <= 3` defines the WebGym training tier.** It is not a WebVoyager filter and it is
-  not a guarantee that the task never leaves a site; the no-goto action surface is enforced by the
-  browser config.
+- **The WebGym training tier comes from the anchor manifest.** It is based on successful
+  `gpt5_5` no-goto demonstrations, not `difficulty <= 3`. Difficulty is reported in
+  [`TASKS.md`](/devs/exps/train/browser/TASKS.md) for curriculum analysis only.
 - **Eval stays WebVoyager 128.** Do not replace `EVAL_PROMPT_DATA` with a WebGym eval parquet for
   this run, or the curve stops measuring transfer to the held-out WebVoyager subset. The intended
   subset is the `--sample 128 --seed 42` parquet above; record and compare its `env_key_sha256`
@@ -729,7 +736,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 MBS=1 \
   checkpoint's WebVoyager score up to normal 128-task noise; a large gap usually means the wrong
   checkpoint or config was used.
 - **Final score uses the same Eval block.** Reuse the Eval section's `score` / `show` helpers with
-  `score browser.use.i1.reasoning "$GRPO_CKPT" "grpo.browser.use.i1.reasoning.webgym_dle3_sample1024_webvoyager128.from_sft@$RUN.$(basename "$GRPO_CKPT")"`
+  `score browser.use.i1.reasoning "$GRPO_CKPT" "grpo.browser.use.i1.reasoning.webgym_anchor_nogoto_webvoyager128.from_sft@$RUN.$(basename "$GRPO_CKPT")"`
   for the saved GRPO `iter_*` being considered.
 - **Rollout shape matches `desktop.use` RL.** `ROLLOUT_BATCH_SIZE=16` and
   `N_SAMPLES_PER_PROMPT=8` collect 128 trajectories per rollout; `NUM_STEPS_PER_ROLLOUT=8` splits

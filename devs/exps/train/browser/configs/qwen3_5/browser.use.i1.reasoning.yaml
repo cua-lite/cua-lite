@@ -43,6 +43,6 @@ env_kwargs:
   loop_detect: 5
   # No-goto browser surface for WebHarbor/WebVoyager transfer: WebVoyager is an
   # offline mirror, so direct URL navigation escapes the mirrored site. The SFT
-  # data must be prefiltered with devs/exps/train/browser/filter.py; export_sft
+  # data must be prefiltered with devs/exps/train/browser/utils/filter.py; export_sft
   # then replays this same no-goto, no-WebGym-wrapper surface.
   extra_tools: ["back", "response"]
