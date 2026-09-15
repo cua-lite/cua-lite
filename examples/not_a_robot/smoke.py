@@ -13,7 +13,6 @@ import asyncio
 import dataclasses
 import json
 import os
-import select
 import sys
 import time
 
@@ -23,6 +22,7 @@ from lite.core.tools.calls import make_tool_call
 from . import registration  # noqa: F401
 from .env import NealAccessBlocked
 from .local_tasks import LOCAL_TASKS
+from .stdio import ControllerInput
 
 
 def _parse_args():
@@ -33,6 +33,7 @@ def _parse_args():
     parser.add_argument("--campaign", action="store_true")
     parser.add_argument("--artifact-root", required=True)
     parser.add_argument("--browser-executable")
+    parser.add_argument("--record-video", action="store_true", help="Save silent owned-page video")
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--max-seconds", type=float, default=180)
     args = parser.parse_args()
@@ -55,11 +56,14 @@ async def run(args) -> int:
         **kwargs,
         artifact_root=args.artifact_root,
         browser_executable=args.browser_executable,
+        record_video=args.record_video,
         max_steps=args.max_steps,
         max_seconds=args.max_seconds,
     )
     raw = env.unwrapped
     exit_code = 0
+    controller_input = ControllerInput(sys.stdin.fileno())
+    pending = b""
     try:
         # Reset and expose exactly the model-visible image, not DOM-derived targets.
         observation = await env.reset()
@@ -85,13 +89,18 @@ async def run(args) -> int:
         deadline = time.monotonic() + args.max_seconds
         turn = 0
         while time.monotonic() < deadline:
-            if not select.select([sys.stdin], [], [], 0)[0]:
-                await asyncio.sleep(0.1)
+            if b"\n" not in pending:
+                chunk = controller_input.read()
+                if chunk is None:
+                    await asyncio.sleep(0.1)
+                    continue
+                if not chunk:
+                    raw.outcome = "controller_disconnected"
+                    break
+                pending += chunk
                 continue
-            line = sys.stdin.readline()
-            if not line:
-                raw.outcome = "controller_disconnected"
-                break
+            encoded, pending = pending.split(b"\n", 1)
+            line = encoded.decode("utf-8") + "\n"
             # Preserve malformed input, retries and public decision summaries.
             raw.recorder.emit("controller_input", raw_text=line, turn=turn)
             try:
@@ -171,6 +180,7 @@ async def run(args) -> int:
             raw.recorder.emit("error", phase="controller", error=repr(error))
         print(json.dumps({"type": "error", "error": repr(error)}), flush=True)
     finally:
+        controller_input.close()
         await env.close()
         print(
             json.dumps(

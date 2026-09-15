@@ -21,6 +21,8 @@ import time
 import uuid
 from pathlib import Path
 
+import psutil
+
 from .local_tasks import LOCAL_TASKS, task_reference
 
 REFERENCE_TASKS = tuple(task_id for task_id in LOCAL_TASKS if task_id.startswith("neal_"))
@@ -36,8 +38,17 @@ reinspect the screenshot and test bounded, visually supported alternatives. You 
 correct input formatting, reconsider ambiguous regions, undo selections, or use
 the visible refresh control. These evidence-based retries are not brute force.
 Do not blindly click every cell or enumerate arbitrary answers. Real-time targets
-continue moving during inference; use deliberate action batches and explicit waits
-when appropriate, and check the next screenshot before revising your plan.
+continue moving during inference. To observe motion, get_observation can include
+sequence={"duration_seconds": 5, "interval_seconds": 0.1}; computer accepts the same
+option to capture immediately after its actions, before another inference gap.
+The first get_observation may also request a sequence. Choose duration and spacing
+from the visible task; these are successive still images, not video or audio.
+Read the ordered frames and actual capture times, including any gaps or partial
+stop reason. Each extra screenshot consumes a step. Sequences are limited to
+10 seconds, 64 frames and 8 MiB of PNGs per response, and cannot accompany a region.
+Use a single observation for static details and a sequence when timing matters.
+Keep each batch within 45 seconds so you can observe its results,
+and check the next screenshot before revising your plan.
 Do not use a shell, files, source code, DOM, selectors, browser evaluation,
 external sites, other tools, or prior answers. Give only short public action
 summaries, not private reasoning. Call finish after verified completion, budget
@@ -58,6 +69,7 @@ def _parse_args(argv=None):
     )
     parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--browser-executable", required=True)
+    parser.add_argument("--record-video", action="store_true", help="Save silent owned-page video")
     parser.add_argument("--max-seconds", type=float, default=600)
     parser.add_argument("--max-steps", type=int, default=150)
     parser.add_argument("--python", default=sys.executable)
@@ -117,6 +129,7 @@ def build_command(args, task: str, task_root: Path, uv: str) -> list[str]:
         args.model,
         "--reasoning-effort",
         args.reasoning_effort,
+        *(["--record-video"] if args.record_video else []),
     ]
     server = (
         "{command="
@@ -125,7 +138,8 @@ def build_command(args, task: str, task_root: Path, uv: str) -> list[str]:
         + json.dumps(bridge_args)
         + ",env={PYTHONPATH="
         + json.dumps(str(repo))
-        + ',PYTHONDONTWRITEBYTECODE="1"},startup_timeout_sec=30,tool_timeout_sec=60,'
+        + ',PYTHONDONTWRITEBYTECODE="1"},required=true,startup_timeout_sec=30,'
+        + f"tool_timeout_sec={args.max_seconds + 5},"
         + 'enabled_tools=["get_observation","computer","finish"],'
         + 'tools={get_observation={approval_mode="approve"},'
         + 'computer={approval_mode="approve"},finish={approval_mode="approve"}}}'
@@ -133,10 +147,20 @@ def build_command(args, task: str, task_root: Path, uv: str) -> list[str]:
     config = {
         "model_reasoning_effort": args.reasoning_effort,
         "features.shell_tool": False,
+        "features.shell_snapshot": False,
+        "features.view_image": False,
+        "features.workspace_dependencies": False,
         "web_search": "disabled",
         "features.apps": False,
         "features.multi_agent": False,
         "features.memories": False,
+        "features.plugins": False,
+        "features.hooks": False,
+        "features.browser_use": False,
+        "features.computer_use": False,
+        "features.image_generation": False,
+        "features.skill_search": False,
+        "features.skip_host_skill_discovery": True,
         "project_doc_max_bytes": 0,
         "approval_policy": "never",
     }
@@ -169,7 +193,7 @@ def collect_result(
     """Grade from the environment manifest; inspect only this client's model context."""
     thread_ids = []
     malformed_lines = 0
-    with (task_root / "codex.stdout.jsonl").open() as stream:
+    with (task_root / "codex.stdout.jsonl").open(encoding="utf-8") as stream:
         for line in stream:
             try:
                 event = json.loads(line)
@@ -190,7 +214,7 @@ def collect_result(
     if len(thread_ids) == 1:
         session_files = list((codex_home / "sessions").glob(f"*/*/*/*{thread_ids[0]}.jsonl"))
     if len(session_files) == 1:
-        with session_files[0].open() as stream:
+        with session_files[0].open(encoding="utf-8") as stream:
             for line in stream:
                 # Inspect the envelope first; never parse/export reasoning or other payloads.
                 envelope = line.partition('"payload"')[0]
@@ -235,7 +259,7 @@ def collect_result(
     manifest_error = None
     if len(manifests) == 1:
         try:
-            manifest = json.loads(manifests[0].read_text())
+            manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
         except ValueError as error:
             manifest_error = str(error)
     outcome = manifest["outcome"] if manifest else "missing_or_ambiguous_trajectory"
@@ -257,8 +281,6 @@ def collect_result(
             "budget_exhausted",
             "timeout",
             "controller_timeout",
-            "controller_disconnected",
-            "controller_shutdown",
         )
     )
     return {
@@ -274,6 +296,10 @@ def collect_result(
         "outcome": outcome,
         "blocked_by_missing_task": outcome == "unsupported_task",
         "recording_complete": recording_complete,
+        "recording_scope": "events_and_png_images",
+        "video_requested": args.record_video,
+        "video": manifest.get("video") if manifest else None,
+        "video_saved": bool(manifest and manifest.get("video", {}).get("status") == "saved"),
         "cleanup_complete": cleanup_complete,
         "evaluated": evaluated,
         "success": evaluated and outcome == "success",
@@ -286,8 +312,23 @@ def run(args) -> int:
     if uv is None:
         raise RuntimeError("uv is required to launch the configured Python runtime")
     codex_home = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).resolve()
+    # A new solver must not inherit the parent app's tool bridge or thread identity.
+    # Keep normal runtime/auth paths and sandbox/network restrictions unchanged.
+    client_env = os.environ.copy()
+    for name in (
+        "CODEX_APP_TOOLS_PIPE_PATH",
+        "CODEX_SESSION_ID",
+        "CODEX_THREAD_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE",
+    ):
+        client_env.pop(name, None)
     version = subprocess.run(
-        [args.codex, "--version"], capture_output=True, text=True, check=True, timeout=15
+        [args.codex, "--version"],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=15,
+        env=client_env,
     ).stdout.strip()
     root = args.artifact_root.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -316,30 +357,57 @@ def run(args) -> int:
             process = subprocess.Popen(
                 command,
                 cwd=workspace,
+                env=client_env,
                 stdin=subprocess.DEVNULL,
                 stdout=stdout,
                 stderr=stderr,
-                start_new_session=True,
+                start_new_session=os.name != "nt",
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
             )
             try:
                 process.wait(timeout=args.max_seconds + 45)
             except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
                 interrupted = isinstance(error, KeyboardInterrupt)
                 timed_out = not interrupted
-                # The process group was created here and belongs only to this attempt.
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                try:
-                    # The leader can exit before its MCP child finishes cleanup.
-                    deadline = time.monotonic() + 5
-                    while time.monotonic() < deadline:
-                        os.killpg(process.pid, 0)
-                        time.sleep(0.1)
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                if os.name == "nt":
+                    # Snapshot only this child's descendants before the leader exits.
+                    # psutil Process tracks creation times, avoiding reused-PID kills.
+                    try:
+                        leader = psutil.Process(process.pid)
+                        owned = [*leader.children(recursive=True), leader]
+                    except psutil.NoSuchProcess:
+                        owned = []
+                    try:
+                        process.send_signal(signal.CTRL_BREAK_EVENT)
+                    except (OSError, ValueError):
+                        # No shared console: terminate only this owned client tree.
+                        for child in reversed(owned):
+                            try:
+                                child.terminate()
+                            except psutil.NoSuchProcess:
+                                pass
+                    _, alive = psutil.wait_procs(owned, timeout=5)
+                    for child in alive:
+                        try:
+                            child.kill()
+                        except psutil.NoSuchProcess:
+                            pass
+                    psutil.wait_procs(alive, timeout=5)
+                else:
+                    # The process group was created here for this attempt only.
+                    try:
+                        os.killpg(process.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        # The leader can exit before its MCP child finishes cleanup.
+                        deadline = time.monotonic() + 5
+                        while time.monotonic() < deadline:
+                            os.killpg(process.pid, 0)
+                            time.sleep(0.1)
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
                 process.wait(timeout=5)
         # Normal client exit can precede the bridge's final atomic manifest write.
         deadline = time.monotonic() + 5
