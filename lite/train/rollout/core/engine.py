@@ -1144,10 +1144,16 @@ async def _eval_rollout(
         nonzero_return_rate = sum(1 for r in episode_returns if r > 0) / max(n_trajs_valid, 1)
         n_truncated = sum(truncated_per_rollout)
 
+        # return_mean is the number to read: slime also logs a bare
+        # ``eval/{ds}`` (rollout.py), but that one averages over the DENSE list,
+        # so every errored rollout dilutes it as a 0.0. Printing the valid-only
+        # mean next to the valid/errored counts means a diluted comparison is
+        # visible in the log itself, not only in wandb.
         logger.info(
-            "Eval %s: %d valid / %d errored / %d missing / %d expected"
-            " (retried %d), nonzero_return_rate=%.2f",
-            dataset_cfg.name, n_trajs_valid, n_trajs_errored, n_trajs_missing,
+            "Eval %s: return_mean=%.4f (std=%.4f stderr=%.4f), %d valid / %d errored"
+            " / %d missing / %d expected (retried %d), nonzero_return_rate=%.2f",
+            dataset_cfg.name, return_mean, return_std, return_stderr,
+            n_trajs_valid, n_trajs_errored, n_trajs_missing,
             n_trajs_expected, n_trajs_retried, nonzero_return_rate,
         )
 
