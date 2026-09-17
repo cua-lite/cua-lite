@@ -1,0 +1,140 @@
+{
+  "env": "screenspot_pro",
+  "commit_dir": "2026-09-17T14-28_03858be",
+  "run_id": "run_0",
+  "commit": {
+    "short_sha": "03858be"
+  },
+  "artifact_root": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0",
+  "result_count": 16,
+  "results": [
+    {
+      "model": "GPT-6 Astra Medium",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.9386464263124604,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-6-astra__gpt__default__screenspot_pro.medium",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-6-astra__gpt__default__screenspot_pro.medium/summary.json"
+    },
+    {
+      "model": "GPT-5.6 Sol xhigh",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.8418722327640734,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-5.6-sol__gpt__default__screenspot_pro.xhigh",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-5.6-sol__gpt__default__screenspot_pro.xhigh/summary.json"
+    },
+    {
+      "model": "GPT-5.6 Sol Medium",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.8330170777988615,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-5.6-sol__gpt__default__screenspot_pro.medium",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-5.6-sol__gpt__default__screenspot_pro.medium/summary.json"
+    },
+    {
+      "model": "Qwen3.8-27B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.7539531941808981,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.8-27B",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.8-27B/summary.json"
+    },
+    {
+      "model": "GPT-5.6 Sol none",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.7235926628716003,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-5.6-sol",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-5.6-sol/summary.json"
+    },
+    {
+      "model": "Qwen3.5-27B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.6951296647691335,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.5-27B",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.5-27B/summary.json"
+    },
+    {
+      "model": "UI-Venus-2-9B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.6495888678051865,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/inclusionAI_UI-Venus-2-9B",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/inclusionAI_UI-Venus-2-9B/summary.json"
+    },
+    {
+      "model": "MAI-UI-8B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.6223908918406073,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Tongyi-MAI_MAI-UI-8B",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Tongyi-MAI_MAI-UI-8B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-4B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.5825426944971537,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3-VL-4B-Instruct",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json"
+    },
+    {
+      "model": "Qwen3.5-9B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.5812776723592663,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.5-9B",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.5-9B/summary.json"
+    },
+    {
+      "model": "Qwen3.5-4B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.5774826059456041,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.5-4B",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.5-4B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-32B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.5768500948766604,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3-VL-32B-Instruct",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-8B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.5521821631878557,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3-VL-8B-Instruct",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json"
+    },
+    {
+      "model": "UI-TARS-1.5-7B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.49778621125869704,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json"
+    },
+    {
+      "model": "EvoCUA-8B",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.4351676154332701,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/meituan_EvoCUA-8B-20260105",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/meituan_EvoCUA-8B-20260105/summary.json"
+    },
+    {
+      "model": "GPT-5.5 Medium",
+      "num_valid": 1570,
+      "num_tasks": 1581,
+      "mean_episode_return": 0.7273885350318471,
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-5.5__gpt__default__screenspot_pro.medium",
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-5.5__gpt__default__screenspot_pro.medium/summary.json"
+    }
+  ]
+}
