@@ -1,0 +1,13 @@
+agent_id: gpt
+agent_kwargs:
+  api_kwargs:
+    reasoning_effort: xhigh
+    max_output_tokens: 4096
+env_id: androidlab
+env_kwargs:
+  max_steps: 20
+  loop_detect: 0
+  extra_tools:
+  - open_app
+  - response
+  - terminate
