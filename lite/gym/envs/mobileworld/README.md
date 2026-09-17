@@ -50,7 +50,7 @@ sudo setfacl -m u:$(id -u):rw /dev/kvm           # ACL method (per boot)
 ls -l /dev/kvm                                   # verify: your user has rw
 ```
 
-**Agent-user-interaction tasks** (46 tasks tagged `agent-user-interaction`) need a simulated-user LLM: export the standard `OPENAI_API_KEY` before spawning containers, and set `OPENAI_BASE_URL` only for a custom endpoint. The env forwards them via `docker run -e` as the `USER_AGENT_*` vars upstream expects; the model is the `server_kwargs.user_agent_model` yaml knob (default `gpt-4.1`). Also enable the `ask_user` extra tool (`env_kwargs.extra_tools: [ask_user]`). GUI-only tasks need neither.
+**Agent-user-interaction tasks** need a simulated-user LLM. Before starting the env-server, export `USER_AGENT_API_KEY` and `USER_AGENT_BASE_URL` for its OpenAI-compatible endpoint. These take precedence over `OPENAI_API_KEY` and `OPENAI_BASE_URL`, allowing the simulator and evaluated model to use separate services. The env forwards the credentials into each new container; restart the server and recreate its containers after changing them. The model is `server_kwargs.user_agent_model` in the env config (default `gpt-5.6-luna`). Also enable the `ask_user` extra tool (`env_kwargs.extra_tools: [ask_user]`). GUI-only tasks need neither.
 
 **MCP tasks are not supported** at this stage: the 40 `agent-mcp`-tagged tasks are excluded from registration (`data/tasks.json` still lists all 201).
 

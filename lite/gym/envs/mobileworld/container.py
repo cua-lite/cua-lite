@@ -64,9 +64,9 @@ from typing import ClassVar
 from lite.gym.container import LiteContainerBase, boot_with_retry
 from lite.gym.errors import CapacityExhausted
 from lite.gym.utils import config as env_config
-from lite.gym.utils.config.naming import format_container_name as _format_container_name
 from lite.gym.utils.backend.docker import _rm_argv, docker_run_detached
 from lite.gym.utils.backend.ports import allocate_ports
+from lite.gym.utils.config.naming import format_container_name as _format_container_name
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ ADB_DEVICE = "emulator-5554"
 #: Simulated-user LLM plumbing (answers ``ask_user`` questions; agent-user-
 #: interaction tasks only — GUI-only tasks never call it). The upstream code
 #: inside the container reads the USER_AGENT_* names; on the host side the
-#: credentials come from the standard OPENAI_* env vars (secrets stay
+#: credentials come from USER_AGENT_* or the standard OPENAI_* env vars (secrets stay
 #: env-var-sourced per the config house rules) and the model name is a yaml
 #: knob (``server_kwargs.user_agent_model``) injected at spawn.
 _USER_AGENT_ENV_MAP = {           # container var ← host env var (skip if unset)
@@ -182,7 +182,7 @@ class MobileWorldContainer(LiteContainerBase):
         user_agent_env = {
             container_var: value
             for container_var, host_var in _USER_AGENT_ENV_MAP.items()
-            if (value := os.environ.get(host_var))
+            if (value := os.environ.get(container_var) or os.environ.get(host_var))
         }
         docker_run_detached(
             name=self.name, image=self.image,
@@ -196,7 +196,7 @@ class MobileWorldContainer(LiteContainerBase):
             group_add=(kvm_gid,) if kvm_gid is not None else (),
             env={**user_agent_env, "USER_AGENT_MODEL": _USER_AGENT_MODEL},
             ports=((self.api_port, _CPORT_API),),
-            # USER_AGENT_API_KEY ← host OPENAI_API_KEY
+            # Simulator-specific credentials take precedence over OPENAI_*.
             redact=("USER_AGENT_API_KEY",),
             timeout=180.0,
             label="mobileworld",

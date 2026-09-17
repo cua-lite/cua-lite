@@ -86,6 +86,39 @@ def test_registered_metadata():
     assert m.extra_tool_schemas == []  # extra tools are opt-in
 
 
+@pytest.mark.parametrize("dedicated_credentials", [False, True])
+def test_simulated_user_credentials_reach_container(monkeypatch, dedicated_credentials):
+    import lite.gym.envs.mobileworld.container as C
+
+    monkeypatch.setenv("OPENAI_API_KEY", "evaluated-model-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://evaluated.example/v1")
+    monkeypatch.delenv("USER_AGENT_API_KEY", raising=False)
+    monkeypatch.delenv("USER_AGENT_BASE_URL", raising=False)
+    if dedicated_credentials:
+        monkeypatch.setenv("USER_AGENT_API_KEY", "simulated-user-key")
+        monkeypatch.setenv("USER_AGENT_BASE_URL", "https://simulator.example/v1")
+
+    captured = {}
+    monkeypatch.setattr(C, "docker_run_detached", lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setattr(C, "_kvm_gid", lambda: None)
+    container = C.MobileWorldContainer(name="test-simulated-user", api_port=10600)
+    monkeypatch.setattr(container, "_register", lambda: None)
+    monkeypatch.setattr(container, "_wait_until_ready", lambda: None)
+    container.start()
+
+    assert captured["env"] == {
+        "USER_AGENT_API_KEY": (
+            "simulated-user-key" if dedicated_credentials else "evaluated-model-key"
+        ),
+        "USER_AGENT_BASE_URL": (
+            "https://simulator.example/v1"
+            if dedicated_credentials else "https://evaluated.example/v1"
+        ),
+        "USER_AGENT_MODEL": C.CFG.server_kwargs["user_agent_model"],
+    }
+    assert "USER_AGENT_API_KEY" in captured["redact"]
+
+
 # ---------------------------------------------------------------------------
 # bind() contract
 # ---------------------------------------------------------------------------

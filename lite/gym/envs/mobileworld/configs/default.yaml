@@ -13,9 +13,9 @@
 #   rollout/grpo yaml env_kwargs  >  MOBILE_WORLD_CONFIG override  >  default.yaml
 #
 # Secrets are env-var-only (never yaml): the simulated-user LLM for ask_user
-# tasks reads its credentials from the host's standard OPENAI_API_KEY /
-# OPENAI_BASE_URL env vars, forwarded into each container at spawn as the
-# USER_AGENT_* names the upstream code expects (container.py's
+# tasks reads host USER_AGENT_API_KEY / USER_AGENT_BASE_URL, falling back to
+# OPENAI_API_KEY / OPENAI_BASE_URL. They are forwarded into each container
+# as the USER_AGENT_* names the upstream code expects (container.py's
 # _USER_AGENT_ENV_MAP). The model name is NOT a secret → it's the
 # server_kwargs.user_agent_model knob below.
 env_var_prefix: MOBILE_WORLD
@@ -52,9 +52,8 @@ server_kwargs:                    # per-deploy infra
   step_timeout: 180               # /step + /screenshot HTTP timeout (s); ask_user calls an LLM
   task_init_timeout: 600          # /task/init HTTP timeout (s): snapshot reload + app-backend restart
   eval_timeout: 600               # /task/eval HTTP timeout (s): backend DB / adb state checks
-  user_agent_model: "gpt-4.1"     # simulated-user LLM for ask_user tasks (upstream README's example
-                                  # model), injected into containers as USER_AGENT_MODEL; credentials
-                                  # come from host OPENAI_API_KEY / OPENAI_BASE_URL (see header)
+  user_agent_model: "gpt-5.6-luna" # simulated user for ask_user; injected as USER_AGENT_MODEL.
+                                  # Credentials use host USER_AGENT_* or OPENAI_* (see header).
   max_resets_per_container: 30    # recycle (destroy + cold-spawn) after N in-place /task/init reuses.
                                   # MobileWorld is DESIGNED to reuse one container across episodes
                                   # (cold DinD boot is 2-5 min; snapshot reload is seconds), so unlike
