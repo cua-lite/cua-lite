@@ -1,0 +1,11 @@
+## dd36a23 (2026-09-17)
+
+- Use the documented 138-task eval subset and model-family WAA defaults.
+- Add the requested GPT-5.6 Sol none/xhigh variants.
+
+## a6945b1 (2026-09-17)
+
+- Limit Docker creation, reserve ports, create overlays inside the VM container,
+  disable THP for QEMU, and allow 60 seconds for Docker inspection.
+- Require installation checks to terminate with a valid evaluator score.
+- `9396efb` adds native Qwen3.8 reasoning-effort selection.
