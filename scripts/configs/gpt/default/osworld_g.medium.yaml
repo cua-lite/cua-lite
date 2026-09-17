@@ -1,0 +1,5 @@
+agent_id: gpt
+env_id: osworld_g
+agent_kwargs:
+  api_kwargs:
+    reasoning_effort: medium
