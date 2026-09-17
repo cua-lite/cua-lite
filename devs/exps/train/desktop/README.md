@@ -556,6 +556,16 @@ sync-vs-async, and the knobs this block does not repeat.
 > **The env-server must serve BOTH** — start it with
 > `--env-ids lite.scalecua lite.osworld` or the first eval task fails.
 
+**Which training tasks.** The Data block below builds the whole `rl` split minus
+`exclude_reason`. That is the fallback, not the intended input:
+[`TASKS.md`](/devs/exps/train/desktop/TASKS.md) calibrates a candidate pool at `g=4` and keeps only
+the tasks whose group still carries a gradient, which is 48.4% of an uncalibrated pool — the rest
+spends rollout budget computing advantages that are identically zero. Its
+[`utils/tasks.py`](/devs/exps/train/desktop/utils/tasks.py) writes the manifest; point `PROMPT_DATA`
+at that instead. Calibrated manifests are tracked under
+[`data/`](/devs/exps/train/desktop/data); the candidate pools they are built from are not (see
+`.gitignore` — they rebuild in seconds, the calibration does not).
+
 <details>
 <summary>Data</summary>
 
@@ -634,11 +644,17 @@ PY
 # --- Slime container ---
 # sync, 8 GPUs colocated, TP=4 (-> DP=2). Start from the gpt5_5 + <think> SFT checkpoint for the
 # same desktop.use.highr.i1.reasoning surface.
+# train == eval == the same 128 lite.osworld tasks. Deliberate: it asks whether this recipe can
+# move the eval number AT ALL. Measured 0.3604 -> 0.5223 over one epoch, which at nspr=4 is 16
+# optimizer steps, not 40. Read that against the noise bar below before concluding anything from
+# it: +16pp is about three times a single eval's spread, a transfer run's +8.6pp was one.
+# For the transfer run, point PROMPT_DATA at a calibrated manifest from TASKS.md and set
+# ENV_ID=lite.scalecua; leave everything else alone, above all the eval set.
 W=/workspaces/cua-lite
 P=desktop.use.highr.i1.reasoning
 DS=scalecua_5k
 T=gpt5_5
-RLDS=scalecua_rl_osworld128
+RLDS=osworld128_overfit
 CELL=grpo.$P.$DS.$T.$RLDS.from_sft
 CKPT=${CKPT:-$(ls -d "$W/.ckpts/qwen3_5-4b/sft.$P.$DS.$T"/iter_* 2>/dev/null | sort -V | tail -1)}
 
@@ -652,16 +668,19 @@ done
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
   MODEL_ID=Qwen/Qwen3.5-4B \
   HF_CKPT="$CKPT" \
-  ENV_ID=lite.scalecua \
-  PROMPT_DATA="$W/devs/exps/train/desktop/data/scalecua.rl.no_exclude.parquet" \
+  CUA_LITE_MULTIMODAL_LAZY_EXPAND=1 \
+  ENV_ID=lite.osworld \
+  PROMPT_DATA="$W/devs/exps/train/desktop/data/osworld.eval128.no_exclude.seed42.parquet" \
   EVAL_PROMPT_DATA="$W/devs/exps/train/desktop/data/osworld.eval128.no_exclude.seed42.parquet" \
-  ENV_CONCURRENCY=64 \
-  ROLLOUT_BATCH_SIZE=16 \
+  ENV_CONCURRENCY=96 \
+  ROLLOUT_BATCH_SIZE=32 \
   N_SAMPLES_PER_PROMPT=8 \
-  NUM_STEPS_PER_ROLLOUT=8 \
+  NUM_STEPS_PER_ROLLOUT=4 \
   ROLLOUT_MAX_RESPONSE_LEN=2048 \
+  LR=3e-6 \
   CONFIG_PATH="$W/devs/exps/train/desktop/configs/qwen3_5/$P.yaml" \
-  SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=10 EVAL_INTERVAL=5 NUM_ROLLOUT=100 \
+  EVAL_TEMPERATURE=1 N_SAMPLES_PER_EVAL_PROMPT=1 \
+  SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=4 EVAL_INTERVAL=4 NUM_ROLLOUT=20 \
   SAVE_HF_DIR="$W/.ckpts/qwen3_5-4b/$CELL/iter_{rollout_id}" \
   SAVE_DIR="/root/checkpoints/qwen3_5-4b/$CELL/megatron" \
   WANDB_GROUP_SUFFIX=".$CELL" \
@@ -686,7 +705,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
   `.reasoning` arm can only make the tail longer. This is a GENERATION budget: it leaves the prompt
   untouched, so comparability holds. It DOES shift the in-training curve, so keep it fixed for the
   whole run.
-- **Eval budget: 128 during training, 328 once at the end.** One eval pass = one rollout step, and
+- **Eval budget: 128 during training, 328 once at the end.** An eval pass costs about half a
+  rollout (measured: 11 min at 1 sample/task, 19.8 at 2), and
   `EVAL_INTERVAL=5` puts it at 20% of training — **leave it there**: cheap enough, and frequent
   enough to catch a reward collapse early rather than five steps late. (It defaults to 5 like
   `SAVE_INTERVAL`, but the advice is the opposite — raise that one, not this one.) 128 over 64
@@ -699,8 +719,48 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
 - **Step 0 is the run's own baseline**, paired against the `gpt5_5` + `<think>` / `highr.i1` SFT
   cell up to eval-subset noise. Landing far below that usually means the wrong `P`, `CKPT`, or
   config was used.
-- Group size is `N_SAMPLES_PER_PROMPT` (default 8): 16 x 8 = 128 trajectories per rollout step,
-  which is what `ENV_CONCURRENCY=64` feeds.
+- **`32 x 8 = 256` trajectories per rollout, split into 4 optimizer steps** (`256 / nspr 4 = 64`
+  GBS -- slime derives it, do NOT also pass `--global-batch-size`). 128 tasks / `RBS` 32 = one
+  epoch every 4 rollouts, which is what `EVAL_INTERVAL` and `SAVE_INTERVAL` are set to.
+
+  WARNING: **`nspr` must divide `ROLLOUT_BATCH_SIZE`, not just `RBS x n`**, and `run_grpo.sh` only
+  preflights the weaker one. `slime/utils/dp_schedule.py` slices by *trajectory* in task-contiguous
+  order, so a task's `n` samples share an optimizer step only when `RBS % nspr == 0` (32 % 4 = 0).
+  A split group makes advantages sum non-zero inside each step it lands in. `RBS=12, n=4, nspr=8`
+  passes the script's check and still splits.
+
+  `n=8` over `n=4`: these tasks sit low on the p axis (0.36 at t=1), where `1 - p^n - (1-p)^n`
+  separates sharply -- 57% vs 34% live groups at p=0.10, 90% vs 68% at p=0.25. Measured here,
+  38-66% mixed per rollout. On an easier pool `n=4` wins per *trajectory*, so this is a property of
+  the pool, not a default. [`TASKS.md`](/devs/exps/train/desktop/TASKS.md) has the arithmetic.
+
+  Watch `grad_norm`, the entropy slope, and `train_rollout_logprob_abs_diff` (train/inference
+  agreement, threshold 0.1) rather than arguing `nspr`: steps 2..4 are off-policy w.r.t. the sampled
+  data. Measured on this run, 0.006-0.014 and 1.4-5.3.
+- **`CUA_LITE_MULTIMODAL_LAZY_EXPAND=1` is not optional at this batch.** Default 0 expands every
+  screenshot into `pixel_values` inside the rollout and ships the float tensors through plasma; at
+  `32 x 8` that took the node to 972 GB of Ray's 1024 and a worker was killed mid-training. The lazy
+  path carries PNG bytes and rebuilds them on the trainer: same numbers (`logprob_abs_diff`
+  unchanged at 0.013), peak 632 GB. `--multimodal-lazy-expand-fn-path` alone does nothing -- it
+  registers the hook, this env var gates the payloads.
+- **`EVAL_TEMPERATURE=1` scores what GRPO optimises.** `run_grpo.sh` defaults it to 0, which is a
+  deterministic, deployment-shaped number; slime's own default is the rollout temperature. On this
+  128-task set the same checkpoint scores 0.5012 greedy against a sampled mean of 0.4337 (three
+  draws) -- about 7pp, which compounds over a 12-20 turn trajectory, so the two are not
+  interchangeable. Pick one per campaign and say which; mixing them across a table makes the rows
+  unreadable. A single sampled draw of that checkpoint read 0.3604, which is why the gap was first
+  written down as 10.4pp.
+- **One eval pass over these 128 tasks has a standard deviation of 5.5pp.** Measured: the SFT
+  checkpoint scored 0.3721 / 0.4790 / 0.4499 on three independent draws at t=1 (`--group-size 3
+  --group-shared-seed false`, 384 trajectories). Three quarters of the tasks are deterministic
+  across draws; the spread comes from the quarter that flip. So a single-draw difference under
+  ~8pp says nothing, and differences that size HAVE been read as signal here: a transfer run's
+  apparent +8.6pp came back as +0.48pp under a paired 384-trajectory re-measurement of the same
+  two checkpoints. Either raise `N_SAMPLES_PER_EVAL_PROMPT`, or re-measure the checkpoints the
+  conclusion rests on before reporting a number.
+- **Read `return_mean`, not the bare `eval/{ds}` scalar.** That one averages over the DENSE reward
+  list, so every errored rollout dilutes it as a 0.0. The engine logs the valid-only mean beside the
+  counts: `Eval <ds>: return_mean=..., N valid / M errored / ...`. They agree only while `M == 0`.
 - **Export `WANDB_API_KEY`** or the every-5-steps curve this section is built around silently
   does not exist.
 - **Set `NUM_ROLLOUT` and raise `SAVE_INTERVAL`.** The default 5 writes a full 4B checkpoint every
