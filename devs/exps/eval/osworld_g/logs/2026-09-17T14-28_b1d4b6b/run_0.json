@@ -1,0 +1,140 @@
+{
+  "env": "osworld_g",
+  "commit_dir": "2026-09-17T14-28_b1d4b6b",
+  "run_id": "run_0",
+  "commit": {
+    "short_sha": "b1d4b6b"
+  },
+  "artifact_root": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0",
+  "result_count": 16,
+  "results": [
+    {
+      "model": "GPT-5.6 Sol xhigh",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.9274509803921569,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol__gpt__default__osworld_g.xhigh",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol__gpt__default__osworld_g.xhigh/summary.json"
+    },
+    {
+      "model": "GPT-6 Astra Medium",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.9254901960784314,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-6-astra__gpt__default__osworld_g.medium",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-6-astra__gpt__default__osworld_g.medium/summary.json"
+    },
+    {
+      "model": "GPT-5.5 Medium",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.9156862745098039,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.5__gpt__default__osworld_g.medium",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.5__gpt__default__osworld_g.medium/summary.json"
+    },
+    {
+      "model": "GPT-5.6 Sol Medium",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.9019607843137255,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol__gpt__default__osworld_g.medium",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol__gpt__default__osworld_g.medium/summary.json"
+    },
+    {
+      "model": "GPT-5.6 Sol none",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.7980392156862746,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol/summary.json"
+    },
+    {
+      "model": "Qwen3.8-27B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.796078431372549,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.8-27B",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.8-27B/summary.json"
+    },
+    {
+      "model": "Qwen3.5-27B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.7431372549019608,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-27B",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-27B/summary.json"
+    },
+    {
+      "model": "UI-Venus-2-9B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.7431372549019608,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/inclusionAI_UI-Venus-2-9B",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/inclusionAI_UI-Venus-2-9B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-32B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.7196078431372549,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-32B-Instruct",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json"
+    },
+    {
+      "model": "MAI-UI-8B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.7,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Tongyi-MAI_MAI-UI-8B",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Tongyi-MAI_MAI-UI-8B/summary.json"
+    },
+    {
+      "model": "Qwen3.5-9B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.6823529411764706,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-9B",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-9B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-4B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.6549019607843137,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-4B-Instruct",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-8B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.6431372549019608,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-8B-Instruct",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json"
+    },
+    {
+      "model": "Qwen3.5-4B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.6294117647058823,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-4B",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-4B/summary.json"
+    },
+    {
+      "model": "UI-TARS-1.5-7B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.6058823529411764,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json"
+    },
+    {
+      "model": "EvoCUA-8B",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "mean_episode_return": 0.5725490196078431,
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/meituan_EvoCUA-8B-20260105",
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/meituan_EvoCUA-8B-20260105/summary.json"
+    }
+  ]
+}
