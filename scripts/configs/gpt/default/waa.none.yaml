@@ -1,0 +1,9 @@
+agent_id: gpt
+agent_kwargs:
+  api_kwargs:
+    reasoning_effort: none
+    max_output_tokens: 4096
+env_id: waa
+env_kwargs:
+  max_steps: 30
+  loop_detect: 0
