@@ -1,3 +1,15 @@
+## Unreleased
+
+Changed the runner from the full 812 instantiated intents to the 241 exact
+intent-template subset. Added `export_template_tasks.py`, which takes
+`WebArena_SRC=/path/to/BrowserGym`, samples the first task for each exact
+`(intent_template_id, intent_template)` pair, and writes the combined audit
+parquet plus manifest in this directory. The env-owned read/write split
+prompt-data lives under `lite/gym/envs/browsergym/data/`: 125 non-mutating tasks
+run at `$EVAL_CONCURRENCY`, 116 mutating tasks run serially, then a reconcile
+pass rebuilds the combined 241-task `summary.json`. Added default WebArena
+config routing for Qwen3.8, UI-TARS-1.5, EvoCUA, and UI-Venus-2.
+
 ## f57d3cb  (2026-07-02)
 
 Initial standardized snapshot at this commit; no predecessor entry. WebArena
