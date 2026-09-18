@@ -9,6 +9,10 @@ Usage:
 not vendor `webarena/test.raw.json`; at runtime it reads that JSON from the
 installed `webarena` package, so this exporter does the same when the source
 checkout does not contain a raw-task JSON copy.
+
+The all-task parquet and manifest stay next to this exporter for auditability.
+The read/write split parquets live under `lite/gym/envs/browsergym/data/`, next
+to other env-owned prompt-data fixtures.
 """
 
 from __future__ import annotations
@@ -31,8 +35,16 @@ ENV_ID = "browsergym.webarena"
 EXPECTED_TEMPLATES = 241
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
 def _default_out_dir() -> Path:
     return Path(__file__).resolve().parent
+
+
+def _default_data_dir() -> Path:
+    return _repo_root() / "lite/gym/envs/browsergym/data"
 
 
 def _resolve_browsergym_src() -> Path:
@@ -171,7 +183,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
-def export(out_dir: Path, *, expected_templates: int) -> None:
+def export(out_dir: Path, data_dir: Path, *, expected_templates: int) -> None:
     browsergym_src = _resolve_browsergym_src()
     metadata_by_task = _load_browsergym_metadata(browsergym_src)
     configs, raw_source = _load_webarena_configs(browsergym_src)
@@ -204,17 +216,18 @@ def export(out_dir: Path, *, expected_templates: int) -> None:
         manifest.append(_manifest_row(row, rows_for_template, meta, mutating=mutating))
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
     write_records_to_parquet(
         all_records,
         out_dir / "webarena_241_templates.all.prompt_data.parquet",
     )
     write_records_to_parquet(
         read_records,
-        out_dir / "webarena_241_templates.read.prompt_data.parquet",
+        data_dir / "webarena_241_templates.read.prompt_data.parquet",
     )
     write_records_to_parquet(
         write_records,
-        out_dir / "webarena_241_templates.write.prompt_data.parquet",
+        data_dir / "webarena_241_templates.write.prompt_data.parquet",
     )
     _write_jsonl(out_dir / "webarena_241_templates.manifest.jsonl", manifest)
     _write_csv(out_dir / "webarena_241_templates.manifest.csv", manifest)
@@ -225,7 +238,8 @@ def export(out_dir: Path, *, expected_templates: int) -> None:
     print(f"exact templates: {len(grouped)}")
     print(f"read/non-mutating: {len(read_records)}")
     print(f"write/mutating: {len(write_records)}")
-    print(f"wrote: {out_dir}")
+    print(f"wrote audit files: {out_dir}")
+    print(f"wrote read/write prompt-data: {data_dir}")
 
 
 def main() -> None:
@@ -236,7 +250,13 @@ def main() -> None:
         "--out-dir",
         type=Path,
         default=_default_out_dir(),
-        help="Output directory for parquet + manifest files.",
+        help="Output directory for all-task parquet + manifest files.",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=_default_data_dir(),
+        help="Output directory for read/write split prompt-data files.",
     )
     parser.add_argument(
         "--expected-templates",
@@ -245,7 +265,7 @@ def main() -> None:
         help="Fail if the exact-template count differs from this value.",
     )
     args = parser.parse_args()
-    export(args.out_dir, expected_templates=args.expected_templates)
+    export(args.out_dir, args.data_dir, expected_templates=args.expected_templates)
 
 
 if __name__ == "__main__":

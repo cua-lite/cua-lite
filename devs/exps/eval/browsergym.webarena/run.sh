@@ -23,6 +23,9 @@
 #   WebArena_SRC=~/ref/BrowserGym uv run python \
 #     devs/exps/eval/browsergym.webarena/export_template_tasks.py
 #
+# The exporter writes the combined audit parquet + manifests beside this runner,
+# and the read/write split parquets under lite/gym/envs/browsergym/data/.
+#
 # WebArena shares ONE mutable Docker backend, so for a faithful score this runs
 # the strict read/write split (see /lite/gym/envs/browsergym/README.md
 # "Strict read/write split"):
@@ -140,8 +143,9 @@ shopt -s nullglob
 PIPELINE_PATHS=(
   devs/exps/eval/browsergym.webarena/run.sh
   devs/exps/eval/browsergym.webarena/export_template_tasks.py
-  devs/exps/eval/browsergym.webarena/webarena_241_templates.*.prompt_data.parquet
+  devs/exps/eval/browsergym.webarena/webarena_241_templates.all.prompt_data.parquet
   devs/exps/eval/browsergym.webarena/webarena_241_templates.manifest.*
+  lite/gym/envs/browsergym/data/webarena_241_templates.*.prompt_data.parquet
   lite/core
   lite/agents
   lite/agents/extensions/browsergym
@@ -241,9 +245,10 @@ if [ "${#EXTRA_ROLLOUT_ARGS[@]}" -gt 0 ]; then
 fi
 
 PROMPT_DATA_DIR="$ROOT/devs/exps/eval/browsergym.webarena"
+BROWSERGYM_DATA_DIR="$ROOT/lite/gym/envs/browsergym/data"
 ALL_PROMPT_DATA_BASE="$PROMPT_DATA_DIR/webarena_241_templates.all.prompt_data.parquet"
-READ_PROMPT_DATA_BASE="$PROMPT_DATA_DIR/webarena_241_templates.read.prompt_data.parquet"
-WRITE_PROMPT_DATA_BASE="$PROMPT_DATA_DIR/webarena_241_templates.write.prompt_data.parquet"
+READ_PROMPT_DATA_BASE="$BROWSERGYM_DATA_DIR/webarena_241_templates.read.prompt_data.parquet"
+WRITE_PROMPT_DATA_BASE="$BROWSERGYM_DATA_DIR/webarena_241_templates.write.prompt_data.parquet"
 for f in "$ALL_PROMPT_DATA_BASE" "$READ_PROMPT_DATA_BASE" "$WRITE_PROMPT_DATA_BASE"; do
   if [ ! -f "$f" ]; then
     echo "[run.sh] ERROR: missing prompt-data file: $f" >&2
