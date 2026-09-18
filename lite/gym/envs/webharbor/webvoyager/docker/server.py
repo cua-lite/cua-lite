@@ -379,6 +379,13 @@ def _new_driver(download_dir: Path, width: int, height: int) -> webdriver.Chrome
     # Retries are switched off in the same breath: a retry cannot help a
     # chromedriver that is not answering, and they turned a measured 30s
     # deadline into 80s.
+    #
+    # ``command_executor._conn`` and urllib3's ``connection_pool_kw`` are both
+    # private surface, verified against the versions this image installs:
+    # selenium 4.15.2 / urllib3 2.x, where ``RemoteConnection._request`` passes
+    # no per-request timeout, so the pool is what governs. An upgrade that
+    # renames either raises AttributeError here rather than silently dropping
+    # the deadline, which is the failure direction to prefer.
     _pool = driver.command_executor._conn
     _pool.connection_pool_kw["retries"] = urllib3.Retry(total=0, connect=0, read=0, redirect=0)
     _pool.connection_pool_kw["timeout"] = urllib3.Timeout(
