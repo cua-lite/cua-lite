@@ -40,14 +40,28 @@
 
 set -euo pipefail
 
-MODEL="${1:?usage: CUDA_VISIBLE_DEVICES=<gpus> $0 <model-id>}"
+MODEL="${1:?usage: CUDA_VISIBLE_DEVICES=<gpus> $0 <model-id> [config-path]}"
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../.." &>/dev/null && pwd)"
 [[ -n "$ROOT" && -d "$ROOT" ]] || { echo "$0: cannot resolve repo root from ${BASH_SOURCE[0]}" >&2; exit 1; }
 cd "$ROOT"
+# An explicit YAML gets its own result slug; omitted YAML keeps the default path.
+CONFIG_PATH="${2:-}"
+CONFIG_ID=""
+if [ -n "$CONFIG_PATH" ]; then
+  CONFIG_PATH="$(realpath -- "$CONFIG_PATH")"
+  if [[ "$CONFIG_PATH" != "$ROOT"/scripts/configs/*.yaml ]] || [ ! -f "$CONFIG_PATH" ]; then
+    echo "[run.sh] ERROR: config must be an existing YAML under scripts/configs/" >&2
+    exit 1
+  fi
+  CONFIG_PATH="${CONFIG_PATH#"$ROOT"/}"
+  CONFIG_ID="${CONFIG_PATH#scripts/configs/}"
+  CONFIG_ID="${CONFIG_ID%.yaml}"
+  CONFIG_ID="${CONFIG_ID//\//__}"
+fi
 EVAL_ENV_ID="osworld"
 source "$ROOT/devs/exps/eval/utils/runtime_mode.sh"
 
-SLUG="${MODEL//\//_}"
+SLUG="${MODEL//\//_}${CONFIG_ID:+__${CONFIG_ID}}"
 ENV_ROOT="$ROOT/.exps/eval/osworld"
 
 # Pipeline-relevant paths: changes to these files are what advance the
@@ -69,8 +83,12 @@ PIPELINE_PATHS=(
   lite/agents/factory.py lite/infer/serving.py lite/infer/rollout.py
   scripts/rollout.py
   scripts/configs/*/default/osworld.yaml
+  scripts/configs/*/default/osworld.*.yaml
 )
 shopt -u nullglob
+if [ -n "$CONFIG_PATH" ]; then
+  PIPELINE_PATHS+=("$CONFIG_PATH")
+fi
 
 # Pre-flight: pipeline files must be committed (clean working tree + index).
 DIRTY=$(git status --porcelain -- "${PIPELINE_PATHS[@]}" 2>/dev/null)
@@ -116,12 +134,15 @@ fi
 case "$MODEL" in
   Qwen/Qwen3-VL-*-Instruct)        CFG=scripts/configs/qwen3_vl/default/osworld.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/osworld.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/osworld.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/osworld.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/osworld.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/osworld.yaml ;;
   meituan/EvoCUA-*)                CFG=scripts/configs/evocua/default/osworld.yaml ;;
   gpt-*)                           CFG=scripts/configs/gpt/default/osworld.yaml ;;
   *) echo "unknown model: $MODEL — add a case in $0" >&2; exit 1 ;;
 esac
+CFG="${CONFIG_PATH:-$CFG}"
 
 mkdir -p "$LOG_ROOT"
 echo "[run.sh] $MODEL"
@@ -138,5 +159,6 @@ HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   `# false-positive give-up calls on tasks that DO have a target.` \
   --filter "lambda m: not m.others.get('exclude_reason')" \
   --env-kwargs '{"step_timeout": 180}' \
+  --concurrency "${EVAL_CONCURRENCY:-16}" \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"
