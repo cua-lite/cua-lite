@@ -47,6 +47,7 @@ try:
     )
     from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.common.action_chains import ActionChains
+    from selenium.webdriver.common.actions.action_builder import ActionBuilder
     from selenium.webdriver.common.by import By
     from selenium.webdriver.common.keys import Keys
 except ModuleNotFoundError:  # Host-side unit tests import pure helpers only.
@@ -78,6 +79,7 @@ except ModuleNotFoundError:  # Host-side unit tests import pure helpers only.
     StaleElementReferenceException = RuntimeError  # type: ignore[assignment]
     Service = None  # type: ignore[assignment]
     ActionChains = None  # type: ignore[assignment]
+    ActionBuilder = None  # type: ignore[assignment]
     By = None  # type: ignore[assignment]
     Keys = _MissingKeys  # type: ignore[assignment]
 
@@ -751,14 +753,50 @@ def _active_or_last_element(inst: _Instance):
     return inst.last_element
 
 
-def _exec_action_click(inst: _Instance, element: Any) -> None:
+def _exec_action_click(
+    inst: _Instance, element: Any, point: tuple[int, int] | None = None
+) -> None:
+    """Click ``element``, at ``point`` when the model chose one.
+
+    ``point`` is the viewport pixel a coordinate click named. It is not a
+    refinement of ``element.click()`` -- it is a different click, and the
+    difference is load-bearing:
+
+    ``element.click()`` implements the W3C element-click algorithm, which
+    DISCARDS the caller's coordinate and re-derives the element's own in-view
+    center point, then refuses with ElementClickIntercepted if anything covers
+    THAT pixel. A model that picked an uncovered pixel off the screenshot can
+    therefore be refused because some other part of the element it landed on is
+    covered -- measured on ``google_flights.8``, where a
+    ``<span class="material-symbols-outlined">`` icon sits over the centre of a
+    300px-wide search field. Across five turns the model correctly walked its x
+    from 684 to 530 to get out from under the icon, and every attempt was
+    re-aimed at the same covered centre (642, 544) and refused. The interception
+    was manufactured here, not present on the page.
+
+    So a coordinate click dispatches a real pointer event at the pixel the model
+    named. There is no hit test to fail: if the model DOES aim at a covered
+    pixel the covering element receives the click, which is what the screenshot
+    it was reading would predict. Index clicks keep ``element.click()`` -- there
+    the [N] id IS the target and no pixel was chosen.
+
+    ``last_cursor`` follows the same rule, because it draws the cursor overlay
+    the model sees next turn: the pixel actually clicked, not the element centre
+    the coordinate was silently snapped to.
+    """
     driver = inst.driver
     driver.execute_script("arguments[0].setAttribute('target', '_self')", element)
-    element.click()
+    if point is None:
+        element.click()
+        center = _element_center_viewport(driver, element)
+        if center is not None:
+            inst.last_cursor = center
+    else:
+        actions = ActionBuilder(driver)
+        actions.pointer_action.move_to_location(point[0], point[1]).click()
+        actions.perform()
+        inst.last_cursor = point
     inst.last_element = element
-    center = _element_center_viewport(driver, element)
-    if center is not None:
-        inst.last_cursor = center
     time.sleep(3)
 
 
@@ -919,17 +957,18 @@ def _execute_action(inst: _Instance, name: str, args: dict[str, Any]) -> dict[st
         return inst.web_eles[index]
 
     if name == "click":
+        point: tuple[int, int] | None = None
         if "index" in args:
             element = _elem_by_index("click")
         else:
             coordinate = args.get("coordinate")
             if coordinate is None:
                 raise ValueError("click requires coordinate or index")
-            inst.last_cursor = _norm_coord_to_viewport(driver, coordinate)
+            point = _norm_coord_to_viewport(driver, coordinate)
             element = _element_from_coordinate(driver, coordinate)
             if element is None:
                 raise ValueError(f"no element at coordinate {coordinate}")
-        _exec_action_click(inst, element)
+        _exec_action_click(inst, element, point)
 
     elif name == "input":
         text = str(args.get("text", ""))
