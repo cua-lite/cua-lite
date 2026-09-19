@@ -37,8 +37,14 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 try:
+    import urllib3
     from selenium import webdriver
-    from selenium.common.exceptions import TimeoutException
+    from selenium.common.exceptions import (
+        ElementClickInterceptedException,
+        ElementNotInteractableException,
+        StaleElementReferenceException,
+        TimeoutException,
+    )
     from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.common.action_chains import ActionChains
     from selenium.webdriver.common.by import By
@@ -64,8 +70,12 @@ except ModuleNotFoundError:  # Host-side unit tests import pure helpers only.
         SPACE = "space"
         TAB = "tab"
 
+    urllib3 = None  # type: ignore[assignment]
     webdriver = None  # type: ignore[assignment]
     TimeoutException = RuntimeError  # type: ignore[assignment]
+    ElementClickInterceptedException = RuntimeError  # type: ignore[assignment]
+    ElementNotInteractableException = RuntimeError  # type: ignore[assignment]
+    StaleElementReferenceException = RuntimeError  # type: ignore[assignment]
     Service = None  # type: ignore[assignment]
     ActionChains = None  # type: ignore[assignment]
     By = None  # type: ignore[assignment]
@@ -90,6 +100,27 @@ _CAPTURE_CURSOR_HEIGHT = 24
 # Keep in sync with host-side ``MODEL_ACTION_ERROR_TYPES``. This file runs as an
 # in-container script and must not import the host ``lite.gym`` package.
 _MODEL_ACTION_ERROR_TYPES = (ValueError, TypeError, IndexError, KeyError)
+# Selenium raises these when the MODEL's action was wrong about the page: the
+# element went stale under it, something covers the click point, the target is
+# not interactable, or the page it drove to never settled. They are per-action
+# feedback exactly like the tuple above -- but they cannot join it, because that
+# tuple is a byte-for-byte copy of the host contract
+# (tests/gym/utils/backend/test_docker_copy_parity.py) and selenium is not a
+# host-side dependency. Until now they escaped to `except Exception: raise` and
+# became an HTTP 500, which destroys the whole trajectory over one unlucky
+# click. Over 35 minutes of one training run every single exception that
+# reached that branch was a member of this tuple: StaleElementReference 42,
+# ElementClickIntercepted 19, Timeout 2, ElementNotInteractable 1.
+# TimeoutException belongs here even though ``_safe_get`` already absorbs it for
+# NAVIGATION: raised inside an action it means the page the model drove to did
+# not settle, which is feedback, not a dead driver.
+_SELENIUM_ACTION_ERROR_TYPES = (
+    ElementClickInterceptedException,
+    ElementNotInteractableException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
+_ACTION_ERROR_TYPES = _MODEL_ACTION_ERROR_TYPES + _SELENIUM_ACTION_ERROR_TYPES
 _DEFAULT_MODEL_DURATION_CAP_SECONDS = 30.0
 _MODEL_DURATION_CAPS_SECONDS = {
     "wait": 30.0,
@@ -233,6 +264,26 @@ _WINDOW_H = int(os.environ.get("WEBHARBOR_WEBVOYAGER_VIEWPORT_H", "720"))
 _CURSOR_ORIGIN_NORM: tuple[int, int] = (500, 500)
 _PAGE_LOAD_TIMEOUT_S = float(os.environ.get("WEBHARBOR_WEBVOYAGER_PAGE_LOAD_TIMEOUT_S", "15"))
 _SCRIPT_TIMEOUT_S = float(os.environ.get("WEBHARBOR_WEBVOYAGER_SCRIPT_TIMEOUT_S", "10"))
+# Both timeouts above are W3C commands that CHROMEDRIVER enforces, so neither
+# can fire when chromedriver is itself the unresponsive party -- and selenium's
+# own HTTP call to it carries no deadline (RemoteConnection.get_timeout() is
+# None). That was the only unbounded wait in the /step path, and it let a step
+# outlive the host client's 180s deadline (webvoyager/main.py `_post`) while
+# nothing was logged on this side: the host saw a timeout, the container's error
+# log stayed flat, and the env slot stayed held for the full three minutes.
+#
+# The value is pinned between two measured bounds. Below ~15s it would abort
+# legitimate navigations, since that is chromedriver's own page-load timeout.
+# Above ~36s it stops helping: a step against a wedged driver makes about five
+# webdriver calls (the action plus the closing observation), each of which must
+# time out in turn, and N x the deadline has to stay under the client's 180s.
+# Measured end to end on a pod by SIGSTOPping chromedriver: unpatched the step
+# never returned within a 200s cap; at 25s it answers 500 in 125s, and a healthy
+# step still answers 200 immediately. It bounds COMMANDS only -- session
+# creation is deliberately left unbounded (see _new_driver).
+_WEBDRIVER_CLIENT_TIMEOUT_S = float(
+    os.environ.get("WEBHARBOR_WEBVOYAGER_WEBDRIVER_CLIENT_TIMEOUT_S", "25")
+)
 _RESET_SETTLE_S = float(os.environ.get("WEBHARBOR_WEBVOYAGER_RESET_SETTLE_S", "5"))
 _POST_ACTION_DELAY_S = float(os.environ.get("WEBHARBOR_WEBVOYAGER_POST_ACTION_DELAY_S", "0.5"))
 _INSTANCE_TTL_S = float(os.environ.get("WEBHARBOR_WEBVOYAGER_INSTANCE_TTL_S", "600"))
@@ -317,6 +368,30 @@ def _new_driver(download_dir: Path, width: int, height: int) -> webdriver.Chrome
     download_dir.mkdir(parents=True, exist_ok=True)
     service = Service(_CHROMEDRIVER_BIN)
     driver = webdriver.Chrome(service=service, options=_chrome_options(download_dir, width, height))
+    # Bound the deadline on THIS driver's own urllib3 pool, after the session
+    # exists. `RemoteConnection.set_timeout` looks like the obvious knob and is
+    # not: it is a classmethod read at request time, so it also bounds session
+    # creation -- which legitimately takes longer than any command when 24
+    # browsers start at once (it failed 29 resets in a live run) -- and one
+    # thread tightening it would bound another thread's concurrent session
+    # creation. A per-driver pool has neither problem.
+    #
+    # Retries are switched off in the same breath: a retry cannot help a
+    # chromedriver that is not answering, and they turned a measured 30s
+    # deadline into 80s.
+    #
+    # ``command_executor._conn`` and urllib3's ``connection_pool_kw`` are both
+    # private surface, verified against the versions this image installs:
+    # selenium 4.15.2 / urllib3 2.x, where ``RemoteConnection._request`` passes
+    # no per-request timeout, so the pool is what governs. An upgrade that
+    # renames either raises AttributeError here rather than silently dropping
+    # the deadline, which is the failure direction to prefer.
+    _pool = driver.command_executor._conn
+    _pool.connection_pool_kw["retries"] = urllib3.Retry(total=0, connect=0, read=0, redirect=0)
+    _pool.connection_pool_kw["timeout"] = urllib3.Timeout(
+        connect=_WEBDRIVER_CLIENT_TIMEOUT_S, read=_WEBDRIVER_CLIENT_TIMEOUT_S
+    )
+    _pool.clear()
     driver.set_window_size(width, height)
     driver.set_page_load_timeout(_PAGE_LOAD_TIMEOUT_S)
     driver.set_script_timeout(_SCRIPT_TIMEOUT_S)
@@ -1217,7 +1292,7 @@ def _step_sync(body: dict[str, Any]) -> dict[str, Any]:
 
             try:
                 executed.append(_execute_action(inst, name, args))
-            except _MODEL_ACTION_ERROR_TYPES as e:
+            except _ACTION_ERROR_TYPES as e:
                 logger.warning("action failed for %s: %s(%s): %s", iid, name, args, e)
                 errors.append(f"{name}: {e}")
                 _append_action_error(
