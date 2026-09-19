@@ -132,6 +132,8 @@ _REAPER_INTERVAL_S = CFG.server_kwargs["reaper_interval_s"]
 _RM_TIMEOUT_S = float(os.environ.get("CUA_LITE_WEBHARBOR_WEBVOYAGER_RM_TIMEOUT_S", str(CFG.server_kwargs["rm_timeout_s"])))
 
 _WEBHARBOR_WEBVOYAGER_IMAGE = "cua-lite/webharbor.webvoyager:latest"
+# The port the container's own server binds inside its namespace.
+_CONTAINER_PORT = 8000
 _WEBHARBOR_WEBVOYAGER_PORT_START = 7800
 _WEBHARBOR_WEBVOYAGER_PORT_END = 7899
 # Shared CUA-Lite browser-nav tools resolvable via the shared schema source
@@ -1302,7 +1304,7 @@ class WebVoyagerContainerServices(SingletonContainerServices):
             name,
             image_for("webharbor.webvoyager", tag=_WEBHARBOR_WEBVOYAGER_IMAGE),
             mem=mem,
-            port=(host_port, 8000),
+            port=(host_port, _CONTAINER_PORT),
             env={
                 "WEBHARBOR_WEBVOYAGER_INSTANCES": str(_RESOLVED_INSTANCES),
                 "WEBHARBOR_WEBVOYAGER_VIEWPORT_W": str(vw),
@@ -1328,10 +1330,23 @@ class WebVoyagerContainerServices(SingletonContainerServices):
                 logger.info("webharbor.webvoyager container ready: %s", new_url)
                 return
             time.sleep(2)
+        # Name the one failure that otherwise looks identical to a slow start:
+        # `-p host:container` is silently void when the daemon has no
+        # CAP_NET_ADMIN and runs containers in the host netns, so the container
+        # binds its own port and the mapped one never listens. The probe then
+        # fails forever while the container is perfectly healthy one port over.
+        _container_port_alive = _healthz(f"http://localhost:{_CONTAINER_PORT}")
+        _hint = (
+            f" -- but it IS answering on {_CONTAINER_PORT}, the container's own "
+            "port, so the published mapping did not take effect (a host-netns "
+            "daemon ignores -p); point the probe at the container port"
+            if _container_port_alive and host_port != _CONTAINER_PORT
+            else ""
+        )
         raise EnvDepsMissingError(
             what=(
                 "webharbor.webvoyager container started but /healthz was not "
-                f"ready within {_ready_budget:.0f}s"
+                f"ready within {_ready_budget:.0f}s on {new_url}{_hint}"
             ),
             install=(
                 "check the server logs and "
