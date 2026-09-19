@@ -821,8 +821,9 @@ Run it from inside the Eval block's shell, where `score` and its ambient `GPUS/C
 LOGS` are defined, once per checkpoint being considered:
 
 ```bash
+# relative, like the rest of the Eval block -- $W is an RL-block variable
 CELL=grpo.browser.use.i1.reasoning.wv_readonly_split.from_sft
-for CKPT_DIR in "$W/.ckpts/qwen3_5-4b/$CELL"/iter_*; do
+for CKPT_DIR in ".ckpts/qwen3_5-4b/$CELL"/iter_*; do
   score browser.use.i1.reasoning "$CKPT_DIR" "$CELL@$RUN.$(basename "$CKPT_DIR")"
 done
 ```
