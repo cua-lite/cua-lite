@@ -965,6 +965,14 @@ def _execute_action(inst: _Instance, name: str, args: dict[str, Any]) -> dict[st
             if coordinate is None:
                 raise ValueError("click requires coordinate or index")
             point = _norm_coord_to_viewport(driver, coordinate)
+            # Record where the model aimed as soon as the pixel is known, before
+            # anything downstream can fail. The overlay drawn from last_cursor is
+            # what the model reads next turn, and a click that was refused still
+            # has to show it where it pointed -- otherwise the next screenshot
+            # contradicts the action it just issued. The executor sets this again
+            # for the index path, where the pixel is only known after the element
+            # resolves; here the pixel came first.
+            inst.last_cursor = point
             element = _element_from_coordinate(driver, coordinate)
             if element is None:
                 raise ValueError(f"no element at coordinate {coordinate}")
@@ -1139,10 +1147,12 @@ def _execute_action(inst: _Instance, name: str, args: dict[str, Any]) -> dict[st
         # landed the pointer 250px away -- a different hover target, and the
         # cursor overlay (drawn at last_cursor) disagreed with the real pointer.
         point = _norm_coord_to_viewport(driver, coordinate)
+        # Same rule as the click: the overlay records where the model aimed, so
+        # it is set before the move can fail rather than after it succeeds.
+        inst.last_cursor = point
         actions = ActionBuilder(driver)
         actions.pointer_action.move_to_location(point[0], point[1])
         actions.perform()
-        inst.last_cursor = point
         element = _element_from_coordinate(driver, coordinate)
         if element is not None:
             inst.last_element = element
