@@ -394,6 +394,7 @@ unset SGLANG_SERVER_URL
 : "${CUA_LITE_ENV_SERVER_TOKEN:?paste export line from env-server shell}"
 
 DS=webgym_gpt5_5_nogoto_wvclean
+EPOCH=epoch_2
 CFG=devs/exps/train/browser/configs/qwen3_5
 PULL=.ckpts/pulled
 LOGS=.logs/rollout/Qwen_Qwen3.5-4B/webharbor.webvoyager
@@ -697,25 +698,20 @@ the universe in a stable order and the complement preserves it.
 
 Most of this run is `run_grpo.sh`'s defaults. The previous campaign overrode the eval knobs; this
 one stops overriding them, so "greedy eval, one rollout per task" is not a new choice here but
-the shipped one. Only three values deviate:
+the shipped one. Four knobs deviate, plus the hardware and identity settings (`NUM_TRAIN_GPUS`,
+`TP_SIZE`, `MBS`, `MODEL_ID`, `HF_CKPT`, the two manifests, `CONFIG_PATH`, the save paths):
 
 | knob | value | default | why deviate |
 |---|---|---|---|
 | `ENV_CONCURRENCY` | `24` | 32 | what the site-holdout campaign ran at on 8xA100; the pods are known-good there |
 | `ROLLOUT_MAX_RESPONSE_LEN` | `2048` | 512 | the `.reasoning` surface emits `<think>` before its calls |
 | `LR` | `2e-6` | 1e-6 | the campaign's value, kept because it did move the policy over 30 rollouts |
+| `CUA_LITE_MULTIMODAL_LAZY_EXPAND` | `1` | 0 | expands multimodal rollout data lazily; what the campaign ran |
 
 The rest are defaults, written out so a later change to one cannot silently change this
 experiment: `ROLLOUT_BATCH_SIZE=16` and `N_SAMPLES_PER_PROMPT=8` (128 trajectories per rollout),
 `NUM_STEPS_PER_ROLLOUT=8` (global batch 16), `EVAL_TEMPERATURE=0`, `N_SAMPLES_PER_EVAL_PROMPT=1`,
 `EVAL_INTERVAL=SAVE_INTERVAL=5`, `SKIP_EVAL_BEFORE_TRAIN=0`.
-
-Two values in the run block are not optional. `CONFIG_PATH` must stay on the browser config: the
-default compact WebGym one restores `goto` and the reset wrapper, which is a different action
-surface. `HF_CKPT` must resolve to the `browser.use.i1.reasoning` SFT export — with no checkpoint
-the run starts from base Qwen3.5-4B and answers a different question — and step 0's eval should
-land on that parent's WebVoyager score within 128-task noise, so a large gap there means the
-wrong checkpoint or config.
 
 `NUM_ROLLOUT=60` is 960 task draws over 494 tasks, just under two epochs. It is an upper bound,
 not a target — the campaign's best checkpoints were early (`iter_5` .. `iter_13` of 29) and its
@@ -750,7 +746,10 @@ printf 'export CUA_LITE_ENV_SERVER_TOKEN=%s\n' "$SESSION_ID"
 # --warm-singleton: SINGLETON backends are lazy, so the container is only created on the first
 # instance request -- but run_grpo's preflight wants /envs/<id> available=true before any rollout
 # exists. Without it the two conditions wait on each other.
-WEBHARBOR_WEBVOYAGER_INSTANCES=32 uv run --no-sync python scripts/serve_env.py \
+# The host derives the instance pool from the env config (server_kwargs.instances, RAM-based
+# when 0) and only passes the resolved number into the container; this variable does not raise
+# it. Check the pool the server actually chose before relying on ENV_CONCURRENCY fitting inside it.
+uv run --no-sync python scripts/serve_env.py \
   --port "$PORT" --env-ids webharbor.webvoyager --warm-singleton --token "$SESSION_ID"
 ```
 
@@ -818,9 +817,14 @@ effect itself. Re-measure the selected checkpoints on fresh trajectories before 
 into the Results table, using the Eval block's own `score` / `show` helpers so the GRPO row is
 measured exactly like the SFT rows above it:
 
+Run it from inside the Eval block's shell, where `score` and its ambient `GPUS/CONC/TASKS/CFG/
+LOGS` are defined, once per checkpoint being considered:
+
 ```bash
-score browser.use.i1.reasoning "$GRPO_CKPT" \
-  "grpo.browser.use.i1.reasoning.wv_readonly_split.from_sft@$(basename "$GRPO_CKPT")"
+CELL=grpo.browser.use.i1.reasoning.wv_readonly_split.from_sft
+for CKPT_DIR in "$W/.ckpts/qwen3_5-4b/$CELL"/iter_*; do
+  score browser.use.i1.reasoning "$CKPT_DIR" "$CELL@$RUN.$(basename "$CKPT_DIR")"
+done
 ```
 
 Score several saved `iter_*` before copying one number across; the curve's argmax is not
