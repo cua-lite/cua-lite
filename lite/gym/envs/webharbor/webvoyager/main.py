@@ -13,6 +13,7 @@ import asyncio
 import base64
 import dataclasses
 import importlib.util
+import functools
 import json
 import logging
 import os
@@ -98,6 +99,17 @@ CFG = env_config.load(ENV_DIR)
 # ---------------------------------------------------------------------------
 _MAX_STEPS = CFG.env_kwargs["max_steps"]
 _STEP_TIMEOUT = CFG.env_kwargs["step_timeout"]
+# The RPC must return before the caller stops waiting, or its pool thread is
+# stranded for the difference (see _post). One margin, applied to whichever
+# deadline governs each call.
+_RPC_MARGIN_S = 5.0
+_STEP_RPC_TIMEOUT = max(_RPC_MARGIN_S, _STEP_TIMEOUT - _RPC_MARGIN_S)
+# close() is not wrapped by StepTimeoutWrapper; the rollout engine gives it 60s
+# in its finally block, so the RPC has to fit inside that instead.
+_CLOSE_RPC_TIMEOUT = 30.0
+# reset() is governed by reset_timeout, which defaults to 600s and is not
+# overridden here, so this one is already well inside its caller's budget.
+_RESET_RPC_TIMEOUT = 180.0
 _POST_ACTION_DELAY = CFG.env_kwargs["post_action_delay"]
 _VIEWPORT = tuple(CFG.env_kwargs["viewport"])
 _FIX_BOX_COLOR = CFG.env_kwargs["fix_box_color"]
@@ -120,6 +132,8 @@ _REAPER_INTERVAL_S = CFG.server_kwargs["reaper_interval_s"]
 _RM_TIMEOUT_S = float(os.environ.get("CUA_LITE_WEBHARBOR_WEBVOYAGER_RM_TIMEOUT_S", str(CFG.server_kwargs["rm_timeout_s"])))
 
 _WEBHARBOR_WEBVOYAGER_IMAGE = "cua-lite/webharbor.webvoyager:latest"
+# The port the container's own server binds inside its namespace.
+_CONTAINER_PORT = 8000
 _WEBHARBOR_WEBVOYAGER_PORT_START = 7800
 _WEBHARBOR_WEBVOYAGER_PORT_END = 7899
 # Shared CUA-Lite browser-nav tools resolvable via the shared schema source
@@ -853,12 +867,26 @@ class RemoteWebVoyagerEnv(LiteBaseEnv):
     # RPC transport
     # -----------------------------------------------------------------------
 
-    def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    def _post(self, path: str, body: dict[str, Any], *, timeout: float) -> dict[str, Any]:
+        """POST to the container. ``timeout`` is required and must stay BELOW the
+        deadline the caller is held to.
+
+        This runs in a pool thread via ``asyncio.to_thread``. Cancelling that
+        awaitable -- which is what ``StepTimeoutWrapper``'s ``asyncio.wait_for``
+        does on expiry -- does not interrupt the thread; it keeps blocking in
+        ``urlopen`` until its own timeout. A timeout longer than the caller's
+        deadline therefore strands a pool worker for the difference, and every
+        subsequent timeout strands another. Measured on a training host: with
+        ``step_timeout`` 90s against a hardcoded 180s here, ~85 of the 96 pool
+        threads sat in ``poll`` under an ENV_CONCURRENCY of 24, steps queued
+        behind them, and the queueing produced more timeouts -- valid
+        trajectories fell 127 -> 85 of 128 over four rollouts without recovering.
+        """
         url = self._rpc_url.rstrip("/") + path
         data = json.dumps(body).encode()
         req = urllib.request.Request(url, data=data, method="POST", headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return json.loads(resp.read())
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", errors="replace")
@@ -883,7 +911,7 @@ class RemoteWebVoyagerEnv(LiteBaseEnv):
         self._agent_response = None
 
         resp = await asyncio.to_thread(
-            self._post,
+            functools.partial(self._post, timeout=_RESET_RPC_TIMEOUT),
             "/reset",
             {
                 "task_id": self._task_id,
@@ -1087,7 +1115,7 @@ class RemoteWebVoyagerEnv(LiteBaseEnv):
             )
 
         resp = await asyncio.to_thread(
-            self._post,
+            functools.partial(self._post, timeout=_STEP_RPC_TIMEOUT),
             "/step",
             {
                 "instance_id": self._instance_id,
@@ -1236,7 +1264,11 @@ class RemoteWebVoyagerEnv(LiteBaseEnv):
         iid = self._instance_id
         self._instance_id = None
         try:
-            await asyncio.to_thread(self._post, "/close", {"instance_id": iid})
+            await asyncio.to_thread(
+                functools.partial(self._post, timeout=_CLOSE_RPC_TIMEOUT),
+                "/close",
+                {"instance_id": iid},
+            )
         except Exception as e:
             logger.warning("webharbor.webvoyager container close failed: %s", e)
 
@@ -1272,7 +1304,7 @@ class WebVoyagerContainerServices(SingletonContainerServices):
             name,
             image_for("webharbor.webvoyager", tag=_WEBHARBOR_WEBVOYAGER_IMAGE),
             mem=mem,
-            port=(host_port, 8000),
+            port=(host_port, _CONTAINER_PORT),
             env={
                 "WEBHARBOR_WEBVOYAGER_INSTANCES": str(_RESOLVED_INSTANCES),
                 "WEBHARBOR_WEBVOYAGER_VIEWPORT_W": str(vw),
@@ -1287,17 +1319,34 @@ class WebVoyagerContainerServices(SingletonContainerServices):
 
         new_url = f"http://localhost:{host_port}"
         os.environ["WEBHARBOR_WEBVOYAGER_RPC_URL"] = new_url
-        deadline = time.monotonic() + 180
+        # 180s is not enough on a busy host: 15 mirror sites plus chromium can
+        # take longer, and missing the deadline marks the env unavailable for
+        # good even though the container becomes healthy a moment later.
+        _ready_budget = float(os.environ.get("WEBHARBOR_WEBVOYAGER_READY_TIMEOUT_S", "180"))
+        deadline = time.monotonic() + _ready_budget
         while time.monotonic() < deadline:
             if _healthz(new_url):
                 _services_started.add(env_id)
                 logger.info("webharbor.webvoyager container ready: %s", new_url)
                 return
             time.sleep(2)
+        # Name the one failure that otherwise looks identical to a slow start:
+        # `-p host:container` is silently void when the daemon has no
+        # CAP_NET_ADMIN and runs containers in the host netns, so the container
+        # binds its own port and the mapped one never listens. The probe then
+        # fails forever while the container is perfectly healthy one port over.
+        _container_port_alive = _healthz(f"http://localhost:{_CONTAINER_PORT}")
+        _hint = (
+            f" -- but it IS answering on {_CONTAINER_PORT}, the container's own "
+            "port, so the published mapping did not take effect (a host-netns "
+            "daemon ignores -p); point the probe at the container port"
+            if _container_port_alive and host_port != _CONTAINER_PORT
+            else ""
+        )
         raise EnvDepsMissingError(
             what=(
                 "webharbor.webvoyager container started but /healthz was not "
-                "ready within 180s"
+                f"ready within {_ready_budget:.0f}s on {new_url}{_hint}"
             ),
             install=(
                 "check the server logs and "
