@@ -1317,7 +1317,11 @@ class WebVoyagerContainerServices(SingletonContainerServices):
 
         new_url = f"http://localhost:{host_port}"
         os.environ["WEBHARBOR_WEBVOYAGER_RPC_URL"] = new_url
-        deadline = time.monotonic() + 180
+        # 180s is not enough on a busy host: 15 mirror sites plus chromium can
+        # take longer, and missing the deadline marks the env unavailable for
+        # good even though the container becomes healthy a moment later.
+        _ready_budget = float(os.environ.get("WEBHARBOR_WEBVOYAGER_READY_TIMEOUT_S", "180"))
+        deadline = time.monotonic() + _ready_budget
         while time.monotonic() < deadline:
             if _healthz(new_url):
                 _services_started.add(env_id)
@@ -1327,7 +1331,7 @@ class WebVoyagerContainerServices(SingletonContainerServices):
         raise EnvDepsMissingError(
             what=(
                 "webharbor.webvoyager container started but /healthz was not "
-                "ready within 180s"
+                f"ready within {_ready_budget:.0f}s"
             ),
             install=(
                 "check the server logs and "
