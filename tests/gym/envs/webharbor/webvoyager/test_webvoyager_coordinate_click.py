@@ -127,3 +127,77 @@ def test_only_the_coordinate_call_site_passes_a_pixel() -> None:
     )
     for c in by_arity.get(2, []):
         assert "_elem_by_index" in c, f"a pixel-less click must be index-resolved: {c}"
+
+
+# --- the invariant, checked across every action that takes a coordinate ------
+#
+# The four tests above pin the click path. They would not have noticed a SIBLING
+# action with the same defect, and one existed: `mouse_move` used
+# `move_to_element`, which also aims at the element's centre -- measured, a
+# hover meant for the left end of a 600px nav item landed 250px away, and
+# `drag` used `move_by_offset`, which is relative to wherever the pointer
+# already was (a drag from (250,120) issued with the pointer at (700,400) began
+# at (950,520)). `mouse_move` ships enabled in both fara configs.
+#
+# So the guard below is written against the RULE rather than the symptom: any
+# branch that reads a model-supplied ``coordinate`` must address the viewport
+# directly. A new coordinate action that reaches for an element-centering API
+# fails here without anyone remembering to add a test for it.
+
+_ELEMENT_CENTERING_APIS = (
+    "move_to_element",   # aims at the element's in-view centre
+    "move_by_offset",    # relative to the current pointer, not the named pixel
+    "click_and_hold",    # ActionChains pointer verbs pair with the two above
+)
+
+
+def _coordinate_branches(tree: ast.Module) -> dict[str, ast.AST]:
+    """Branches of ``_execute_action`` that read ``args.get("coordinate")``."""
+    fn = _func(tree, "_execute_action")
+    out: dict[str, ast.AST] = {}
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.If):
+            continue
+        test = ast.unparse(node.test)
+        if "name ==" not in test:
+            continue
+        body = ast.unparse(node.body)
+        if '"coordinate"' not in body and "'coordinate'" not in body:
+            continue
+        name = test.split("==")[-1].strip().strip("'\"")
+        out[name] = node
+    return out
+
+
+def test_every_coordinate_action_addresses_the_viewport() -> None:
+    branches = _coordinate_branches(_tree())
+    assert branches, "no coordinate-taking action found -- has the dispatch moved?"
+
+    offenders = {}
+    for name, node in branches.items():
+        body = ast.unparse(node.body)
+        hits = [api for api in _ELEMENT_CENTERING_APIS if api in body]
+        if hits:
+            offenders[name] = hits
+    assert not offenders, (
+        f"these coordinate actions snap to an element instead of the named pixel: "
+        f"{offenders}. Use ActionBuilder(...).pointer_action.move_to_location(x, y)."
+    )
+
+
+def test_every_coordinate_action_is_covered_by_this_file() -> None:
+    """A new coordinate action must be named here, so the rule is not silently
+    outgrown -- the first version of this fix covered ``click`` alone while
+    ``mouse_move`` and ``drag`` had the same defect."""
+    assert set(_coordinate_branches(_tree())) == {"click", "scroll", "drag", "mouse_move"}, (
+        "the set of coordinate-taking actions changed; check the new one honours "
+        "the named pixel and add it here"
+    )
+    # ``scroll`` is in that set but only partly honours its coordinate, and the
+    # guard above cannot see the difference: it uses the pixel for last_cursor
+    # and to focus the element there, then scrolls the WINDOW regardless, so a
+    # coordinate aimed at an inner scrollable pane scrolls the page instead
+    # (measured: window.scrollY 0->300 while pane.scrollTop stayed 0). Steering
+    # the scroll by coordinate needs a nearest-scrollable-ancestor walk and
+    # would change behaviour for every env that ships `scroll`, so it is called
+    # out here rather than silently folded into this change.

@@ -1110,7 +1110,14 @@ def _execute_action(inst: _Instance, name: str, args: dict[str, Any]) -> dict[st
             start = inst.last_cursor
         sx, sy = _norm_coord_to_viewport(driver, start)
         ex, ey = _norm_coord_to_viewport(driver, end)
-        ActionChains(driver).move_by_offset(sx, sy).click_and_hold().move_by_offset(ex - sx, ey - sy).release().perform()
+        # ``move_by_offset`` is relative to wherever the pointer already is, so
+        # the drag started at last_position + (sx, sy) -- measured, a drag from
+        # (250, 120) issued with the pointer resting at (700, 400) began at
+        # (950, 520). Both endpoints are absolute viewport pixels the model
+        # named, so both are addressed as such.
+        actions = ActionBuilder(driver)
+        actions.pointer_action.move_to_location(sx, sy).pointer_down().move_to_location(ex, ey).pointer_up()
+        actions.perform()
         inst.last_cursor = (ex, ey)
         time.sleep(1)
 
@@ -1118,10 +1125,18 @@ def _execute_action(inst: _Instance, name: str, args: dict[str, Any]) -> dict[st
         coordinate = args.get("coordinate")
         if coordinate is None:
             raise ValueError("mouse_move requires coordinate")
-        inst.last_cursor = _norm_coord_to_viewport(driver, coordinate)
+        # Same rule as the coordinate click: go to the pixel, not to the centre
+        # of whatever element happens to be under it. ``move_to_element`` aims
+        # at the element's centre, so hovering the left end of a 600px nav item
+        # landed the pointer 250px away -- a different hover target, and the
+        # cursor overlay (drawn at last_cursor) disagreed with the real pointer.
+        point = _norm_coord_to_viewport(driver, coordinate)
+        actions = ActionBuilder(driver)
+        actions.pointer_action.move_to_location(point[0], point[1])
+        actions.perform()
+        inst.last_cursor = point
         element = _element_from_coordinate(driver, coordinate)
         if element is not None:
-            ActionChains(driver).move_to_element(element).perform()
             inst.last_element = element
 
     elif name == "click_elem":
