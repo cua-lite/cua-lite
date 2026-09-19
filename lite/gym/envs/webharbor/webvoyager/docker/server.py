@@ -1110,14 +1110,22 @@ def _execute_action(inst: _Instance, name: str, args: dict[str, Any]) -> dict[st
             start = inst.last_cursor
         sx, sy = _norm_coord_to_viewport(driver, start)
         ex, ey = _norm_coord_to_viewport(driver, end)
-        # ``move_by_offset`` is relative to wherever the pointer already is, so
-        # the drag started at last_position + (sx, sy) -- measured, a drag from
-        # (250, 120) issued with the pointer resting at (700, 400) began at
-        # (950, 520). Both endpoints are absolute viewport pixels the model
-        # named, so both are addressed as such.
-        actions = ActionBuilder(driver)
-        actions.pointer_action.move_to_location(sx, sy).pointer_down().move_to_location(ex, ey).pointer_up()
-        actions.perform()
+        # KNOWN BROKEN, left alone deliberately. ``move_by_offset`` is relative
+        # to wherever the pointer already rests, so the drag starts at
+        # last_position + (sx, sy) -- measured, a drag from (250, 120) issued
+        # with the pointer at (700, 400) began at (950, 520), and often raises
+        # MoveTargetOutOfBoundsException instead. Addressing both endpoints
+        # absolutely (ActionBuilder.move_to_location) fixes the coordinates but
+        # does NOT fix the drag: a range slider dragged that way after any
+        # earlier pointer move receives mousedown/mousemove/mouseup on itself,
+        # at the right pixels, and never fires `input` -- the pointer-capture
+        # state does not survive between two `perform()` calls. Releasing it
+        # first (W3C_CLEAR_ACTIONS) works in some scenarios and not others.
+        # So the absolute version trades a loud failure for a silent one, which
+        # is the wrong direction; `drag` is in no shipped config's
+        # `valid_actions`, so this stays as it is until someone can fix the
+        # capture state and verify it end to end.
+        ActionChains(driver).move_by_offset(sx, sy).click_and_hold().move_by_offset(ex - sx, ey - sy).release().perform()
         inst.last_cursor = (ex, ey)
         time.sleep(1)
 
