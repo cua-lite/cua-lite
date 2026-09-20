@@ -155,10 +155,8 @@ def docker_run_detached(
     """THE ``docker run -d`` for DEDICATED per-episode containers.
 
     Owns exactly the copied surface: argv assembly (canonical flag order),
-    secret-redacted logging, the port-lease re-stamp
-    (:func:`~lite.gym.utils.backend.ports.touch_ports` immediately before the run, so
-    a slow pre-reap can't let a parallel allocator prune-and-reuse the
-    reserved port), the bounded run, and its error mapping. **Readiness
+    secret-redacted logging, reservation timestamp updates immediately before
+    the run, the bounded run, and its error mapping. **Readiness
     probes stay env-specific** — the env calls this, then runs its own
     boot-wait pipeline.
 

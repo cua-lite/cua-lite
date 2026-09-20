@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -57,3 +58,44 @@ def test_retired_flat_docker_port_paths_stay_out_of_active_sources() -> None:
         "lite.gym.utils.backend.docker / lite.gym.utils.backend.ports:\n  "
         + "\n  ".join(offenders)
     )
+
+
+@pytest.mark.parametrize("other_owner", [False, True])
+def test_unbound_reservation_survives_slow_start_until_release(
+    monkeypatch, tmp_path, other_owner,
+):
+    from lite.gym.errors import CapacityExhausted
+    from lite.gym.utils.backend import ports
+
+    monkeypatch.setattr(ports, "_LOCK_FILE", tmp_path / "ports.lock")
+    monkeypatch.setattr(ports, "_RESERVATION_FILE", tmp_path / "ports.json")
+    monkeypatch.setattr(ports, "_is_port_free", lambda _port: True)
+    clock = [1000.0]
+    monkeypatch.setattr(ports.time, "time", lambda: clock[0])
+    monkeypatch.setattr(ports.time, "monotonic", lambda: clock[0])
+    kwargs = dict(n=1, range_start=22000, range_end=22001)
+
+    assert ports.allocate_ports(**kwargs) == [22000]
+    if other_owner:
+        reservations = ports._read_reservations()
+        reservations[22000]["pid"] = os.getppid()
+        ports._write_reservations(reservations)
+    clock[0] += 3600
+    with pytest.raises(CapacityExhausted):
+        ports.allocate_ports(**kwargs)
+
+    ports.release_ports(22000)
+    assert ports.allocate_ports(**kwargs) == [22000]
+
+
+def test_dead_owner_reservation_is_reclaimed(monkeypatch, tmp_path):
+    from lite.gym.utils.backend import ports
+
+    monkeypatch.setattr(ports, "_LOCK_FILE", tmp_path / "ports.lock")
+    monkeypatch.setattr(ports, "_RESERVATION_FILE", tmp_path / "ports.json")
+    monkeypatch.setattr(ports, "_is_port_free", lambda _port: True)
+    kwargs = dict(n=1, range_start=22000, range_end=22001)
+
+    assert ports.allocate_ports(**kwargs) == [22000]
+    monkeypatch.setattr(ports, "_pid_alive", lambda _pid: False)
+    assert ports.allocate_ports(**kwargs) == [22000]

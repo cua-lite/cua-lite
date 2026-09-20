@@ -9,9 +9,9 @@ daemon socket and publishes no host ports for headless rollouts.
 
 Cross-process safety is achieved via a shared reservation file protected by
 ``fcntl.flock``.  The file maps each port to ``{"pid": int, "ts": float}``
-(allocation wall-clock seconds, used as a TOCTOU grace before docker actually
-binds). Stale entries (dead pid OR port no longer bound past the grace window)
-are pruned automatically on each allocation.
+(allocation wall-clock seconds). Reservations survive until explicit release
+or owner exit, including while Docker has not yet bound the port. Dead owners'
+entries are pruned automatically on each allocation.
 
 Band ownership — the mechanism, deliberately NOT a table. This module owns two
 things: the scan-and-reserve mechanism, and the DEFAULT band declared below. It
@@ -43,8 +43,7 @@ Exhaustion: when no free port (or contiguous-port block) is available
 in the configured range, the allocators raise
 :class:`~lite.gym.errors.CapacityExhausted`. The env-server's exception
 handler maps that to HTTP 503 + Retry-After so the client retries (by
-which time other envs' ports may have been released and the recent-
-allocation grace window has lapsed). Direct mode (no env-server) sees
+which time other envs' ports may have been released). Direct mode (no env-server) sees
 the raw exception and should treat it the same way.
 """
 
@@ -73,15 +72,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_PORT_RANGE_START = 20000
 DEFAULT_PORT_RANGE_END = 20999
 
-# Grace window after allocate_ports during which _prune_dead will NOT drop a
-# reservation even if its OS-level port still tests as free. Docker takes
-# 1-3 s to actually bind the host port after ``docker run -p`` returns;
-# without this guard, a parallel allocator can call _is_port_free, see the
-# port still un-bound, drop the reservation, and pick the same port — causing
-# the second docker run to fail with "Bind for 127.0.0.1:N failed: port is
-# already allocated" (TOCTOU race observed under androidlab concurrency=16).
-_RECENT_GRACE_S = 30.0
-
 # ── Module-level state ───────────────────────────────────────────────────────
 _lock = threading.Lock()
 
@@ -98,12 +88,6 @@ _lock = threading.Lock()
 _SHARED_TMP = project_root() / ".tmp"
 _RESERVATION_FILE = _SHARED_TMP / "sandbox-port-reservations.json"
 _LOCK_FILE = _SHARED_TMP / "sandbox-port-alloc.lock"
-
-# In-process cache of recently-allocated ports → monotonic timestamp. Protects
-# only this Python process's threads (cross-process race still possible, but
-# cua-lite rollouts are single-process per run-id, so concurrency-16 within
-# one scripts/rollout.py process is the dominant collision case).
-_RECENT_ALLOCATIONS: dict[int, float] = {}
 
 def _is_port_free(port: int) -> bool:
     """Return *True* if *port* is not bound on any local address.
@@ -138,8 +122,7 @@ def _read_reservations() -> dict[int, dict]:
     """Read the reservation file. Returns ``{port: {"pid": int, "ts": float}}``.
 
     Backward-compat: a legacy ``{port: pid_int}`` file is normalized to the new
-    shape with ``ts=0.0`` (no grace info → falls through to existing port-free
-    check during prune).
+    shape with ``ts=0.0`` (unknown allocation time).
     """
     try:
         data = _RESERVATION_FILE.read_text()
@@ -163,46 +146,12 @@ def _write_reservations(reservations: dict[int, dict]) -> None:
     _RESERVATION_FILE.write_text(json.dumps(reservations))
 
 def _prune_dead(reservations: dict[int, dict]) -> dict[int, dict]:
-    """Remove entries whose owning process no longer exists OR whose port is
-    no longer bound.
+    """Remove reservations only after their owning process exits.
 
-    The PID-only check is insufficient when multiple Docker containers share
-    a single RolloutManager PID: a container may crash (freeing its port)
-    while the PID stays alive. Checking ``_is_port_free`` catches these
-    stale reservations and prevents the port space from slowly exhausting
-    under high concurrency.
-
-    Two grace mechanisms protect against TOCTOU between allocate→docker-bind:
-      1. cross-process: ``ts`` field in reservation file (wall-clock seconds).
-         Any process pruning sees the freshly-allocated entry as recent and
-         keeps it, even when its own ``_RECENT_ALLOCATIONS`` is empty.
-      2. in-process: ``_RECENT_ALLOCATIONS`` (monotonic). Survives wall-clock
-         jumps within the allocator's own lifetime.
+    An unbound port can belong to a queued or booting container. Its live
+    owner must release it explicitly when that container is destroyed.
     """
-    live: dict[int, dict] = {}
-    now_mono = time.monotonic()
-    now_wall = time.time()
-    for port, entry in reservations.items():
-        pid = entry["pid"]
-        ts_wall = entry.get("ts", 0.0)
-        if not _pid_alive(pid):
-            continue
-        # Cross-process grace via reservation-file timestamp.
-        if ts_wall > 0 and (now_wall - ts_wall) < _RECENT_GRACE_S:
-            live[port] = entry
-            continue
-        # In-process grace (legacy path; redundant once ts is set, but kept
-        # for safety against wall-clock jumps).
-        if (alloc_t := _RECENT_ALLOCATIONS.get(port)) is not None:
-            if now_mono - alloc_t < _RECENT_GRACE_S:
-                live[port] = entry
-                continue
-            _RECENT_ALLOCATIONS.pop(port, None)
-        if _is_port_free(port):
-            # Port not bound anymore — container died, release reservation.
-            continue
-        live[port] = entry
-    return live
+    return {port: entry for port, entry in reservations.items() if _pid_alive(entry["pid"])}
 
 def allocate_ports(
     *,
@@ -256,9 +205,7 @@ def allocate_ports(
                 # Translate to CapacityExhausted so the env-server's
                 # exception handler maps to 503 + Retry-After uniformly
                 # with other bounded-pool envs. The client retries by
-                # which time the recent-allocation grace window
-                # (``_RECENT_GRACE_S``) has lapsed and a freshly-released
-                # emulator's port is reusable.
+                # which time another environment may have released its ports.
                 raise CapacityExhausted(
                     what=(
                         f"port range [{range_start}, {range_end}) exhausted: "
@@ -268,12 +215,6 @@ def allocate_ports(
                 )
 
             _write_reservations(reservations)
-
-            # Mark recently allocated so concurrent _prune_dead in this
-            # process doesn't drop these before docker actually binds.
-            _now = time.monotonic()
-            for p in found:
-                _RECENT_ALLOCATIONS[p] = _now
 
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
@@ -309,24 +250,14 @@ def env_server_scope(default: str) -> str:
 
 
 def touch_ports(*ports: int) -> None:
-    """Re-stamp the reservation lease for *ports* to NOW.
+    """Update timestamps of this process's reservations before Docker starts.
 
-    Closes the stale-reservation window: callers hold a reservation across a potentially
-    slow pre-run step (a zombie ``docker rm -f`` on a wedged daemon can take
-    30-60 s) BEFORE the ``docker run`` that actually binds the port; once
-    ``_RECENT_GRACE_S`` lapses a parallel allocator may prune-and-reuse the
-    port. Calling this immediately before ``docker run`` (the shared
-    ``docker_run_detached`` does it for every DEDICATED env) re-bases the
-    grace on the real bind gap. Only entries owned by THIS pid are
-    re-stamped — never another process's reservation.
+    Timestamps do not expire reservations; ownership lasts until release or
+    process exit. Another process's entries are never changed.
     """
     if not ports:
         return
     now = time.time()
-    now_mono = time.monotonic()
-    for p in ports:
-        if p in _RECENT_ALLOCATIONS:
-            _RECENT_ALLOCATIONS[p] = now_mono
 
     _LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
     _LOCK_FILE.touch(exist_ok=True)
@@ -357,11 +288,6 @@ def release_ports(*ports: int) -> None:
     """
     if not ports:
         return
-    # Drop from in-process recent-allocation cache so future _prune_dead
-    # calls treat these as available.
-    for p in ports:
-        _RECENT_ALLOCATIONS.pop(p, None)
-
     _LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
     _LOCK_FILE.touch(exist_ok=True)
     lock_fd = open(_LOCK_FILE)
