@@ -524,13 +524,15 @@ class TestModelToolMapping:
             "claude-opus-4-7",
             "claude-opus-4-8",
             "claude-opus-5",
+            "claude-sonnet-5",
             "claude-sonnet-4-6",
             "anthropic/claude-opus-4-8",
+            "anthropic/claude-sonnet-5",
         ],
     )
     async def test_current_models_use_current_computer_use_tool(self, model_id, monkeypatch):
         mock = AsyncMock(return_value=_fake_completion_response())
-        if model_id == "claude-opus-5":
+        if model_id.removeprefix("anthropic/") in {"claude-opus-5", "claude-sonnet-5"}:
             monkeypatch.setattr(
                 "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
             )
@@ -543,7 +545,7 @@ class TestModelToolMapping:
         )
         await agent.sample(_FakeEnv(terminate_after=1), max_steps=2)
 
-        if model_id == "claude-opus-5":
+        if model_id.removeprefix("anthropic/") in {"claude-opus-5", "claude-sonnet-5"}:
             assert mock.call_args.kwargs["tools"][0] == {
                 "type": "computer_toolset_20260801",
                 "configs": {
@@ -558,7 +560,8 @@ class TestModelToolMapping:
             assert mock.call_args.kwargs["tools"][0]["type"] == "computer_20251124"
             assert mock.call_args.kwargs["headers"]["anthropic-beta"] == "computer-use-2025-11-24"
 
-    async def test_opus5_toolset_replays_screenshot_with_toolset_name(self, monkeypatch):
+    @pytest.mark.parametrize("model_id", ["claude-opus-5", "claude-sonnet-5"])
+    async def test_toolset_replays_screenshot_with_toolset_name(self, monkeypatch, model_id):
         mock = AsyncMock(side_effect=[
             _fake_completion_response(
                 content=[{
@@ -572,7 +575,7 @@ class TestModelToolMapping:
         monkeypatch.setattr(
             "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
         )
-        agent = ClaudeDesktopUseAgent(model_id="claude-opus-5")
+        agent = ClaudeDesktopUseAgent(model_id=model_id)
         await agent.sample(_FakeEnv(terminate_after=2), max_steps=2)
 
         _, wire_messages = _messages_for_anthropic(mock.call_args_list[1].kwargs["messages"])
@@ -585,7 +588,8 @@ class TestModelToolMapping:
         assert tool_result["toolset_name"] == "computer"
         assert any(b["type"] == "image" for b in tool_result["content"])
 
-    async def test_opus5_invalid_action_feedback_keeps_toolset_name(self, monkeypatch):
+    @pytest.mark.parametrize("model_id", ["claude-opus-5", "claude-sonnet-5"])
+    async def test_toolset_invalid_action_feedback_keeps_toolset_name(self, monkeypatch, model_id):
         mock = AsyncMock(side_effect=[
             _fake_completion_response(
                 content=[{
@@ -602,7 +606,7 @@ class TestModelToolMapping:
         monkeypatch.setattr(
             "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
         )
-        await ClaudeDesktopUseAgent(model_id="claude-opus-5").sample(
+        await ClaudeDesktopUseAgent(model_id=model_id).sample(
             _FakeEnv(terminate_after=2), max_steps=2
         )
         _, wire_messages = _messages_for_anthropic(mock.call_args_list[1].kwargs["messages"])
@@ -1005,7 +1009,7 @@ class TestToolSchema:
 
         assert any(str(t.get("type", "")).startswith("computer_") for t in tools)
 
-    @pytest.mark.parametrize("model_id", ["claude-opus-4-6", "claude-opus-5"])
+    @pytest.mark.parametrize("model_id", ["claude-opus-4-6", "claude-opus-5", "claude-sonnet-5"])
     async def test_grounding_left_click_schema_is_action_space_owned(self, monkeypatch, model_id):
         """Grounding declares only the action-space-owned left_click function."""
         agent = ClaudeDesktopGroundingPointAgent(model_id=model_id)
@@ -1219,16 +1223,19 @@ class TestEffort:
         assert "reasoning_effort" not in kwargs
         assert "extra_body" not in kwargs
 
-    async def test_grounding_drops_to_low_effort(self, monkeypatch):
+    @pytest.mark.parametrize("model_id", ["claude-opus-4-6", "claude-opus-5", "claude-sonnet-5"])
+    async def test_grounding_drops_to_low_effort(self, monkeypatch, model_id):
         """Grounding is one click with no reasoning wanted, so it must not
         inherit the family's ``medium``."""
         mock = AsyncMock(return_value=_fake_completion_response())
         monkeypatch.setattr("litellm.acompletion", mock)
 
-        agent = ClaudeDesktopGroundingPointAgent(model_id="claude-opus-4-6")
+        agent = ClaudeDesktopGroundingPointAgent(model_id=model_id)
         await agent.sample(_FakeEnv(terminate_after=1), max_steps=2)
 
         assert mock.call_args.kwargs["output_config"] == {"effort": "low"}
+        assert mock.call_args.kwargs["max_tokens"] == 1024
+        assert "thinking" not in mock.call_args.kwargs
 
     async def test_user_supplied_effort_reaches_the_wire(self, monkeypatch):
         """A yaml-supplied override must win over the family default.
@@ -1263,15 +1270,21 @@ class TestEffort:
 
 
 class TestModelRejectsTemperature:
-    """Adaptive-only Opus models reject explicit ``temperature`` params."""
+    """The agent requires omitted temperature for adaptive-only models."""
 
     @pytest.mark.parametrize(
         "model_id",
-        ["claude-opus-4-7", "claude-opus-4-8", "claude-opus-5", "anthropic/claude-opus-4-7"],
+        [
+            "claude-opus-4-7", "claude-opus-4-8", "claude-opus-5", "claude-sonnet-5",
+            "anthropic/claude-opus-4-7", "anthropic/claude-sonnet-5",
+        ],
     )
-    async def test_adaptive_opus_rejects_temperature(self, monkeypatch, model_id):
+    async def test_adaptive_model_rejects_temperature(self, monkeypatch, model_id):
         mock = AsyncMock(return_value=_fake_completion_response())
         monkeypatch.setattr("litellm.acompletion", mock)
+        monkeypatch.setattr(
+            "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
+        )
 
         agent = ClaudeDesktopUseAgent(
             model_id=model_id,
@@ -1300,12 +1313,15 @@ class TestModelRejectsTemperature:
 
     @pytest.mark.parametrize(
         "model_id",
-        ["claude-opus-4-7", "claude-opus-4-8", "claude-opus-5", "anthropic/claude-opus-4-8"],
+        [
+            "claude-opus-4-7", "claude-opus-4-8", "claude-opus-5", "claude-sonnet-5",
+            "anthropic/claude-opus-4-8", "anthropic/claude-sonnet-5",
+        ],
     )
-    async def test_adaptive_opus_with_thinking_omits_temperature(self, monkeypatch, model_id):
+    async def test_adaptive_model_with_thinking_omits_temperature(self, monkeypatch, model_id):
         """Adaptive thinking must not add fixed-budget temperature policy."""
         mock = AsyncMock(return_value=_fake_completion_response())
-        if model_id == "claude-opus-5":
+        if model_id.removeprefix("anthropic/") in {"claude-opus-5", "claude-sonnet-5"}:
             monkeypatch.setattr(
                 "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
             )

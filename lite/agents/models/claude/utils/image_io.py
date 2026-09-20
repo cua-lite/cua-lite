@@ -40,7 +40,7 @@ MANY_IMAGE_MAX_EDGE_PX = 2000
 
 
 def get_claude_image_limits(model_id: str) -> _ClaudeImageLimits:
-    if re.search(r"(?:^|/)claude-opus-(?:4-(?:7|8)|5)$", model_id, re.IGNORECASE):
+    if re.search(r"(?:^|/)claude-(?:opus-4-(?:7|8)|(?:opus|sonnet)-5)$", model_id, re.IGNORECASE):
         return CLAUDE_IMAGE_LIMITS["high_res"]
     return CLAUDE_IMAGE_LIMITS["default"]
 
