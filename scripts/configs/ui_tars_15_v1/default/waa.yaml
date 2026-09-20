@@ -1,0 +1,11 @@
+# WAA: use the standard exclude_reason filter in docs/eval.md.
+agent_id: ui_tars_15_v1
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 0.0
+
+env_id: waa
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  extra_tools: ["terminate"]
