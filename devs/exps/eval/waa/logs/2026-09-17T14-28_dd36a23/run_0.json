@@ -1,0 +1,116 @@
+{
+  "env": "waa",
+  "commit_dir": "2026-09-17T14-28_dd36a23",
+  "run_id": "run_0",
+  "commit": {
+    "short_sha": "dd36a23"
+  },
+  "artifact_root": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0",
+  "result_count": 13,
+  "results": [
+    {
+      "model": "GPT-5.6 Sol",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.7002496047850549,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-5.6-sol",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-5.6-sol/summary.json"
+    },
+    {
+      "model": "GPT-5.5",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.6656876820873158,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-5.5",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-5.5/summary.json"
+    },
+    {
+      "model": "UI-Venus-2-9B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.4127954373526553,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/inclusionAI_UI-Venus-2-9B",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/inclusionAI_UI-Venus-2-9B/summary.json"
+    },
+    {
+      "model": "Qwen3.8-27B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.3699947665744119,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.8-27B",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.8-27B/summary.json"
+    },
+    {
+      "model": "Qwen3.5-27B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.2540527375889046,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.5-27B",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.5-27B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-32B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.23955998396571623,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3-VL-32B-Instruct",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json"
+    },
+    {
+      "model": "UI-TARS-1.5-7B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.1670962158497742,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json"
+    },
+    {
+      "model": "EvoCUA-8B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.16598907657534487,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/meituan_EvoCUA-8B-20260105",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/meituan_EvoCUA-8B-20260105/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-8B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.14535708541499157,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3-VL-8B-Instruct",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json"
+    },
+    {
+      "model": "Qwen3.5-9B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.13086433179180315,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.5-9B",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.5-9B/summary.json"
+    },
+    {
+      "model": "Qwen3.5-4B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.11637157816861476,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.5-4B",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.5-4B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-4B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.09463697434367749,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3-VL-4B-Instruct",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json"
+    },
+    {
+      "model": "GPT-6 Astra",
+      "num_valid": 137,
+      "num_tasks": 138,
+      "mean_episode_return": 0.6343586502581665,
+      "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-6-astra",
+      "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-6-astra/summary.json"
+    }
+  ]
+}
