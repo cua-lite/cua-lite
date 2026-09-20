@@ -9,7 +9,10 @@ server:
     inside ``computer.interface.run_command``.
 
 Usage:
-    uv run python -c "import lite.gym as gym; print(len(gym.registry.task_ids('lite.osworld', split='eval')))"
+    uv run python - <<'PY'
+    import lite.gym as gym
+    print(len(gym.registry.task_ids("lite.osworld", split="eval")))
+    PY
 
 Agent-facing vs env-facing CLI surface (north-star: ``lite.osworld == osworld``)
 --------------------------------------------------------------------------------
@@ -84,6 +87,7 @@ from lite.core.tools.calls import (
 from lite.core.tools.extra_tools import LiteFinishToolSet, make_report_infeasible_tool
 from lite.core.tools.results import LiteToolResult, make_tool_result
 from lite.core.tools.schemas import BaseTools
+from lite.gym.envs.lite.osworld import exclude_reasons
 from lite.gym.errors import EnvDepsMissingError
 from lite.gym.registry import registry
 from lite.gym.sandbox import SandboxBaseEnv, SandboxTaskConfig, register_jsonl_tasks
@@ -208,6 +212,9 @@ def _check_catalog_entry(split: str, entry: dict[str, Any]) -> None:
         rel_path = entry["path"]
         expected_rows = entry["rows"]
         expected_sha = entry["sha256"]
+        expected_excluded = entry["excluded_rows"]
+        expected_scored = entry["scored_rows"]
+        expected_reasons = entry["exclude_reasons"]
     except KeyError as exc:
         raise _catalog_dep_error(
             f"invalid lite.osworld {split} catalog lock entry: missing {exc.args[0]}"
@@ -224,6 +231,42 @@ def _check_catalog_entry(split: str, entry: dict[str, Any]) -> None:
         raise _catalog_dep_error(
             f"invalid lite.osworld {split} catalog lock entry: bad rows"
         )
+    if not isinstance(expected_excluded, int) or isinstance(expected_excluded, bool):
+        raise _catalog_dep_error(
+            f"invalid lite.osworld {split} catalog lock entry: bad excluded_rows"
+        )
+    if not isinstance(expected_scored, int) or isinstance(expected_scored, bool):
+        raise _catalog_dep_error(
+            f"invalid lite.osworld {split} catalog lock entry: bad scored_rows"
+        )
+    if (
+        expected_excluded < 0
+        or expected_scored < 0
+        or expected_excluded + expected_scored != expected_rows
+    ):
+        raise _catalog_dep_error(
+            f"invalid lite.osworld {split} catalog lock entry: inconsistent counts"
+        )
+    if (
+        not isinstance(expected_reasons, dict)
+        or any(not isinstance(k, str) for k in expected_reasons)
+        or any(not isinstance(v, int) or isinstance(v, bool) or v < 0
+               for v in expected_reasons.values())
+    ):
+        raise _catalog_dep_error(
+            f"invalid lite.osworld {split} catalog lock entry: bad exclude_reasons"
+        )
+    for reason in expected_reasons:
+        try:
+            exclude_reasons.validate(reason)
+        except ValueError as exc:
+            raise _catalog_dep_error(
+                f"invalid lite.osworld {split} catalog lock entry: bad exclude_reasons"
+            ) from exc
+    if sum(expected_reasons.values()) != expected_excluded:
+        raise _catalog_dep_error(
+            f"invalid lite.osworld {split} catalog lock entry: inconsistent counts"
+        )
     if not isinstance(expected_sha, str) or not expected_sha:
         raise _catalog_dep_error(
             f"invalid lite.osworld {split} catalog lock entry: bad sha256"
@@ -232,15 +275,57 @@ def _check_catalog_entry(split: str, entry: dict[str, Any]) -> None:
     if not path.is_file():
         raise _catalog_dep_error(f"missing lite.osworld {split} catalog: {path}")
     data = path.read_bytes()
-    rows = sum(1 for line in data.splitlines() if line.strip())
+    rows, excluded, reasons = _summarize_catalog_counts(data, path=path)
     digest = hashlib.sha256(data).hexdigest()
-    if rows != expected_rows or digest != expected_sha:
+    scored = rows - excluded
+    if (
+        rows != expected_rows
+        or excluded != expected_excluded
+        or scored != expected_scored
+        or reasons != expected_reasons
+        or digest != expected_sha
+    ):
         raise _catalog_dep_error(
             "stale lite.osworld "
             f"{split} catalog: run scripts/utils/tasks.sh generate && "
             "scripts/utils/tasks.sh check; if the generator change is intentional, "
             "run scripts/utils/tasks.sh refresh-lock in a reviewed commit"
         )
+
+
+def _summarize_catalog_counts(
+    data: bytes,
+    *,
+    path: Path,
+) -> tuple[int, int, dict[str, int]]:
+    rows = 0
+    excluded = 0
+    reasons: dict[str, int] = {}
+    for line_number, line in enumerate(data.splitlines(), 1):
+        if not line.strip():
+            continue
+        rows += 1
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise _catalog_dep_error(
+                f"{path}:{line_number}: invalid JSON: {exc}"
+            ) from exc
+        reason = (
+            row.get("metadata", {})
+            .get("others", {})
+            .get("exclude_reason")
+        )
+        if reason:
+            try:
+                exclude_reasons.validate(reason)
+            except ValueError as exc:
+                raise _catalog_dep_error(
+                    f"{path}:{line_number}: invalid exclude_reason {reason!r}: {exc}"
+                ) from exc
+            excluded += 1
+            reasons[reason] = reasons.get(reason, 0) + 1
+    return rows, excluded, dict(sorted(reasons.items()))
 
 
 def _check_docker_image(tag: str | None = None) -> None:
@@ -274,7 +359,10 @@ def _check_desktop_env() -> None:
     except ImportError:
         from lite.gym.errors import EnvDepsMissingError
         raise EnvDepsMissingError(
-            what="OSWorld (desktop_env) package not installed — required for lite.osworld evaluators",
+            what=(
+                "OSWorld (desktop_env) package not installed — required for "
+                "lite.osworld evaluators"
+            ),
             install="uv run --no-sync bash lite/gym/envs/lite/osworld/scripts/install.sh",
             see=_README,
         )
@@ -296,7 +384,9 @@ class LiteOsworldTools(BaseTools):
 #: ``bash`` (the family-wide union that carries it is
 #: ``SandboxBaseEnv.known_standalone_tool_names()``). Finish tools cannot live
 #: in an env's own set, so the union is not optional.
-_KNOWN_STANDALONE_TOOL_NAMES = LiteOsworldTools.get_tool_names() | LiteFinishToolSet.get_tool_names()
+_KNOWN_STANDALONE_TOOL_NAMES = (
+    LiteOsworldTools.get_tool_names() | LiteFinishToolSet.get_tool_names()
+)
 
 
 from lite.gym.envs.lite.osworld.src.utils.setup import setup_fn  # noqa: E402
@@ -712,7 +802,7 @@ class LiteOsworldEnv(SandboxBaseEnv):
         image = _IMAGE
         if self._computer_config is not None:
             image = str(self._computer_config.get("image", _IMAGE))
-        _check_docker_image(image)
+        await asyncio.to_thread(_check_docker_image, image)
         from lite.gym.errors import EnvDesktopCrashed
         # Cold-vs-existing signal for the post-boot liveness check below:
         # ``self._computer`` is None until ``SandboxBaseEnv.boot()`` (called
@@ -874,7 +964,8 @@ class LiteOsworldEnv(SandboxBaseEnv):
                         (1700, 950,  100,  50),  # near-full, slight inset
                         (1600, 900,  160,  90),  # near-full, larger inset
                         (1500, 850,    0,   0),  # 1500×850 anchored top-left
-                        (1500, 850,  420, 230),  # 1500×850 anchored bottom-right (right=1920, bottom=1080)
+                        # 1500×850 anchored bottom-right.
+                        (1500, 850,  420, 230),
                     ]
                     w, h, x, y = rng.choice(placements)
                     wid = (await run("xdotool getactivewindow")).stdout.strip()
@@ -990,8 +1081,8 @@ def _register_tasks(*, raise_if_none: bool = True) -> None:
 
 _register_tasks(raise_if_none=False)
 
-from lite.gym.services import register_services  # noqa: E402
 from lite.gym.remote.reaper import ContainerServices  # noqa: E402
+from lite.gym.services import register_services  # noqa: E402
 
 
 class LiteOsworldServices(ContainerServices):

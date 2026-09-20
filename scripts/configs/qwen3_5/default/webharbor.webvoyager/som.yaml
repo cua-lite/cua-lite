@@ -2,8 +2,9 @@
 #
 # WebHarbor-style SoM mode: screenshot INPUT, index OUTPUT.
 #   - Obs: screenshot annotated with colored bounding boxes labeled [N],
-#     plus accessibility tree text "[N]: <tag> text @ (cx, cy)" in the
-#     conversation.
+#     plus prompt-safe accessibility tree text "[N]: <tag> text" in the
+#     conversation. Raw env metadata still keeps the original @ (cx, cy) text
+#     for logs.
 #   - Action: standalone WebHarbor-style tools via XML tool_call format.
 #     ``valid_actions: []`` removes Qwen's GUI action enum; the WebHarbor tools
 #     come from env ``extra_tool_schemas``. ``response`` is rendered as its own
@@ -15,7 +16,7 @@
 
 agent_id: "qwen3_5"
 agent_kwargs:
-  # webharbor.webvoyager.qwen3_5.history = qwen3_5.history + the SoM turn-0 web_text splice
+  # webharbor.webvoyager.qwen3_5.history = qwen3_5.history + the SoM turn-0 model_web_text splice
   # (lite/agents/extensions/webharbor/webvoyager/). Mirror of the qwen3_vl SoM config —
   # both families now get the splice (the migration's flag silently no-op'd on
   # qwen3_5, desyncing the pair; fixed by re-homing to an extension protocol).
@@ -40,6 +41,7 @@ agent_kwargs:
 
 env_id: "webharbor.webvoyager"
 env_kwargs:
+  include_page_context_text: true
   # ``navigate`` is intentionally omitted: WebVoyager is a fully offline
   # WebHarbor mirror (127.0.0.1:4000x only, no domain→mirror resolver rules),
   # so a URL ``navigate`` escapes to the live internet and breaks the eval.

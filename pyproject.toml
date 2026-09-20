@@ -28,7 +28,7 @@ quick-start = [
     # Source-pinned in [tool.uv.sources] for the Qwen3.5 GDN kernel fix while
     # staying on the CUDA-12 host stack.
     "sglang[all]",
-    "litellm>=1.72",
+    "litellm>=1.102.0",
 ]
 
 # Env-server/direct-gym runtime. Env install.sh scripts install into this venv;
@@ -72,6 +72,8 @@ environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 prerelease = "allow"
 override-dependencies = [
     "nvidia-cudnn-cu12==9.16.0.29",
+    # The pinned SGLang revision pins 2.6.1; LiteLLM Messages needs >=2.20.
+    "openai>=2.20.0,<3",
     # Guard the unified venv's model-stack floor during uv resolution.
     "transformers>=5.0",
     # Keep hub-kernels API compatibility with the resolved transformers tier.

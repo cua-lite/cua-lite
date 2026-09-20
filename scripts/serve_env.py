@@ -32,29 +32,45 @@ Client env vars (read by :mod:`lite.gym.remote.client`)::
 
 from __future__ import annotations
 
-import argparse
-import logging
+import os
 
-import uvicorn
+# This launcher forks constantly through uvloop subprocess calls. OpenBLAS reads
+# these variables when numpy first loads, so set the process defaults before any
+# import can pull numpy or another native numeric pool into the process.
+_THREAD_CAP_VARS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
+for _var in _THREAD_CAP_VARS:
+    os.environ.setdefault(_var, "1")
 
-from lite.gym.remote import State, make_app
-from lite.gym.remote.admission import (
+import argparse  # noqa: E402
+import logging  # noqa: E402
+
+import uvicorn  # noqa: E402
+
+from lite.gym.remote import State, make_app  # noqa: E402
+from lite.gym.remote.admission import (  # noqa: E402
     AdmissionGate,
     derive_admission_config,
     log_admission_config,
 )
-from lite.gym.remote.alive import (
+from lite.gym.remote.alive import (  # noqa: E402
     log_keep_alive_timeout,
     resolve_keep_alive_timeout,
 )
-from lite.gym.utils.server.capacity import cached_host_capacity
-from lite.utils.logging import setup_logging
+from lite.gym.utils.server.capacity import cached_host_capacity  # noqa: E402
+from lite.utils.logging import setup_logging  # noqa: E402
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="cua-lite env server",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        allow_abbrev=False,
     )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=30100)

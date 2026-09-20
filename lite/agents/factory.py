@@ -119,14 +119,16 @@ LOCAL_AGENTS: dict[str, dict] = {
 
 API_AGENTS: dict[str, dict] = {
     # Claude (Anthropic)
+    "claude-opus-5": {"agent_id": "claude"},
+    "claude-sonnet-5": {"agent_id": "claude"},
     "claude-opus-4-8": {"agent_id": "claude"},
     "claude-opus-4-7": {"agent_id": "claude"},
     "claude-opus-4-6": {"agent_id": "claude"},
     "claude-sonnet-4-6": {"agent_id": "claude"},
     # GPT (OpenAI) — requires native computer tool (GPT-5.4+)
-    "gpt-5.5": {"agent_id": "gpt"},
-    "gpt-5.6-sol":{"agent_id":"gpt"},
     "gpt-6-astra": {"agent_id": "gpt"},
+    "gpt-5.5": {"agent_id": "gpt"},
+    "gpt-5.6-sol": {"agent_id": "gpt"},
     # Gemini (Google) — native generateContent computer use
     "gemini-3.6-flash": {"agent_id": "gemini"},
     "gemini-3.5-flash": {"agent_id": "gemini"},

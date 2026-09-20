@@ -267,8 +267,14 @@ class TestHostStatusAuth:
             assert client.get("/host_status", headers=_h("wrong")).status_code == 401
             r = client.get("/host_status", headers=_h("strict_T"))
             assert r.status_code == 200, r.text
-            assert "cpu" in r.json() and "memory" in r.json()
-            assert r.json()["wire"] == {
+            body = r.json()
+            assert "cpu" in body and "memory" in body
+            assert body["loop"] == {
+                "stall_max_seconds": 0.0,
+                "stall_max_at": None,
+                "stall_max_60s": 0.0,
+            }
+            assert body["wire"] == {
                 "frame_magic": FRAME_MAGIC,
                 "frame_version": FRAME_VERSION,
             }

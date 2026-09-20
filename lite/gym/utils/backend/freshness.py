@@ -38,6 +38,7 @@ from lite.utils.path import project_root
 # "no label" → STALE → forced rebuilds, never a stale image accepted as fresh.
 # Do not "fix" the duplication by exporting this constant; bash cannot import it.
 _LABEL_KEY = "lite.src_hash"
+_INSPECT_TIMEOUT_S = 20.0
 
 # Repo root by marker lookup (pyproject.toml + lite/), not __file__-depth
 # counting — depth counting silently breaks the moment this module moves.
@@ -306,9 +307,14 @@ def _image_label(image: str, key: str) -> str | None:
             ["docker", "image", "inspect", "--format",
              f"{{{{index .Config.Labels \"{key}\"}}}}", image],
             capture_output=True, text=True, check=True,
+            timeout=_INSPECT_TIMEOUT_S,
         )
     except FileNotFoundError as exc:
         raise _DockerCliMissing("docker CLI not found") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise _ImageInspectTransientError(
+            f"docker image inspect timed out after {_INSPECT_TIMEOUT_S:.0f}s"
+        ) from exc
     except subprocess.CalledProcessError as exc:
         message = _process_output(exc)
         if _image_missing_from_inspect_error(message):

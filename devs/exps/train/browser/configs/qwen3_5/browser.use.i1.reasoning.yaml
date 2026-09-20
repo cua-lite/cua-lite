@@ -25,8 +25,9 @@ agent_kwargs:
   enable_thinking: true     # native <think> channel. The `Action:` line still comes from the
                             # pinned USE_SYSTEM_PROMPT, and inline `Thought:` is off in BOTH
                             # arms (adapter enable_inline_reasoning=False).
-  # resolution omitted -> webgym's own viewport, 1280x720; smart_resize rounds to 1280x704
-  # (880 vision tokens).
+  # Fixed across WebGym/WebHarbor-style browser envs. WebGym's own viewport is
+  # 1280x720; smart_resize rounds the model input to 1280x704 (880 vision tokens).
+  resolution: [1280, 720]
   protocol_kwargs:
     # `i1` IS image_max: pinned, not inherited, so a protocol-default change cannot silently
     # rename this profile. history_n omitted -> 100 (text history uncapped at these budgets).
@@ -37,16 +38,11 @@ agent_kwargs:
 env_kwargs:
   # max_steps omitted on purpose: webgym sets it per difficulty and per split
   #   train: easy(1-3) 15, medium(4-6) 25, hard(7+) 35
-  #   eval:  easy(1-3) 30, medium(4-6) 50, hard(7+) 70
+  #   eval:  easy(1-3) 15, medium(4-6) 25, hard(7+) 35
   # Passing one here would flatten that and silently change the eval budget.
   loop_detect: 5
-  # webgym is a Playwright env whose screenshot has NO browser chrome (no address bar, no
-  # tabs), so cross-page tasks are unreachable without nav tools. `response` is how an
-  # episode ends -- without it the env rejects it as an inactive extra and the model can
-  # never answer. This is the surface the SFT data was collected under
-  # (scripts/configs/qwen3_5/default/webgym.yaml); export_sft replays it from saved metadata,
-  # so changing it here trains on a surface the data does not have.
-  extra_tools: ["goto", "back", "response"]
-  # Collected with this line appended to every task instruction. Kept verbatim: the judge
-  # scores the `response` text, and a model never told to submit one scores 0 by default.
-  instruction_template: "{instruction}\n\nInitial website: {website}\n\nWhen you have found the answer, submit it with the response action. If you genuinely cannot find it, say so plainly rather than guessing."
+  # No-goto browser surface for WebHarbor/WebVoyager transfer: WebVoyager is an
+  # offline mirror, so direct URL navigation escapes the mirrored site. The SFT
+  # data must be prefiltered with devs/exps/train/browser/filter.py; export_sft
+  # then replays this same no-goto, no-WebGym-wrapper surface.
+  extra_tools: ["back", "response"]

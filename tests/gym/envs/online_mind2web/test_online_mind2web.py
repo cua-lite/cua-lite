@@ -91,6 +91,7 @@ def _make_env(
     extra_tools: list[str] | None = None,
     valid_actions: list[str] | None = None,
     cursor: bool = True,
+    include_page_context_text: bool = True,
 ) -> RemoteOnlineMind2WebEnv:
     os.environ.setdefault("ONLINE_MIND2WEB_RPC_URL", "http://localhost:7900")
     return RemoteOnlineMind2WebEnv(
@@ -103,6 +104,7 @@ def _make_env(
         extra_tools=extra_tools or [],
         skip_eval=skip_eval,
         cursor=cursor,
+        include_page_context_text=include_page_context_text,
     )
 
 
@@ -142,6 +144,28 @@ def test_container_services_launches_with_freshness_gated_image(monkeypatch):
     assert seen["image"].sources == ("lite/gym/envs/online_mind2web/docker",)
     assert seen["port"] == (7901, 8000)
     assert seen["env"]["ONLINE_MIND2WEB_INSTANCES"] == str(m._RESOLVED_INSTANCES)
+
+
+def test_online_mind2web_catalog_declares_page_context_toggle():
+    import lite.gym as gym
+
+    supported = gym.registry.env_supported_kwargs("online_mind2web")
+
+    assert "include_page_context_text" in supported
+
+
+def test_online_mind2web_default_disables_page_context_text():
+    import inspect
+
+    import lite.gym.envs.online_mind2web.main as m
+
+    default = inspect.signature(
+        m.RemoteOnlineMind2WebEnv.__init__,
+    ).parameters["include_page_context_text"].default
+
+    assert m.CFG.env_kwargs["include_page_context_text"] is False
+    assert m._INCLUDE_PAGE_CONTEXT_TEXT is False
+    assert default is False
 
 
 def test_container_shutdown_evicts_singleton_caches(monkeypatch):
@@ -274,6 +298,102 @@ async def test_host_client_forwards_cursor_to_reset_and_step(tmp_path):
     by_path = {path: body for path, body in captured if path in {"/reset", "/step"}}
     assert by_path["/reset"]["cursor"] is False
     assert by_path["/step"]["cursor"] is False
+
+
+@pytest.mark.asyncio
+async def test_page_context_text_can_be_disabled_without_losing_screenshot(tmp_path):
+    env = _make_env(tmp_path, include_page_context_text=False)
+
+    def _route(path: str, _body: dict) -> dict:
+        if path == "/reset":
+            return _reset_resp()
+        if path == "/step":
+            return _step_resp()
+        if path == "/close":
+            return _close_resp()
+        raise AssertionError(path)
+
+    env._post = MagicMock(side_effect=_route)
+
+    obs = await env.reset()
+    r = await env.step([make_tool_call("click", {"coordinate": [500, 250]}, call_id="call-click")])
+
+    assert obs.text == _TASK["instruction"]
+    assert obs.metadata["web_text"] == ""
+    result = r.results[0]
+    assert result.tool_call_id == "call-click"
+    assert result.images[-1] == base64.b64decode(_PNG_B64)
+    assert result.text is None
+    assert result.error is None
+    assert result.metadata["url"] == "https://example.com/search"
+    assert result.metadata["body_text"] == "Search results"
+
+    await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_text_disabled_preserves_navigation_error(tmp_path):
+    env = _make_env(tmp_path, include_page_context_text=False)
+
+    def _route(path: str, _body: dict) -> dict:
+        if path == "/reset":
+            return _reset_resp()
+        if path == "/step":
+            resp = _step_resp()
+            resp["navigation_error"] = "net::ERR_NAME_NOT_RESOLVED"
+            return resp
+        if path == "/close":
+            return _close_resp()
+        raise AssertionError(path)
+
+    env._post = MagicMock(side_effect=_route)
+
+    await env.reset()
+    r = await env.step([make_tool_call("click", {"coordinate": [500, 250]}, call_id="call-click")])
+
+    result = r.results[0]
+    assert result.text == "Navigation error: net::ERR_NAME_NOT_RESOLVED"
+    assert "Current page URL" not in result.text
+    assert "Current page title" not in result.text
+    assert "Search results" not in result.text
+    assert result.error is None
+
+    await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_text_disabled_keeps_current_action_error(tmp_path):
+    env = _make_env(tmp_path, include_page_context_text=False)
+    step_calls: list[dict] = []
+
+    def _route(path: str, body: dict) -> dict:
+        if path == "/reset":
+            return _reset_resp()
+        if path == "/step":
+            step_calls.append(body)
+            return _step_resp()
+        if path == "/close":
+            return _close_resp()
+        raise AssertionError(path)
+
+    env._post = MagicMock(side_effect=_route)
+    await env.reset()
+
+    r = await env.step(
+        [
+            _tool_call_with_raw_arguments("click", ["bad"], call_id="call-bad-click"),
+        ]
+    )
+
+    assert step_calls == []
+    result = r.results[0]
+    assert result.images[-1] == base64.b64decode(_PNG_B64)
+    assert result.text is None
+    assert result.error == (
+        "invalid tool call: tool_call.function.arguments must be an object, got list"
+    )
+
+    await env.close()
 
 
 @pytest.mark.asyncio

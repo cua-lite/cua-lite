@@ -129,8 +129,10 @@ try:
     from webgym.misc import is_white_image
 except ImportError:
     def is_white_image(img: Any) -> bool:  # type: ignore[misc]
-        """Fallback: treat all images as non-blank when webgym is unavailable."""
-        return False
+        """Fallback for hosts without the optional ``webgym`` package."""
+        image = img.convert("RGB")
+        extrema = image.getextrema()
+        return all(lo == hi == 255 for lo, hi in extrema)
 
 ENV_DIR = str(Path(__file__).parent)
 CFG = env_config.load(ENV_DIR)
@@ -205,10 +207,9 @@ _JUDGE_BATCH_SUBMISSION = CFG.server_kwargs["judge_batch_submission"]
 # Max frames per batched submission call. The batched filter emits a per-image YES/NO
 # line for EVERY frame, and long structured output degrades (the model drops/misorders
 # lines past ~30-40 → parse-miss → None → guard ERR). It's ALSO bounded by the provider's
-# ~50-image/request limit (stock caps its criterion call at 48). So chunk: eval tiers
-# (max_steps_eval 30/50/70) and a fully-stepped trajectory split into ceil(n/30) calls
-# rather than one oversized request that 400s deterministically. 30 keeps the common
-# eval-30 tier a single call; train (<=35) stays 1-2 calls. See _batched_judge_submission.
+# ~50-image/request limit (stock caps its criterion call at 48). So chunk: a fully-stepped
+# trajectory (<=35 frames by default for both train/eval) splits into at most 2 calls rather
+# than one oversized request that 400s deterministically. See _batched_judge_submission.
 _JUDGE_SUBMISSION_MAX_IMAGES_PER_CALL = 30
 # VLM-judge OpenAI client retry budget. At higher judge concurrency gpt-4.1 starts
 # returning 429s; the openai SDK default (2 retries) absorbs most, and the rest get
@@ -390,8 +391,8 @@ def _batched_judge_submission(evaluator: Any, trajectory: list[dict]) -> None:
     a silent wrong reward.
 
     Frames are CHUNKED at _JUDGE_SUBMISSION_MAX_IMAGES_PER_CALL: one oversized request
-    (eval trajectories reach ~70 frames) both degrades per-image parse reliability and
-    can exceed the provider's ~50-image/request limit → a deterministic 400 that no
+    (default trajectories can reach ~35 frames) both degrades per-image parse reliability
+    and can exceed the provider's ~50-image/request limit → a deterministic 400 that no
     retry can fix. Each chunk is one multi-image call; a chunk that hits the content
     filter falls back to per-image so only the offending frame is excluded."""
     keypoint_client, keypoint_model = evaluator._get_client_and_model(
@@ -905,8 +906,7 @@ class WebGymEnv(LiteBaseEnv):
         self._api_key = os.environ.get("WEBGYM_API_KEY", _API_KEY)
         diff = int(task.get("difficulty", 2))
         steps_map = _MAX_STEPS_TRAIN if split == "train" else _MAX_STEPS_EVAL
-        default_steps = 15 if diff <= 3 else (25 if diff <= 6 else 35) if split == "train" \
-            else 30 if diff <= 3 else (50 if diff <= 6 else 70)
+        default_steps = 15 if diff <= 3 else (25 if diff <= 6 else 35)
         self._max_steps = max_steps or steps_map.get(diff, default_steps)
         self._post_action_delay = post_action_delay
         self._cursor = cursor

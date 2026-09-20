@@ -1631,6 +1631,15 @@ async def test_multiple_actions_per_step():
     await env.close()
 
 
+def test_default_max_steps_match_train_eval_budget():
+    """Default WebGym train/eval budgets stay aligned by difficulty tier."""
+    expected = {1: 15, 3: 15, 4: 25, 6: 25, 7: 35, 8: 35}
+    for split in ("train", "eval"):
+        for difficulty, max_steps in expected.items():
+            env = WebGymEnv(task={"task_id": "t", "difficulty": difficulty}, split=split)
+            assert env._max_steps == max_steps
+
+
 # ---------------------------------------------------------------------------
 # Extra tools: back / goto
 # ---------------------------------------------------------------------------

@@ -147,11 +147,11 @@ print(gym.registry.task_ids("lite.osworld"))   # {"eval": [...], "train": [...]}
 
 | Status | Count | Description |
 |--------|-------|-------------|
-| `oracle_actions` non-empty, no `exclude_reason` | 326 | Curated oracle solution produces reward=1.0 |
-| `exclude_reason` set | 39 | Infeasible (29) / Google auth (8) / live-site drift (1) / trivial pass (1) |
+| `oracle_actions` non-empty, no `exclude_reason` | 324 | Curated oracle solution produces reward=1.0 |
+| `exclude_reason` set | 41 | Infeasible (29) / Google auth (8) / live-site drift (2) / generated eval bug (1) / trivial pass (1) |
 | Unverified (feasible) | 4 | Feasible tasks without an authored oracle |
 
-Counts are derived from `data/eval.jsonl`; regenerate with
+Counts are locked in `data/catalog.lock.json` from generated `data/eval.jsonl`; regenerate with
 `uv run python -m lite.gym.envs.lite.osworld.src.gen.eval`
 and recount if the source JSONs change.
 
@@ -161,8 +161,8 @@ Runs **only at episode end** (`terminate` / `response` / `max_steps`): the same 
 built-in evaluators as [`osworld`](/lite/gym/envs/osworld/README.md#evaluation) — checking real
 system state (files, command output, app state) — return a float `reward` in `[0.0, 1.0]`, just on a
 GNOME-Shell container instead of a full KVM VM. `--filter "lambda m: not m.others.get('exclude_reason')"`
-drops the 39 excluded tasks (see [Task Statistics](#task-statistics))
-→ 330 scored. **Extra tool:** active `report_infeasible(reason)` is an env-local terminal tool evaluated
+drops the 41 excluded tasks (see [Task Statistics](#task-statistics))
+→ 328 scored. **Extra tool:** active `report_infeasible(reason)` is an env-local terminal tool evaluated
 directly by the OSWorld infeasible checker; it is not rewritten to canonical `terminate`.
 
 <details>
@@ -197,7 +197,7 @@ lite/gym/envs/lite/osworld/
 │   ├── Dockerfile                   # additive: 10 apps + OSWorld Flask server + appearance, FROM cua-lite/sandbox.linux (shared base)
 │   └── server/main.py               # OSWorld Flask server
 └── data/
-    ├── catalog.lock.json            # generated catalog row/hash lock
+    ├── catalog.lock.json            # generated catalog row/hash/count lock
     ├── eval.jsonl                   # 369 eval tasks
     ├── train.synth.jsonl            # 1722 synthetic training tasks
     └── train.perturb.jsonl          # 707 perturbation training tasks

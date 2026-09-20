@@ -26,14 +26,14 @@ The contract is annotate-don't-drop, in three places:
    `dataset.reward_defect()` for the three mechanical reward classes,
    `dataset.instruction_defect()` for a row that states no task, the
    curated task ids for setup defects, and revision-pinned validation findings.
-   Measured on the pinned snapshot: **494 of 10,910** on-disk rows (4.53%) —
-   98 web + 396 desktop, leaving 10,416 untagged. By category:
+   Measured on the pinned snapshot: **513 of 10,910** on-disk rows (4.70%) —
+   98 web + 415 desktop, leaving 10,397 untagged. By category:
    152 `broken_reward:empty`, 81 `broken_mock:blank_render`, 42
    `broken_reward:no_sentinel` (26 desktop + 16 web), 26
-   `broken_reward:syntax_error`, 1 `broken_setup:unsatisfiable_gate`, 8
-   `broken_setup:external_dependency`, 1 `broken_setup:wrong_backend`, 2
-   `broken_setup:missing_seed_file`, 1 `broken_setup:syntax_error`, 1
-   `broken_setup:no_task_window`, 178
+   `broken_reward:syntax_error`, 19 `broken_reward:missing_golden`, 1
+   `broken_setup:unsatisfiable_gate`, 8 `broken_setup:external_dependency`, 1
+   `broken_setup:wrong_backend`, 2 `broken_setup:missing_seed_file`, 1
+   `broken_setup:syntax_error`, 1 `broken_setup:no_task_window`, 178
    `broken_reward:instruction_mismatch`, 1 `broken_task:empty_instruction`.
 2. **Load** — `catalog_task_ids` REJECTS a catalog carrying an
    `exclude_reason` outside the vocabulary, so the tag cannot drift into prose.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import inspect
 import json
 import threading
 
@@ -53,11 +54,15 @@ def _shared_requests_router_with_passthrough_originals():
 
     saved_installed = judges._REQUESTS_PATCH_INSTALLED
     saved_request = requests.request
-    saved_get = requests.get
-    saved_post = requests.post
+    saved_verbs = {
+        name: getattr(requests, name)
+        for name in ("get", "options", "head", "post", "put", "patch", "delete")
+    }
     saved_session_request = requests.sessions.Session.request
+    passthrough_calls = []
 
     def passthrough_request(method, url, **kwargs):
+        passthrough_calls.append((method, url, kwargs))
         return f"passthrough:{method}:{url}"
 
     def passthrough_session_request(session, method, url, **kwargs):
@@ -67,14 +72,17 @@ def _shared_requests_router_with_passthrough_originals():
     requests.sessions.Session.request = passthrough_session_request
     judges._REQUESTS_PATCH_INSTALLED = False
     judges._install_shared_requests_router()
+    requests._cua_lite_test_passthrough_calls = passthrough_calls
     try:
         yield requests
     finally:
         judges._REQUESTS_PATCH_INSTALLED = saved_installed
         requests.request = saved_request
-        requests.get = saved_get
-        requests.post = saved_post
+        for name, value in saved_verbs.items():
+            setattr(requests, name, value)
         requests.sessions.Session.request = saved_session_request
+        with contextlib.suppress(AttributeError):
+            delattr(requests, "_cua_lite_test_passthrough_calls")
         with contextlib.suppress(AttributeError):
             delattr(judges._REQUESTS_ROUTER_LOCAL, "eval_env")
 
@@ -87,8 +95,10 @@ class _FakeRoutingEnv:
 
     def __init__(self, name: str):
         self.name = name
+        self.calls = []
 
     def request_in_container(self, method: str, url: str, **kwargs):
+        self.calls.append((method, url, kwargs))
         return f"{self.name}:{method}:{url}"
 
 
@@ -183,6 +193,51 @@ def test_scalecua_router_survives_function_local_import_and_spares_external():
             "passthrough:GET:http://lite-scalecua-vm:5000/execute",
             "passthrough:GET:http://localhost:9222/json",
             "passthrough:POST:https://example.com/outside",
+        )
+
+
+def test_scalecua_router_preserves_requests_api_signatures():
+    import requests
+    from requests import api
+
+    with _shared_requests_router_with_passthrough_originals():
+        for name in ("get", "options", "head", "post", "put", "patch", "delete"):
+            assert inspect.signature(getattr(requests, name)) == inspect.signature(
+                getattr(api, name)
+            )
+
+
+def test_scalecua_router_preserves_positional_params_and_head_default():
+    with _shared_requests_router_with_passthrough_originals() as requests:
+        env = _FakeRoutingEnv("env-y")
+        with judges._routed_requests_for_function(env, lambda: None):
+            assert requests.get(
+                "http://localhost:5000/accessibility",
+                {"q": "term"},
+                timeout=5,
+            ) == "env-y:GET:http://localhost:5000/accessibility"
+            assert requests.head(
+                "http://localhost:5000/accessibility",
+                timeout=5,
+            ) == "env-y:HEAD:http://localhost:5000/accessibility"
+            assert requests.head("https://example.com/outside") == (
+                "passthrough:HEAD:https://example.com/outside"
+            )
+
+        assert env.calls[0] == (
+            "GET",
+            "http://localhost:5000/accessibility",
+            {"params": {"q": "term"}, "timeout": 5},
+        )
+        assert env.calls[1] == (
+            "HEAD",
+            "http://localhost:5000/accessibility",
+            {"timeout": 5, "allow_redirects": False},
+        )
+        assert requests._cua_lite_test_passthrough_calls[-1] == (
+            "HEAD",
+            "https://example.com/outside",
+            {"allow_redirects": False},
         )
 
 

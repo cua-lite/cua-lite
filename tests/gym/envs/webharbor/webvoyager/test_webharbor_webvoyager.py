@@ -19,6 +19,8 @@ import asyncio
 import base64
 import io
 import os
+import re
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -95,6 +97,21 @@ _SAMPLE_TASK = {
     "web_name": "Allrecipes",
     "source": "webharbor",  # matches the real committed manifest (NOT "webharbor.webvoyager")
 }
+_RESET_WEB_TEXT = '[0]: <a> "Recipes" @ (100, 50);\t[1]: <input> "Search" @ (500, 60);'
+_STEP_WEB_TEXT = '[0]: <a> "Recipes" @ (100, 50);'
+_RESET_MODEL_WEB_TEXT = (
+    f"CURRENT URL: https://www.allrecipes.com/\nPAGE TITLE: Allrecipes\nDOM:\n{_RESET_WEB_TEXT}"
+)
+_STEP_MODEL_WEB_TEXT = (
+    "CURRENT URL: https://www.allrecipes.com/search/\n"
+    "PAGE TITLE: Allrecipes Search\n"
+    f"DOM:\n{_STEP_WEB_TEXT}"
+)
+_RESET_SOM_MODEL_WEB_TEXT = (
+    "CURRENT URL: https://www.allrecipes.com/\n"
+    "PAGE TITLE: Allrecipes\n"
+    'DOM:\n[0]: <a> "Recipes";\t[1]: <input> "Search";'
+)
 
 
 def _reset_resp(instance_id: str = "iid-abc123") -> dict:
@@ -102,7 +119,7 @@ def _reset_resp(instance_id: str = "iid-abc123") -> dict:
         "instance_id": instance_id,
         "screenshot_b64": _PNG_B64,
         "instruction": _SAMPLE_TASK["instruction"],
-        "web_text": '[0]: <a> "Recipes" @ (100, 50);\t[1]: <input> "Search" @ (500, 60);',
+        "web_text": _RESET_WEB_TEXT,
         "url": "https://www.allrecipes.com/",
         "title": "Allrecipes",
         "max_steps": 15,
@@ -120,7 +137,7 @@ def _step_resp(
         "executed": [{"call": "click", "args": {"coordinate": [500, 300]}}],
         "errors": [],
         "downloads": [],
-        "web_text": '[0]: <a> "Recipes" @ (100, 50);',
+        "web_text": _STEP_WEB_TEXT,
         "url": "https://www.allrecipes.com/search/",
         "title": "Allrecipes Search",
         "answer": answer,
@@ -149,6 +166,7 @@ def _make_env(
     skip_eval: bool = True,
     eval_config: dict | None = None,
     cursor: bool = True,
+    include_page_context_text: bool = True,
 ) -> RemoteWebVoyagerEnv:
     os.environ.setdefault("WEBHARBOR_WEBVOYAGER_RPC_URL", "http://localhost:7800")
     return RemoteWebVoyagerEnv(
@@ -160,7 +178,26 @@ def _make_env(
         skip_eval=skip_eval,
         eval_config=eval_config,
         cursor=cursor,
+        include_page_context_text=include_page_context_text,
     )
+
+
+def test_webvoyager_default_disables_page_context_text():
+    import inspect
+
+    import lite.gym.envs.webharbor.webvoyager.main as m
+
+    default = (
+        inspect.signature(
+            m.RemoteWebVoyagerEnv.__init__,
+        )
+        .parameters["include_page_context_text"]
+        .default
+    )
+
+    assert m.CFG.env_kwargs["include_page_context_text"] is False
+    assert m._INCLUDE_PAGE_CONTEXT_TEXT is False
+    assert default is False
 
 
 def test_container_services_launches_with_freshness_gated_image(monkeypatch):
@@ -241,7 +278,57 @@ async def test_reset_populates_observation_fields():
     assert obs.text == _SAMPLE_TASK["instruction"]
     assert obs.metadata["url"] == "https://www.allrecipes.com/"
     assert obs.metadata["title"] == "Allrecipes"
-    assert "web_text" in obs.metadata
+    assert obs.metadata["web_text"] == _RESET_WEB_TEXT
+    assert obs.metadata["model_web_text"] == _RESET_MODEL_WEB_TEXT
+    await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_text_can_be_disabled_without_losing_screenshot():
+    env = _make_env(include_page_context_text=False)
+    env._post = MagicMock(side_effect=_route)
+
+    obs = await env.reset()
+    r = await env.step([_call("click", {"coordinate": [500, 300]}, call_id="call-click")])
+
+    assert obs.text == _SAMPLE_TASK["instruction"]
+    assert obs.metadata["web_text"] == _RESET_WEB_TEXT
+    result = r.results[0]
+    assert result.tool_call_id == "call-click"
+    assert result.images[-1] == _PNG
+    assert result.text is None
+    assert result.error is None
+    assert result.metadata == {
+        "url": "https://www.allrecipes.com/search/",
+        "title": "Allrecipes Search",
+        "web_text": _STEP_WEB_TEXT,
+        "downloads": [],
+    }
+    await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_text_disabled_keeps_current_action_error():
+    env = _make_env(include_page_context_text=False)
+    env._post = MagicMock(side_effect=_route)
+
+    await env.reset()
+    r = await env.step([_raw_call("click", ["bad"], call_id="call-bad-click")])
+
+    result = r.results[0]
+    assert result.tool_call_id == "call-bad-click"
+    assert result.images[-1] == _PNG
+    assert result.text is None
+    assert result.error == (
+        "invalid tool call: tool_call.function.arguments must be an object, got list"
+    )
+    assert result.metadata == {
+        "url": "https://www.allrecipes.com/",
+        "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "downloads": [],
+        "is_error": True,
+    }
     await env.close()
 
 
@@ -527,6 +614,7 @@ async def test_click_scroll_same_names_route_by_argument_shape():
         extra_tools=["click", "scroll"],
         valid_actions=["click", "scroll"],
         skip_eval=True,
+        include_page_context_text=True,
     )
     captured: list[dict] = []
 
@@ -576,6 +664,12 @@ async def test_click_scroll_same_names_route_by_argument_shape():
         assert tool_result.metadata == {
             "url": "https://www.allrecipes.com/results/",
             "title": "Results",
+            "web_text": '[7]: <button> "Continue" @ (222, 333);',
+            "model_web_text": (
+                "CURRENT URL: https://www.allrecipes.com/results/\n"
+                "PAGE TITLE: Results\n"
+                'DOM:\n[7]: <button> "Continue" @ (222, 333);'
+            ),
             "downloads": [],
         }
 
@@ -591,6 +685,7 @@ async def test_som_mode_rejects_coordinate_shapes_but_sends_index_shapes():
         valid_actions=[],
         use_som=True,
         skip_eval=True,
+        include_page_context_text=True,
     )
     captured: list[dict] = []
 
@@ -642,6 +737,13 @@ async def test_som_mode_rejects_coordinate_shapes_but_sends_index_shapes():
         assert tool_result.images[-1] == _STEP_PNG
         assert 'DOM:\n[8]: <button> "Marked";' in (tool_result.text or "")
         assert "@ (" not in (tool_result.text or "")
+        assert tool_result.metadata["web_text"] == '[8]: <button> "Marked" @ (444, 555);'
+        assert tool_result.metadata["model_web_text"] == (
+            "CURRENT URL: https://www.allrecipes.com/marked/\n"
+            "PAGE TITLE: Marked\n"
+            'DOM:\n[8]: <button> "Marked";'
+        )
+        assert "@ (" not in tool_result.metadata["model_web_text"]
 
 
 @pytest.mark.asyncio
@@ -654,6 +756,7 @@ async def test_malformed_som_same_name_shapes_return_current_feedback_without_rp
         extra_tools=["click", "scroll"],
         valid_actions=["click", "scroll"],
         skip_eval=True,
+        include_page_context_text=True,
     )
     captured: list[dict] = []
 
@@ -694,6 +797,8 @@ async def test_malformed_som_same_name_shapes_return_current_feedback_without_rp
         assert tool_result.metadata == {
             "url": "https://www.allrecipes.com/",
             "title": "Allrecipes",
+            "web_text": _RESET_WEB_TEXT,
+            "model_web_text": _RESET_MODEL_WEB_TEXT,
             "downloads": [],
             "is_error": True,
         }
@@ -838,6 +943,8 @@ async def test_done_boundary_alias_is_unsupported_without_public_schema():
     assert r.results[0].metadata == {
         "url": "https://www.allrecipes.com/",
         "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "model_web_text": _RESET_MODEL_WEB_TEXT,
         "downloads": [],
         "is_error": True,
     }
@@ -989,6 +1096,98 @@ async def test_action_error_pairs_to_originating_call_id():
     assert "element not interactable" in by_id["call-b"].error
     assert r.info["errors"] == ["type: element not interactable"]
     await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_disabled_preserves_container_action_error():
+    env = _make_env(include_page_context_text=False)
+
+    def _with_error(path: str, body: dict) -> dict:
+        if path == "/step":
+            resp = _step_resp()
+            resp["errors"] = ["click: stale element"]
+            resp["action_errors"] = [
+                _container_action_error_record(
+                    0,
+                    "click",
+                    "stale element",
+                )
+            ]
+            return resp
+        return _route(path, body)
+
+    env._post = MagicMock(side_effect=_with_error)
+    await env.reset()
+
+    r = await env.step(
+        [
+            _call(
+                "computer",
+                {"actions": [{"action": "click", "coordinate": [500, 300]}]},
+                call_id="call-click",
+            ),
+        ]
+    )
+
+    result = r.results[0]
+    assert result.tool_call_id == "call-click"
+    assert result.images[-1] == _PNG
+    assert result.text is None
+    assert result.error == "invalid arguments for click: stale element"
+    assert result.metadata == {
+        "url": "https://www.allrecipes.com/search/",
+        "title": "Allrecipes Search",
+        "web_text": _STEP_WEB_TEXT,
+        "downloads": [],
+        "is_error": True,
+    }
+    assert r.info["errors"] == ["click: stale element"]
+    await env.close()
+
+
+@pytest.mark.asyncio
+async def test_page_context_disabled_hides_current_context_on_valid_action_rejection():
+    env = _make_env(
+        include_page_context_text=False,
+        max_steps=10,
+        extra_tools=["back", "response"],
+    )
+    paths: list[str] = []
+
+    def _capture(path: str, body: dict) -> dict:
+        paths.append(path)
+        if path == "/step":
+            raise AssertionError("rejected action should not POST /step")
+        return _route(path, body)
+
+    env._post = MagicMock(side_effect=_capture)
+
+    await env.reset()
+    r = await env.step(
+        [
+            _call(
+                "computer",
+                {"actions": [{"action": "screenshot"}]},
+                call_id="call-screenshot",
+            ),
+        ]
+    )
+    await env.close()
+
+    assert paths == ["/reset", "/close"]
+    assert len(r.results) == 1
+    result = r.results[0]
+    assert result.tool_call_id == "call-screenshot"
+    assert result.images[-1] == _PNG
+    assert result.text is None
+    assert result.error == "invalid action: screenshot; choose an available action for this task"
+    assert result.metadata == {
+        "url": "https://www.allrecipes.com/",
+        "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "downloads": [],
+        "is_error": True,
+    }
 
 
 def test_action_error_pairing_uses_record_name_not_action_fallback():
@@ -1295,6 +1494,8 @@ async def test_malformed_tool_call_with_call_id_returns_current_feedback():
     assert result.metadata == {
         "url": "https://www.allrecipes.com/",
         "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "model_web_text": _RESET_MODEL_WEB_TEXT,
         "downloads": [],
         "is_error": True,
     }
@@ -1361,6 +1562,8 @@ async def test_validation_only_malformed_known_action_skips_the_remote_but_consu
     assert result.metadata == {
         "url": "https://www.allrecipes.com/",
         "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "model_web_text": _RESET_MODEL_WEB_TEXT,
         "downloads": [],
         "is_error": True,
     }
@@ -1563,6 +1766,184 @@ def test_registered_manifest_source_is_webharbor():
     ids = gym.registry.task_ids("webharbor.webvoyager", split="eval")
     meta = gym.registry.task_metadata("webharbor.webvoyager", ids[0])
     assert meta.others["source"] == "webharbor"
+
+
+def test_docker_asset_fetch_is_pinned_and_scoped_to_pinned_sites(tmp_path):
+    docker_dir = _REPO_ROOT / "lite/gym/envs/webharbor/webvoyager/docker"
+    dockerfile = (docker_dir / "Dockerfile").read_text()
+    patch = (docker_dir / "patches/fetch_assets-no-same-owner.patch").read_text()
+
+    assert re.search(r"^ARG WEBHARBOR_ASSETS_REVISION=[0-9a-f]{40}$", dockerfile, re.M)
+    assert 'ASSETS_REVISION="${WEBHARBOR_ASSETS_REVISION}" ./scripts/fetch_assets.sh' in dockerfile
+    assert "find sites -mindepth 1 -maxdepth 1 -type d ! -name .cache | sort" in patch
+    assert 'INCLUDE_ARGS+=(--include "$site.tar.gz")' in patch
+
+    webharbor = tmp_path / "webharbor"
+    scripts = webharbor / "scripts"
+    scripts.mkdir(parents=True)
+    sites = webharbor / "sites"
+    for site in ("amazon", "apple"):
+        (sites / site).mkdir(parents=True)
+    (webharbor / ".assets-revision").write_text(
+        "repo: ChilleD/WebHarbor\nrevision: old-revision\n",
+        encoding="utf-8",
+    )
+    fetch_assets = scripts / "fetch_assets.sh"
+    fetch_assets.write_text(
+        """#!/usr/bin/env bash
+# Pull per-site asset tarballs from the Hugging Face dataset and extract
+# them into sites/.
+#
+# The dataset stores assets as <site>.tar.gz (one tarball per site) to
+# dodge the small-file tax that previously made `hf download` stall on
+# 4000+ tiny image files. Each tarball extracts back to
+# sites/<site>/{instance_seed,static/images,static/external_cache}.
+#
+# Usage:
+#   ./scripts/fetch_assets.sh                 # fetch all sites at pinned rev
+#   ./scripts/fetch_assets.sh google_search   # fetch one site only
+#   ASSETS_REVISION=abc123 ./scripts/fetch_assets.sh   # override pin
+#
+# Requires:
+#   - hf CLI  (pip install -U "huggingface_hub[cli]")
+#   - (optional) HF auth if the dataset becomes gated: hf auth login  (or set HF_TOKEN env)
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+REPO=$(awk '/^repo:/ {print $2}' .assets-revision)
+REVISION="${ASSETS_REVISION:-$(awk '/^revision:/ {print $2}' .assets-revision)}"
+ONLY_SITE="${1:-}"
+CACHE_DIR="sites/.cache/tarballs"
+
+if ! command -v hf >/dev/null 2>&1; then
+    echo "fetch_assets: 'hf' CLI not found. Install with: pip install -U \\"huggingface_hub[cli]\\"" >&2
+    exit 1
+fi
+
+mkdir -p "$CACHE_DIR"
+echo "[fetch] huggingface.co/datasets/$REPO @ $REVISION -> sites/"
+
+if [[ -n "$ONLY_SITE" ]]; then
+    INCLUDE="$ONLY_SITE.tar.gz"
+    echo "[fetch] scope: $ONLY_SITE only"
+else
+    INCLUDE="*.tar.gz"
+fi
+
+hf download "$REPO" --repo-type dataset --revision "$REVISION" \\
+    --include "$INCLUDE" --local-dir "$CACHE_DIR"
+
+shopt -s nullglob
+extracted=0
+for tarball in "$CACHE_DIR"/*.tar.gz; do
+    site=$(basename "$tarball" .tar.gz)
+    if [[ -n "$ONLY_SITE" && "$site" != "$ONLY_SITE" ]]; then continue; fi
+    echo "[fetch] extracting $site"
+    tar -xzf "$tarball" -C sites/
+    extracted=$((extracted + 1))
+done
+
+echo "[fetch] done — $extracted site(s) extracted into sites/"
+""",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["patch", "-p1"],
+        cwd=webharbor,
+        input=patch,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+    patched = fetch_assets.read_text()
+    assert 'INCLUDE="*.tar.gz"' not in patched
+    assert 'tar --no-same-owner -xzf "$tarball" -C sites/' in patched
+    subprocess.run(["bash", "-n", str(fetch_assets)], check=True)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    include_log = tmp_path / "hf-includes.txt"
+    fake_hf = fake_bin / "hf"
+    fake_hf.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" != "download" ]]; then
+    echo "fake hf only supports download" >&2
+    exit 2
+fi
+shift
+
+declare -a includes=()
+local_dir=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --include)
+            includes+=("$2")
+            shift 2
+            ;;
+        --local-dir)
+            local_dir="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+: "${local_dir:?}"
+: "${HF_INCLUDE_LOG:?}"
+mkdir -p "$local_dir"
+printf "%s\\n" "${includes[@]}" > "$HF_INCLUDE_LOG"
+
+for include in "${includes[@]}"; do
+    if [[ "$include" == ".cache.tar.gz" ]]; then
+        echo "cache dir must not be fetched as a site" >&2
+        exit 42
+    fi
+    site="${include%.tar.gz}"
+    tmp="$(mktemp -d)"
+    mkdir -p "$tmp/$site/instance_seed"
+    printf "seed\\n" > "$tmp/$site/instance_seed/seed.txt"
+    tar -czf "$local_dir/$include" -C "$tmp" "$site"
+    rm -rf "$tmp"
+done
+""",
+        encoding="utf-8",
+    )
+    fake_hf.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+    env["HF_INCLUDE_LOG"] = str(include_log)
+    env["ASSETS_REVISION"] = "0123456789abcdef0123456789abcdef01234567"
+
+    result = subprocess.run(
+        ["bash", str(fetch_assets)],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+
+    assert "scope: 2 site(s) declared by the pinned WebHarbor checkout" in result.stdout
+    assert include_log.read_text(encoding="utf-8").splitlines() == [
+        "amazon.tar.gz",
+        "apple.tar.gz",
+    ]
+    assert (sites / "amazon/instance_seed/seed.txt").is_file()
+    assert (sites / "apple/instance_seed/seed.txt").is_file()
+
+
+def test_task_manifest_generator_keeps_env_id_out_of_task_ids():
+    generator = (
+        _REPO_ROOT
+        / "lite/gym/envs/webharbor/webvoyager/scripts/utils/tasks.sh"
+    ).read_text()
+
+    assert 'task_id = f"{site_slug}.{slug(suffix)}"' in generator
+    assert "task_id = f\"webvoyager." not in generator
 
 
 def test_max_steps_from_constructor():
@@ -1910,6 +2291,7 @@ async def test_valid_actions_rejection_keeps_current_observation_feedback():
         extra_tools=["click", "input", "scroll", "go_back", "response"],
         valid_actions=[],
         skip_eval=True,
+        include_page_context_text=True,
     )
     paths: list[str] = []
 
@@ -1942,6 +2324,8 @@ async def test_valid_actions_rejection_keeps_current_observation_feedback():
     assert tool_result.metadata == {
         "url": "https://www.allrecipes.com/",
         "title": "Allrecipes",
+        "web_text": _RESET_WEB_TEXT,
+        "model_web_text": _RESET_SOM_MODEL_WEB_TEXT,
         "downloads": [],
         "is_error": True,
     }
@@ -1957,6 +2341,7 @@ async def test_valid_actions_rejection_keeps_separate_error_when_page_text_empty
         extra_tools=["click", "input", "scroll", "go_back", "response"],
         valid_actions=[],
         skip_eval=True,
+        include_page_context_text=True,
     )
 
     def _blank_page(path: str, body: dict) -> dict:
@@ -1991,6 +2376,7 @@ async def test_valid_actions_rejection_keeps_separate_error_when_page_text_empty
     assert tool_result.metadata == {
         "url": "",
         "title": "",
+        "web_text": "",
         "downloads": [],
         "is_error": True,
     }
@@ -2704,7 +3090,10 @@ def test_container_type_with_nothing_focused_matches_the_focused_branch(monkeypa
     assert guarded == [True], "a navigation wipes the reset-time guard; reinstall it"
     assert slept == [10], "a submit navigates and needs the long settle"
 
-    sent.clear(); performed.clear(); guarded.clear(); slept.clear()
+    sent.clear()
+    performed.clear()
+    guarded.clear()
+    slept.clear()
     server._execute_action(inst, "type", {"text": "query"})
     assert sent == ["query"], "a plain type must not submit"
     assert performed == [("query",)]
