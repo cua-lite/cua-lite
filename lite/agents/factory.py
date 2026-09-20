@@ -119,6 +119,8 @@ LOCAL_AGENTS: dict[str, dict] = {
 
 API_AGENTS: dict[str, dict] = {
     # Claude (Anthropic)
+    "claude-opus-5": {"agent_id": "claude"},
+    "claude-sonnet-5": {"agent_id": "claude"},
     "claude-opus-4-8": {"agent_id": "claude"},
     "claude-opus-4-7": {"agent_id": "claude"},
     "claude-opus-4-6": {"agent_id": "claude"},
