@@ -40,6 +40,7 @@ def test_webharbor_webvoyager_tasks_catalog_serves_metadata_and_kwargs(monkeypat
             "eval_config",
             "extra_tools",
             "fix_box_color",
+            "include_page_context_text",
             "max_steps",
             "post_action_delay",
             "step_timeout",

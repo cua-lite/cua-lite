@@ -1462,7 +1462,7 @@ def test_injected_helper_names_match_the_installed_table() -> None:
     assert judges._INJECTED_HELPER_NAMES == installed
 
 
-def test_metrics_calling_undefined_helpers_are_detected_and_excluded() -> None:
+def test_metrics_calling_undefined_helpers_are_detected_and_excluded(tmp_path) -> None:
     """A shard that calls a helper nobody defines cannot score, so it must be tagged.
 
     The generated shards were split from a larger source and some kept calls to
@@ -1472,14 +1472,46 @@ def test_metrics_calling_undefined_helpers_are_detected_and_excluded() -> None:
     """
     from lite.gym.envs.lite.scalecua.src.utils import dataset
 
-    broken = dataset._metrics_calling_undefined_helpers()
-    # The overlay ships with a real, non-empty set of these; an empty result means
-    # the scan silently stopped working (moved overlay, parse failure) rather than
-    # that the shards became clean.
-    assert broken, "no broken metrics found -- the overlay scan is not reaching the shards"
-    assert all(isinstance(name, str) for name in broken)
+    judge_root = tmp_path / "judge_functions"
+    metric_dir = judge_root / "train" / "verigen_metrics"
+    metric_dir.mkdir(parents=True)
+    (metric_dir / "metrics.py").write_text(
+        "def ok_metric(result):\n"
+        "    return len(result)\n"
+        "\n"
+        "def broken_metric(result):\n"
+        "    return helper_that_does_not_exist(result)\n"
+    )
+
+    broken = dataset._metrics_calling_undefined_helpers(judge_root)
+    assert broken == frozenset({"broken_metric"})
 
     # Only train/rl carry the generated overlay; other splits must not be tagged.
     payload = {"evaluator": {"func": sorted(broken)[0]}}
-    assert dataset._has_metric_with_undefined_helper(payload, runtime_split="train")
-    assert not dataset._has_metric_with_undefined_helper(payload, runtime_split="eval")
+    assert dataset._has_metric_with_undefined_helper(
+        payload,
+        runtime_split="train",
+        broken_metrics=broken,
+    )
+    assert (
+        dataset._exclude_reason(
+            payload,
+            inherited_exclusion=None,
+            unsupported=[],
+            runtime_split="train",
+            broken_metrics=broken,
+        )
+        == "upstream_generated_eval_bug"
+    )
+    assert not dataset._has_metric_with_undefined_helper(
+        payload,
+        runtime_split="eval",
+        broken_metrics=broken,
+    )
+
+
+def test_metrics_calling_undefined_helpers_requires_overlay(tmp_path) -> None:
+    from lite.gym.envs.lite.scalecua.src.utils import dataset
+
+    with pytest.raises(RuntimeError, match="no ScaleCUA judge overlay"):
+        dataset._metrics_calling_undefined_helpers(tmp_path / "missing")

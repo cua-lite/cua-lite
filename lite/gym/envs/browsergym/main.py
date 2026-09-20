@@ -14,12 +14,12 @@ Prerequisites:
   - For WebArena: Docker services running + WA_* env vars
   - For VisualWebArena: Docker services + VWA_* env vars
 
-Config: ``configs/default.yaml`` has ``env_kwargs: {}`` (every constructor field
-is per-benchmark table-baked, a uniform default, a debug knob, or rejected) — the
-only env-level surface is the isolation gate's ``server_kwargs``, read in
-``isolation.py`` via ``env_config.load(ENV_DIR)``. Launch the env-server
-with ``BROWSERGYM_CONFIG=isolation`` (bundled ``configs/isolation.yaml``) to
-engage strict shared-backend isolation.
+Config: ``configs/default.yaml`` declares the uniform env kwargs that should be
+visible in the registry catalog; per-benchmark task defaults such as step budget
+are still table-baked at registration. The same file also owns the env-server
+isolation knobs read in ``isolation.py`` via ``env_config.load(ENV_DIR)``.
+Launch the env-server with ``BROWSERGYM_CONFIG=isolation`` (bundled
+``configs/isolation.yaml``) to engage strict shared-backend isolation.
 
 Usage:
     uv run python -c "
@@ -214,6 +214,7 @@ _MAX_STEPS = CFG.env_kwargs["max_steps"]                  # null → per-benchma
 _POST_ACTION_DELAY = CFG.env_kwargs["post_action_delay"]  # 0.0 (synchronous render)
 _SEED = CFG.env_kwargs["seed"]                            # null → unseeded bare construction
 _EXTRA_TOOLS = CFG.env_kwargs["extra_tools"]              # null default → all action_subset tools; [] → none; [names] → subset
+_INCLUDE_PAGE_CONTEXT_TEXT = bool(CFG.env_kwargs["include_page_context_text"])
 # --- server_kwargs (per-deployment) — auxiliary-service host ports. SINGLETON
 #     (one env-server ↔ one shared WA/VWA stack + miniwob singleton): each is a
 #     PREFERRED port, auto-reallocated if busy (see _auto_pick_webarena_ports /
@@ -829,11 +830,16 @@ class BrowserGymConfig:
     with_na_hint: bool = False
 
     # ─── Group A — BrowserGym ObsFlags pass-through ──────────────────────────
+    # False keeps browser vision+coord rollouts screenshot-only: task
+    # instructions and action errors still render, but tab URL/title, AXTree,
+    # HTML, and focused-element page context do not.
+    include_page_context_text: bool = _INCLUDE_PAGE_CONTEXT_TEXT
+
     # Subset of AgentLab `dynamic_prompting.ObsFlags` actually consumed by
     # `_build_obs_text` and the BrowserGym observation pipeline. Defaults
-    # preserve today's screenshot-only behavior (use_screenshot=True, all
-    # text/AXTree flags off). Set use_screenshot=False + use_ax_tree=True
-    # to get the agent-as-annotators / paper observation shape.
+    # keep screenshot-first browser defaults (use_screenshot=True, AXTree/HTML
+    # flags off, page-context text off). Set use_screenshot=False +
+    # use_ax_tree=True to get the agent-as-annotators / paper observation shape.
     #
     # Fields not listed here (use_history, use_action_history,
     # use_think_history, use_past_error_logs, use_diff, use_som, html_type)
@@ -1336,10 +1342,12 @@ class BrowserGymEnv(LiteBaseEnv):
         # carry several goal images (``config["image"]`` is a list) — all are
         # transported. See ``lite/agents/extensions/browsergym/goal_image.py``.
         goal_images_b64 = _extract_goal_images_b64(obs)
-        metadata = {"goal_images_b64": goal_images_b64} if goal_images_b64 else None
+        metadata = self._build_page_context_metadata(obs)
+        if goal_images_b64:
+            metadata["goal_images_b64"] = goal_images_b64
         text = await asyncio.to_thread(self._build_obs_text, obs, self._instruction)
         return LiteEnvObservation(
-            image=screenshot, text=text, metadata=metadata,
+            image=screenshot, text=text, metadata=metadata or None,
         )
 
     async def _render_feedback_frame(
@@ -1679,6 +1687,7 @@ class BrowserGymEnv(LiteBaseEnv):
             if fallback_frame is not None:
                 step_screenshots.append(fallback_frame)
         text = await self._render_feedback_text(render_obs, None)
+        metadata = self._build_page_context_metadata(render_obs)
 
         # OR with self._terminated so natural BrowserGym termination via
         # native bid actions (send_msg_to_user, report_infeasible — set
@@ -1709,6 +1718,7 @@ class BrowserGymEnv(LiteBaseEnv):
             continue_call_ids=current_result_call_ids,
             images=step_screenshots,
             text=text,
+            metadata=metadata or None,
             feedback=action_errors,
         )
 
@@ -1838,6 +1848,9 @@ class BrowserGymEnv(LiteBaseEnv):
         if prefix:
             parts.append(prefix)
 
+        if not cfg.include_page_context_text:
+            return "\n\n".join(parts) or None
+
         # AgentLab-aligned ``## Currently open tabs:`` block — surfaces the
         # tab list so the model knows which ``switch_tab(N)`` index to call
         # for multi-tab benches (WebArena / VisualWebArena can spawn
@@ -1912,6 +1925,36 @@ class BrowserGymEnv(LiteBaseEnv):
                 parts.append(f"## Focused element:\nbid='{bid}'")
 
         return "\n\n".join(parts) if parts else None
+
+    def _build_page_context_metadata(self, obs_dict: dict[str, Any] | None) -> dict[str, Any]:
+        """Preserve cheap page context for logs when prompt text is suppressed."""
+        if self._config.include_page_context_text or obs_dict is None:
+            return {}
+
+        metadata: dict[str, Any] = {}
+        urls = obs_dict.get("open_pages_urls")
+        titles = obs_dict.get("open_pages_titles")
+        if urls is not None:
+            metadata["open_pages_urls"] = list(urls)
+        if titles is not None:
+            metadata["open_pages_titles"] = list(titles)
+
+        active = obs_dict.get("active_page_index")
+        if active is not None:
+            try:
+                metadata["active_page_index"] = (
+                    int(active[0]) if hasattr(active, "__getitem__") else int(active)
+                )
+            except (TypeError, ValueError, IndexError):
+                pass
+
+        url = obs_dict.get("url")
+        if url:
+            metadata["url"] = str(url)
+        bid = obs_dict.get("focused_element_bid")
+        if bid:
+            metadata["focused_element_bid"] = str(bid)
+        return metadata
 
     # -----------------------------------------------------------------------
     # Internal: CUA-Lite → BrowserGym action translation
@@ -2105,7 +2148,12 @@ class BrowserGymEnv(LiteBaseEnv):
             "active_page_index": [0],
             "last_action_error": "",
         }
-        return LiteEnvObservation(image=screenshot, text=self._instruction)
+        metadata = self._build_page_context_metadata(self._last_obs)
+        return LiteEnvObservation(
+            image=screenshot,
+            text=self._instruction,
+            metadata=metadata or None,
+        )
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -3032,11 +3080,33 @@ def _encode_screenshot_maybe_som(
 
 def _extract_instruction(obs: dict[str, Any]) -> str:
     """Extract the task instruction from a BrowserGym observation."""
+    goal_object = obs.get("goal_object") or []
+    has_goal_image = any(
+        isinstance(msg, dict) and msg.get("type") == "image_url"
+        for msg in goal_object
+    )
+    if has_goal_image:
+        parts = []
+        for msg in goal_object:
+            if not isinstance(msg, dict) or msg.get("type") != "text":
+                continue
+            text = str(msg.get("text") or "")
+            stripped = text.strip()
+            if (
+                stripped.startswith("Input image ")
+                and " below" in stripped
+                and ("local path:" in stripped or "url:" in stripped or stripped.endswith(" below"))
+            ):
+                continue
+            if stripped.startswith("WARNING: This goal cannot be converted to a text-only goal format."):
+                continue
+            parts.append(text)
+        return "\n".join(parts)
+
     goal = obs.get("goal", "")
     if goal:
         return goal
 
-    goal_object = obs.get("goal_object", [])
     if goal_object:
         parts = []
         for msg in goal_object:

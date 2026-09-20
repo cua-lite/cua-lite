@@ -32,6 +32,92 @@ def _protocol_kwargs(cfg: dict) -> dict:
     return _agent_kwargs(cfg).get("protocol_kwargs") or {}
 
 
+def _script_config_paths() -> list[Path]:
+    return sorted((ROOT / "scripts/configs").rglob("*.yaml"))
+
+
+def _browser_rollout_configs() -> list[tuple[str, dict]]:
+    configs: list[tuple[str, dict]] = []
+    for path in _script_config_paths():
+        cfg = load_config(path)
+        env_id = cfg.get("env_id")
+        if (
+            isinstance(env_id, str)
+            and (
+                env_id.startswith("browsergym.")
+                or env_id in {"online_mind2web", "webharbor.webvoyager"}
+            )
+        ):
+            configs.append((str(path.relative_to(ROOT)), cfg))
+    assert configs, "no browser rollout configs found"
+    return configs
+
+
+def _is_browser_vision_coord_default(rel: str, cfg: dict) -> bool:
+    path = Path(rel)
+    if path.name not in {"default.yaml", "goal_image.yaml", "online_mind2web.yaml"}:
+        return False
+
+    env_id = cfg["env_id"]
+    env_kwargs = cfg.get("env_kwargs") or {}
+    if env_id == "online_mind2web":
+        return True
+    if env_id == "webharbor.webvoyager":
+        return env_kwargs.get("use_som") is not True
+    if env_id.startswith("browsergym."):
+        return (
+            env_kwargs.get("use_screenshot", True) is True
+            and env_kwargs.get("use_ax_tree", False) is False
+            and env_kwargs.get("use_som", False) is False
+            and "coord" in set(env_kwargs.get("action_subsets", ("coord",)))
+        )
+    return False
+
+
+def _is_browser_explicit_text_or_som(rel: str, cfg: dict) -> bool:
+    path = Path(rel)
+    env_kwargs = cfg.get("env_kwargs") or {}
+    return (
+        path.name in {"text_only.yaml", "mixed.yaml", "som.yaml"}
+        or env_kwargs.get("use_ax_tree") is True
+        or env_kwargs.get("use_som") is True
+    )
+
+
+def test_browser_vision_coord_defaults_disable_page_context_text_at_env_boundary() -> None:
+    configs = [
+        (rel, cfg) for rel, cfg in _browser_rollout_configs()
+        if _is_browser_vision_coord_default(rel, cfg)
+    ]
+    assert configs, "no browser vision+coord default configs found"
+
+    for rel, cfg in configs:
+        env_kwargs = cfg["env_kwargs"]
+
+        assert env_kwargs["include_page_context_text"] is False, rel
+
+        if cfg["env_id"].startswith("browsergym."):
+            assert env_kwargs["use_screenshot"] is True, rel
+            assert env_kwargs["use_ax_tree"] is False, rel
+
+
+def test_browser_rollout_configs_do_not_disable_role_tool_text_in_protocol() -> None:
+    for rel, cfg in _browser_rollout_configs():
+        assert _protocol_kwargs(cfg).get("keep_text_with_images") is not False, rel
+
+
+def test_browser_explicit_text_and_som_modes_keep_page_context_available() -> None:
+    configs = [
+        (rel, cfg) for rel, cfg in _browser_rollout_configs()
+        if _is_browser_explicit_text_or_som(rel, cfg)
+    ]
+    assert configs, "no explicit browser text/SoM configs found"
+
+    for rel, cfg in configs:
+        env_kwargs = cfg["env_kwargs"]
+        assert env_kwargs["include_page_context_text"] is True, rel
+
+
 def test_lite_osworld_extra_tool_rollout_gates() -> None:
     qwen_config_paths = [
         "scripts/configs/qwen3_vl/default/lite.osworld.yaml",

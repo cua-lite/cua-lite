@@ -476,6 +476,7 @@ def main() -> None:
         "source_repo": dataset.REPO,
         "asset_snapshot": dataset.asset_snapshot(),
         "platform": "desktop+missing_platform",
+        "counts": dataset.row_count_summary(rows),
         "upstream_rows": len(desk),
         "registered": len(rows),
         "by_app": by_app,
@@ -487,6 +488,12 @@ def main() -> None:
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     REVISION_FILE.write_text(asset_stamp + "\n")
     DIGEST_FILE.write_text(dataset.task_cache_digest(TASKS_DIR) + "\n")
+    lock = dataset.maybe_write_catalog_count_lock({
+        "desktop": catalog,
+        "web": ENV_DIR / ".cache" / "web" / "lite.cuagym_tasks" / "train.jsonl",
+    })
+    if lock is not None:
+        print(f"[import] refreshed count lock -> {dataset.CATALOG_LOCK_PATH}")
     print(f"[import] wrote report -> {REPORT}")
 
 

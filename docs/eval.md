@@ -66,7 +66,7 @@ uv run python scripts/rollout.py \
 
 ## OSWorld / Lite.OSWorld
 
-369 OSWorld tasks across 10 desktop apps. `--filter` drops tagged `exclude_reason` tasks (infeasible / Google-auth / blocked tasks that are unscored noise) → **`osworld` 325 scored**, **`lite.osworld` 332 scored**.
+369 OSWorld tasks across 10 desktop apps. `--filter` drops tagged `exclude_reason` tasks (infeasible / Google-auth / blocked tasks that are unscored noise) → **`osworld` 325 scored**, **`lite.osworld` 328 scored**.
 
 **Setup:** see [`lite/gym/envs/lite/osworld/README.md`](/lite/gym/envs/lite/osworld/README.md) / [`lite/gym/envs/osworld/README.md`](/lite/gym/envs/osworld/README.md).
 

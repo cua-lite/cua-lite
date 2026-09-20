@@ -58,6 +58,30 @@ ZERO_COLLECTION_EDGE_CASES = {
     "for Slime-only dual-clip coverage",
     Path("tests/train/export/test_qwen3_5_mtp_alias.py"): "module-level pytest.importorskip "
     "for training-image megatron-bridge coverage",
+    Path("tests/agents/extensions/browsergym/test_browsergym_protocol.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_actions.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_env.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_health.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_helpers.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_isolation.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_own_stack.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_playwright.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_registration.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_tool_schema.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_port_autopick_exhaustion.py"): "module-level "
+    "allow_module_level skip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/captcha/test_captcha.py"): "module-level "
+    "allow_module_level skip for optional captcha dependency coverage",
 }
 
 ZERO_COLLECTION_EDGE_MARKERS = ("pytest.importorskip(", "allow_module_level=True")

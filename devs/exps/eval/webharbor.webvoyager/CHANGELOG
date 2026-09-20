@@ -1,0 +1,15 @@
+## 651af22040  (2026-07-10)
+
+Default and SoM snapshots were materialized as separate run ids at this commit.
+The aggregate `run_0_som.json` config-id mismatch is tracked separately by the
+eval snapshot-integrity audit; it is not a metric-definition change.
+
+The owner-resolved browser coord screenshot-only policy is not recorded here as
+landed yet because its env/config change is pending Issue 1b. Add a commit-scoped
+entry when that change lands.
+
+## c1001a613c  (2026-07-08)
+
+Initial standardized WebVoyager snapshot at this commit. Default and SoM modes
+use separate config files under `scripts/configs/*/default/webharbor.webvoyager/`
+and are not interchangeable rows in a results table.

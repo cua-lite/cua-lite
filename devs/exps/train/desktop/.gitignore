@@ -1,0 +1,6 @@
+# Candidate pools are a pure filter over the env's own jsonl -- seconds to
+# rebuild, and large. The calibrated manifests are not: each one carries the
+# outcome of a g=4 rollout over thousands of tasks (8,903 trajectories, 6.75 h
+# for the combined3 pass), so they stay tracked.
+data/*.candidates.seed42.parquet
+data/*.candidates.seed42.summary.json

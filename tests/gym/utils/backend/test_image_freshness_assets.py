@@ -441,6 +441,26 @@ def test_container_image_transient_inspect_failure_is_retryable(monkeypatch):
     assert raised.value.retryable is True
 
 
+def test_container_image_inspect_timeout_is_retryable(monkeypatch):
+    image = ContainerImage(
+        "cua-lite/test:latest",
+        ("lite/gym/utils/config/manifest.py",),
+        "install",
+        "README.md",
+    )
+    seen: dict[str, float | None] = {}
+
+    def fake_run(*args, **kwargs):
+        seen["timeout"] = kwargs.get("timeout")
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(freshness.subprocess, "run", fake_run)
+    with pytest.raises(CapacityExhausted, match="docker image inspect failed") as raised:
+        image.ensure_runnable()
+    assert seen["timeout"] == freshness._INSPECT_TIMEOUT_S
+    assert raised.value.retry_after_s == 2.0
+
+
 def test_container_image_invalid_tag_is_terminal_env_deps(monkeypatch):
     image = ContainerImage(
         "bad tag",

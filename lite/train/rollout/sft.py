@@ -32,8 +32,8 @@ each step's stored ``prompt`` WITH its images to produce ``pixel_values`` and
 the vision-expanded ``input_ids`` — but it never touches ``apply_chat_template``
 (and thus never needs ``enable_thinking``): the rendered prompt string is frozen
 in the parquet. The Nth ``image_indices`` entry supplies the Nth
-processor-owned image slot in that frozen prompt; the rollout validates the
-count before segmenting.
+processor-owned image slot in that frozen prompt; producer/export code owns
+validation and ordering before this rollout consumes the indices verbatim.
 
 Slime config (in scripts/train/run_sft*.sh):
   --rollout-function-path lite.train.rollout.sft.generate_rollout

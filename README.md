@@ -86,7 +86,7 @@ result is a LiteRLSample:
 
 **Agent ids** (`agents.make(...)` / `--model-id`) — API families need a key; local ones are HF repo ids served through sglang/hf. Per-family surfaces and files: [`lite/agents/models`](/lite/agents/models).
 
-> **GPT** `gpt-5.5` · `gpt-5.6-sol`
+> **GPT** `gpt-6-astra` · `gpt-5.5` · `gpt-5.6-sol`
 > **Claude** `claude-opus-4-8` · `claude-opus-4-7` · `claude-opus-4-6` · `claude-sonnet-4-6`
 > **Gemini** `gemini-3.6-flash` · `gemini-3.5-flash` · `gemini-3.5-flash-lite`
 > **Qwen3-VL** `Qwen/Qwen3-VL-{2B,4B,8B,32B}-{Instruct,Thinking}`
@@ -241,7 +241,7 @@ Then compare base vs. SFT as in [Eval](#eval-any-cua-on-any-benchmarks): point `
 at the checkpoint above and read `stats.mean_episode_return` — evaluating with the
 *same* [`compact/lite.osworld.yaml`](/scripts/configs/qwen3_vl/compact/lite.osworld.yaml) it trained on
 ([`default/lite.osworld.yaml`](/scripts/configs/qwen3_vl/default/lite.osworld.yaml) is
-full-resolution, when VRAM allows). In our run this lifts Qwen3-VL-2B from **0.138 → 0.237** on the `lite.osworld` eval split (332 valid tasks).
+full-resolution, when VRAM allows). In our run this lifts Qwen3-VL-2B from **0.138 → 0.237** on the `lite.osworld` eval split (328 valid tasks).
 See [docs/sft.md](/docs/sft.md) for more examples.
 
 ### Supported datasets ([🤗 HF Hub](https://huggingface.co/cua-lite))

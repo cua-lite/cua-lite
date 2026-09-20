@@ -92,7 +92,7 @@ print(gym.registry.task_ids("osworld"))
 # {"eval": ["357ef137-...", ...]}   # 369 tasks (eval-only)
 ```
 
-369 tasks across 10 domains (chrome, gimp, libreoffice_calc/impress/writer, multi_apps, os, thunderbird, vlc, vs_code). Metadata identity lives in `env.metadata.others["task_id"]` / `env.metadata.others["env_id"]`; `env.metadata.others` also carries `domain` and `exclude_reason` on the 44 tagged tasks (29 infeasible + 8 google_auth + 7 blocked) — `--filter` them out for scoring → 325 scored. `blocked` (7) + `google_auth` (8) are OSWorld-specific tags; [`lite.osworld`](/lite/gym/envs/lite/osworld/README.md) currently tags 37 excluded tasks (29 infeasible + 8 Google auth) → 332 scored. Infeasible tasks are scored only with the `report_infeasible` extra tool.
+369 tasks across 10 domains (chrome, gimp, libreoffice_calc/impress/writer, multi_apps, os, thunderbird, vlc, vs_code). Metadata identity lives in `env.metadata.others["task_id"]` / `env.metadata.others["env_id"]`; `env.metadata.others` also carries `domain` and `exclude_reason` on the 44 tagged tasks (29 infeasible + 8 google_auth + 7 blocked) — `--filter` them out for scoring → 325 scored. `blocked` (7) + `google_auth` (8) are OSWorld-specific tags; [`lite.osworld`](/lite/gym/envs/lite/osworld/README.md) currently tags 41 excluded tasks (29 infeasible + 8 Google auth + 2 live-site drift + 1 generated eval bug + 1 trivial pass) → 328 scored. Infeasible tasks are scored only with the `report_infeasible` extra tool.
 
 ## Evaluation
 

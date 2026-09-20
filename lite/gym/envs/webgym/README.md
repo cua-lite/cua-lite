@@ -117,7 +117,7 @@ Performance knobs (throughput is env-bound, not GPT — the levers cap *wasted* 
 | `blank_screenshot_max_retries` / `_wait` | `2` / `1.5` | `/screenshot` often 500s — fall back to the previous frame fast. |
 | `instance_lifetime_mins` | `60` | **Upstream-capped at 60** (master 503s above it) — do not raise. |
 | `sem_navigate` / `sem_execute` / `sem_screenshot` | `16` / `256` / `256` | Per-process backpressure. |
-| `max_steps_train` / `max_steps_eval` | per-difficulty | Step budget by tier (train 15/25/35, eval 30/50/70). |
+| `max_steps_train` / `max_steps_eval` | per-difficulty | Step budget by tier; train and eval both use 15/25/35. |
 | `viewport` | `[1280, 720]` | Browser viewport (`env_kwarg`); forwarded to the container browsers via `-e WEBGYM_VIEWPORT=WxH`. |
 | `goback_skip_threshold` / `goback_terminate_threshold` | `2` / `3` | Consecutive back-from-homepage actions before the step is skipped / the episode is terminated (anti-loop guard). |
 | `instances` | `0` | Browser-pool size; `0` = auto-derive (like mobilegym `max_browsers`). |

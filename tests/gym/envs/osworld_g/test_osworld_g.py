@@ -209,7 +209,7 @@ def test_bbox_report_infeasible_returns_0():
     assert res.reward == 0.0
 
 
-def test_bbox_point_plus_report_infeasible_returns_0():
+def test_bbox_point_then_report_infeasible_scores_first_point():
     async def go():
         env = gym.make(
             "osworld_g@0FOB4CLBT2-0",
@@ -220,6 +220,24 @@ def test_bbox_point_plus_report_infeasible_returns_0():
         actions = [
             make_tool_call("point", {"coordinate": [748, 315]}),
             make_tool_call("report_infeasible", {"reason": "hedge"}),
+        ]
+        return await env.step(actions)
+
+    res = asyncio.run(go())
+    assert res.reward == 1.0
+
+
+def test_bbox_report_infeasible_then_point_scores_first_refusal_as_wrong():
+    async def go():
+        env = gym.make(
+            "osworld_g@0FOB4CLBT2-0",
+            split="eval",
+            extra_tools=["report_infeasible"],
+        )
+        await env.reset()
+        actions = [
+            make_tool_call("report_infeasible", {"reason": "hedge"}),
+            make_tool_call("point", {"coordinate": [748, 315]}),
         ]
         return await env.step(actions)
 
@@ -308,6 +326,24 @@ def test_refusal_point_plus_report_infeasible_returns_0():
 
     res = asyncio.run(go())
     assert res.reward == 0.0
+
+
+def test_refusal_report_infeasible_then_point_scores_first_refusal():
+    async def go():
+        env = gym.make(
+            f"osworld_g@{_refusal_tid()}",
+            split="eval",
+            extra_tools=["report_infeasible"],
+        )
+        await env.reset()
+        actions = [
+            make_tool_call("report_infeasible", {"reason": "no such element"}),
+            make_tool_call("point", {"coordinate": [500, 500]}),
+        ]
+        return await env.step(actions)
+
+    res = asyncio.run(go())
+    assert res.reward == 1.0
 
 
 # ---------------------------------------------------------------------------

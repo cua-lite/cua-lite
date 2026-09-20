@@ -41,6 +41,7 @@ from lite.agents.core.agent.utils.loop import (
     mark_steps_truncated,
     record_lite_env_result,
 )
+from lite.agents.core.agent.utils.mobile_finish import mobile_finish_guidance
 from lite.agents.core.agent.utils.retry import acompletion_with_retry
 
 # ``litellm`` is imported lazily inside _aresponses_with_retry, NOT here:
@@ -900,21 +901,6 @@ _MOBILE_SYSTEM_PROMPT = (
 )
 
 
-def _mobile_finish_guidance(extra_tool_names: frozenset[str]) -> str | None:
-    has_response = "response" in extra_tool_names
-    has_terminate = "terminate" in extra_tool_names
-    if has_response and has_terminate:
-        return (
-            "When the task is done, call `terminate` (use `response` to return "
-            "an answer the task asks for)."
-        )
-    if has_response:
-        return "When the task asks for an answer, call `response` to return it."
-    if has_terminate:
-        return "When the task is done, call `terminate`."
-    return None
-
-
 GPT_MOBILE_API_KWARGS_DEFAULTS: dict[str, Any] = {
     # Same provider knobs as desktop; mobile uses provider-flat function
     # schemas rather than the native computer tool.
@@ -959,7 +945,7 @@ class GPTMobileUseAgent(_GPTBaseAgent, key="gpt@mobile@use"):
         prompt = self.system_prompt
         if prompt:
             prompt = prompt.replace("{w}", str(sent_w)).replace("{h}", str(sent_h))
-        guidance = _mobile_finish_guidance(self._extra_tool_names())
+        guidance = mobile_finish_guidance(self._extra_tool_names())
         if not guidance:
             return prompt
         if not prompt:

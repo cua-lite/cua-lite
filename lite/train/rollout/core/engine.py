@@ -1144,10 +1144,16 @@ async def _eval_rollout(
         nonzero_return_rate = sum(1 for r in episode_returns if r > 0) / max(n_trajs_valid, 1)
         n_truncated = sum(truncated_per_rollout)
 
+        # return_mean is the number to read: slime also logs a bare
+        # ``eval/{ds}`` (rollout.py), but that one averages over the DENSE list,
+        # so every errored rollout dilutes it as a 0.0. Printing the valid-only
+        # mean next to the valid/errored counts means a diluted comparison is
+        # visible in the log itself, not only in wandb.
         logger.info(
-            "Eval %s: %d valid / %d errored / %d missing / %d expected"
-            " (retried %d), nonzero_return_rate=%.2f",
-            dataset_cfg.name, n_trajs_valid, n_trajs_errored, n_trajs_missing,
+            "Eval %s: return_mean=%.4f (std=%.4f stderr=%.4f), %d valid / %d errored"
+            " / %d missing / %d expected (retried %d), nonzero_return_rate=%.2f",
+            dataset_cfg.name, return_mean, return_std, return_stderr,
+            n_trajs_valid, n_trajs_errored, n_trajs_missing,
             n_trajs_expected, n_trajs_retried, nonzero_return_rate,
         )
 
@@ -1458,7 +1464,36 @@ def flatten_and_align(rollouts: list[list[Sample]], args: Any) -> dict:
     group_total_mask: dict[int, int] = {}
     for gid, ms in zip(group_ids, mask_sums, strict=True):
         group_total_mask[gid] = group_total_mask.get(gid, 0) + ms
-    train_data["group_mask_sums"] = [group_total_mask[gid] for gid in group_ids]
+
+    # CUA_LITE_NORM_BY_TURNS=1 switches the per-trajectory denominator from
+    # "total masked tokens" to "turn count, scaled by the batch's mean tokens per
+    # turn". Ablation knob for the multi-turn setting — default is unchanged.
+    #
+    # Why it matters here: with the token denominator, a trajectory that writes
+    # FEWER tokens per turn raises its own per-token gradient (A / N), so the
+    # objective rewards compressing each turn's output. Measured on 8-task
+    # train=eval: response length fell 80% while turn count rose 56% with no
+    # accuracy gain. Scaling by the batch mean keeps ``sum(denoms)`` equal to
+    # ``sum(mask_sums)``, so only the RELATIVE weighting changes, not the
+    # gradient scale — otherwise this would confound normalization with a ~300x
+    # effective LR change.
+    #
+    # Still packing-invariant: ``_segment_steps`` packs WHOLE turns (its unit is
+    # the turn index), so a turn never spans segments and the per-trajectory turn
+    # count is independent of how segments are packed.
+    if os.environ.get("CUA_LITE_NORM_BY_TURNS") == "1":
+        group_turns: dict[int, int] = {}
+        for gid, s in zip(group_ids, flat, strict=True):
+            n_turns = ((s.metadata or {}).get("n_turns")) or 1
+            group_turns[gid] = max(group_turns.get(gid, 0), int(n_turns))
+        total_tokens = sum(group_total_mask.values())
+        total_turns = sum(group_turns.values()) or 1
+        mean_tokens_per_turn = total_tokens / total_turns
+        train_data["group_mask_sums"] = [
+            max(group_turns[gid] * mean_tokens_per_turn, 1.0) for gid in group_ids
+        ]
+    else:
+        train_data["group_mask_sums"] = [group_total_mask[gid] for gid in group_ids]
 
     if flat[0].rollout_log_probs is not None:
         train_data["rollout_log_probs"] = [s.rollout_log_probs for s in flat]

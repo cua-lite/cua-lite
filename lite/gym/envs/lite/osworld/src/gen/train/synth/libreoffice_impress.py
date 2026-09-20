@@ -244,12 +244,12 @@ def _lo_normalize_cmd(path: str, fmt: str = "pptx") -> str:
 def _build_oracle_pptx(out_path: str, expected_path: str) -> list[dict]:
     """Oracle: ① normalize gold, ② plant at sink.
 
-    oracle_after_postconfig=True kills LO before running oracle actions and
-    sets _postconfig_done=True so LO_SAVE_POSTCONFIG (Ctrl+S) is skipped after
-    oracle. Result = cp of norm(gold). Expected = norm(gold). They are
-    byte-identical without a third normalize step.  A third normalize would
-    produce result = norm(norm(gold)) which diverges when LO normalize is
-    non-idempotent (font-name, size, colour, alignment properties in pptx).
+    oracle_after_postconfig=True makes the validation replay run evaluator
+    postconfig first, then kill apps that may still hold the file before these
+    oracle actions plant the expected artifact. It does not mark the production
+    evaluator as postconfig-done; final scoring still runs the normal evaluator
+    path. The oracle keeps the planted file to one normalize pass here because
+    eval-time result/expected getters apply the next pass symmetrically.
     """
     return [
         _execute(_lo_normalize_cmd(expected_path, "pptx")),
