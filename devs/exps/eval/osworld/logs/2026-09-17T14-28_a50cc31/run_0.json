@@ -1,0 +1,116 @@
+{
+  "env": "osworld",
+  "commit_dir": "2026-09-17T14-28_a50cc31",
+  "run_id": "run_0",
+  "commit": {
+    "short_sha": "a50cc31"
+  },
+  "artifact_root": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0",
+  "result_count": 13,
+  "results": [
+    {
+      "model": "GPT-5.6 Sol",
+      "num_valid": 325,
+      "num_tasks": 325,
+      "mean_episode_return": 0.7326109667015238,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/gpt-5.6-sol",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/gpt-5.6-sol/summary.json"
+    },
+    {
+      "model": "GPT-5.5",
+      "num_valid": 325,
+      "num_tasks": 325,
+      "mean_episode_return": 0.7108925946870743,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/gpt-5.5",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/gpt-5.5/summary.json"
+    },
+    {
+      "model": "Qwen3.8-27B",
+      "num_valid": 325,
+      "num_tasks": 325,
+      "mean_episode_return": 0.5917112018569531,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3.8-27B",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3.8-27B/summary.json"
+    },
+    {
+      "model": "UI-Venus-2-9B",
+      "num_valid": 325,
+      "num_tasks": 325,
+      "mean_episode_return": 0.5047425668627786,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/inclusionAI_UI-Venus-2-9B",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/inclusionAI_UI-Venus-2-9B/summary.json"
+    },
+    {
+      "model": "Qwen3.5-9B",
+      "num_valid": 325,
+      "num_tasks": 325,
+      "mean_episode_return": 0.38576347573553477,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3.5-9B",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3.5-9B/summary.json"
+    },
+    {
+      "model": "EvoCUA-8B",
+      "num_valid": 325,
+      "num_tasks": 325,
+      "mean_episode_return": 0.35574931835886253,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/meituan_EvoCUA-8B-20260105",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/meituan_EvoCUA-8B-20260105/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-32B",
+      "num_valid": 325,
+      "num_tasks": 325,
+      "mean_episode_return": 0.3429140765946648,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3-VL-32B-Instruct",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json"
+    },
+    {
+      "model": "UI-TARS-1.5-7B",
+      "num_valid": 325,
+      "num_tasks": 325,
+      "mean_episode_return": 0.27472089796576354,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json"
+    },
+    {
+      "model": "Qwen3.5-4B",
+      "num_valid": 325,
+      "num_tasks": 325,
+      "mean_episode_return": 0.27029423556890175,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3.5-4B",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3.5-4B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-4B",
+      "num_valid": 325,
+      "num_tasks": 325,
+      "mean_episode_return": 0.2364741593992689,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3-VL-4B-Instruct",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json"
+    },
+    {
+      "model": "GPT-6 Astra",
+      "num_valid": 324,
+      "num_tasks": 325,
+      "mean_episode_return": 0.7537007887630311,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/gpt-6-astra",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/gpt-6-astra/summary.json"
+    },
+    {
+      "model": "Qwen3.5-27B",
+      "num_valid": 324,
+      "num_tasks": 325,
+      "mean_episode_return": 0.49097624658680344,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3.5-27B",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3.5-27B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-8B",
+      "num_valid": 324,
+      "num_tasks": 325,
+      "mean_episode_return": 0.2821899151017038,
+      "artifact_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3-VL-8B-Instruct",
+      "summary_path": ".exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json"
+    }
+  ]
+}
