@@ -116,6 +116,8 @@ fi
 case "$MODEL" in
   Qwen/Qwen3-VL-*-Instruct)        CFG=scripts/configs/qwen3_vl/default/osworld.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/osworld.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/osworld.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/osworld.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/osworld.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/osworld.yaml ;;
   meituan/EvoCUA-*)                CFG=scripts/configs/evocua/default/osworld.yaml ;;
@@ -138,5 +140,6 @@ HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   `# false-positive give-up calls on tasks that DO have a target.` \
   --filter "lambda m: not m.others.get('exclude_reason')" \
   --env-kwargs '{"step_timeout": 180}' \
+  --concurrency "${EVAL_CONCURRENCY:-16}" \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"
