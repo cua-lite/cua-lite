@@ -1,9 +1,8 @@
 """Claude image sizing helpers used before provider API calls.
 
 Anthropic's vision encoder works in 28px patches with model-specific long-edge
-and patch-count limits. The computer-use coordinate frame is the screenshot
-size declared in ``display_width_px`` / ``display_height_px``, so CUA-Lite
-resizes before the request and reports those sent dimensions in the tool schema.
+and patch-count limits. CUA-Lite resizes before the request so coordinates use
+the sent image size; legacy computer tools also declare that size explicitly.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ class _ClaudeImageLimits:
 
 
 CLAUDE_IMAGE_LIMITS = {
-    "opus_4_high_res": _ClaudeImageLimits(max_edge_px=2576, max_tokens=4784),
+    "high_res": _ClaudeImageLimits(max_edge_px=2576, max_tokens=4784),
     "default": _ClaudeImageLimits(max_edge_px=1568, max_tokens=1568),
 }
 
@@ -41,8 +40,8 @@ MANY_IMAGE_MAX_EDGE_PX = 2000
 
 
 def get_claude_image_limits(model_id: str) -> _ClaudeImageLimits:
-    if re.search(r"claude-opus-4-(7|8)", model_id, re.IGNORECASE):
-        return CLAUDE_IMAGE_LIMITS["opus_4_high_res"]
+    if re.search(r"(?:^|/)claude-opus-(?:4-(?:7|8)|5)$", model_id, re.IGNORECASE):
+        return CLAUDE_IMAGE_LIMITS["high_res"]
     return CLAUDE_IMAGE_LIMITS["default"]
 
 

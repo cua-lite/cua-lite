@@ -66,6 +66,7 @@ from lite.agents.models.claude.utils.parse import (
     parse_mobile_response_with_provenance,
     parse_response_with_provenance,
 )
+from lite.agents.models.claude.utils.toolset import acompletion_with_computer_toolset
 from lite.core import (
     LiteMessage,
     LiteRLSample,
@@ -91,6 +92,11 @@ logger = logging.getLogger(__name__)
 
 # Model version -> computer tool version + beta flag
 MODEL_TOOL_MAPPING = [
+    {
+        "pattern": r"(?:^|/)claude-opus-5$",
+        "tool_version": "computer_toolset_20260801",
+        "beta_flag": "",
+    },
     {
         "pattern": r"(?:^|/)claude-(?:opus-4-(?:5|6|7|8)|sonnet-4-6)$",
         "tool_version": "computer_20251124",
@@ -148,7 +154,7 @@ def _get_tool_config_for_model(
 
 def _model_rejects_temperature(model: str) -> bool:
     """Return whether the model rejects an explicit ``temperature`` param."""
-    return bool(re.search(r"(?:^|/)claude-opus-4-(?:7|8)$", model, re.IGNORECASE))
+    return bool(re.search(r"(?:^|/)claude-opus-(?:4-(?:7|8)|5)$", model, re.IGNORECASE))
 
 
 def _extra_tool_names(metadata: LiteBaseMetadata) -> frozenset[str]:
@@ -349,7 +355,7 @@ class _ClaudeBaseAgent(BaseAgent):
         }
 
     async def _acompletion_with_retry(self, **api_kwargs: Any) -> Any:
-        """wrap ``litellm.acompletion`` with capped exp backoff + jitter retry.
+        """Call the Claude transport with capped exp backoff + jitter retry.
 
         Delegates to the shared ``acompletion_with_retry`` (single source of
         truth for the backoff formula). Retries on any Exception up to
@@ -359,8 +365,16 @@ class _ClaudeBaseAgent(BaseAgent):
         """
         import litellm  # lazy — kept off the module-import path (see top-of-file note)
 
+        completion = (
+            acompletion_with_computer_toolset
+            if any(
+                tool.get("type") == "computer_toolset_20260801"
+                for tool in api_kwargs.get("tools", [])
+            )
+            else litellm.acompletion
+        )
         return await acompletion_with_retry(
-            litellm.acompletion,
+            completion,
             max_retries=int(self.api_retry_max),
             base_delay=float(self.api_retry_base_delay),
             max_delay=float(self.api_retry_max_delay),
@@ -462,7 +476,7 @@ class _ClaudeBaseAgent(BaseAgent):
 class ClaudeDesktopUseAgent(_ClaudeBaseAgent, key=r"claude@(desktop|browser)@use"):
     """Self-contained Claude computer-use agent.
 
-    Manages the Anthropic API loop directly via liteLLM. No adapter,
+    Uses the Anthropic SDK for native toolsets and LiteLLM for older tools. No adapter,
     no processor, no generate_fn — all logic is self-contained.
 
     Args:
@@ -515,10 +529,10 @@ class ClaudeDesktopUseAgent(_ClaudeBaseAgent, key=r"claude@(desktop|browser)@use
     def _build_beta_header(self, tool_config: dict[str, str]) -> str:
         """Build the comma-separated anthropic-beta header value.
 
-        Always includes the computer-use beta. Adds prompt-caching and/or
-        token-efficient-tools betas when their kwargs are on.
+        Includes the selected computer-use beta, if required, plus optional
+        prompt-caching and token-efficient-tools betas.
         """
-        betas: list[str] = [tool_config["beta_flag"]]
+        betas: list[str] = [tool_config["beta_flag"]] if tool_config["beta_flag"] else []
         if self.api_kwargs.get("prompt_caching"):
             # caching requires its own beta flag to actually activate
             # cache_control breakpoints server-side.
@@ -564,11 +578,17 @@ class ClaudeDesktopUseAgent(_ClaudeBaseAgent, key=r"claude@(desktop|browser)@use
     ) -> dict[str, Any]:
         """The Anthropic native computer tool schema.
 
-        Uses the liteLLM-wrapped (OpenAI-style) schema which liteLLM
-        translates to Anthropic's native flat form under the hood. Verified
-        lossless for ``display_width_px`` / ``display_height_px`` /
-        ``display_number`` in production.
+        Opus 5 uses a native toolset; older computer tools use LiteLLM's wrapper
+        with explicit display dimensions. Toolset coordinates follow the image.
         """
+        if tool_config["tool_version"] == "computer_toolset_20260801":
+            return {
+                "type": "computer_toolset_20260801",
+                "configs": {
+                    "zoom": {"enabled": False},
+                    "cursor_position": {"enabled": False},
+                },
+            }
         return {
             "type": tool_config["tool_version"],
             "function": {
@@ -971,6 +991,10 @@ class ClaudeDesktopGroundingPointAgent(
         default_factory=ClaudeDesktopGroundingPointActionSpace
     )
     system_prompt: str | None = CLAUDE_GROUNDING_SYSTEM_PROMPT
+
+    def _computer_tool_config(self) -> dict[str, str]:
+        """Grounding uses function tools and needs no native computer version."""
+        return {}
 
     def _build_tools(
         self,
