@@ -47,6 +47,7 @@ from lite.agents.core.action_space.utils.grounding_point import (
 )
 from lite.core.tools.action_space import (
     merge_adjacent_lite_action_batches,
+    normalize_keys,
     pixel_to_norm,
 )
 from lite.core.tools.action_space.batches import LITE_MOBILE_ACTION_BATCH_TOOL_NAME
@@ -386,31 +387,54 @@ class ClaudeDesktopActionSpace(BaseActionSpace, key=r"claude@(desktop|browser)")
                 raise ModelToolCallParseError(f"{action_type} requires {key}")
             return None
 
-        def _string_arg(key: str) -> str:
+        def _keys_arg(key: str) -> list[str]:
             value = action.get(key, "")
-            if value and not isinstance(value, str):
+            if not isinstance(value, str):
                 raise ModelToolCallParseError(f"{action_type} requires string {key}")
-            return value
+            try:
+                return normalize_keys(value)
+            except ValueError as exc:
+                raise ModelToolCallParseError(str(exc)) from exc
+
+        def _mouse_action(call: dict[str, Any]) -> list[dict[str, Any]]:
+            if "text" not in action or action["text"] == "":
+                return [call]
+            keys = _keys_arg("text")
+            if not set(keys) <= {"shift", "ctrl", "alt", "meta"}:
+                raise ModelToolCallParseError(f"{action_type} requires modifier keys in text")
+            return [
+                LiteDesktopActionSpace.key_down(keys=keys),
+                call,
+                LiteDesktopActionSpace.key_up(keys=keys),
+            ]
 
         if action_type in ("left_click", "click"):
-            return [LiteDesktopActionSpace.click(coordinate=_coord(required=True))]
+            return _mouse_action(LiteDesktopActionSpace.click(coordinate=_coord(required=True)))
 
         elif action_type == "right_click":
-            return [LiteDesktopActionSpace.click(coordinate=_coord(required=True), button="right")]
+            return _mouse_action(
+                LiteDesktopActionSpace.click(coordinate=_coord(required=True), button="right")
+            )
 
         elif action_type == "middle_click":
-            return [LiteDesktopActionSpace.click(coordinate=_coord(required=True), button="middle")]
+            return _mouse_action(
+                LiteDesktopActionSpace.click(coordinate=_coord(required=True), button="middle")
+            )
 
         elif action_type == "double_click":
-            return [LiteDesktopActionSpace.click(coordinate=_coord(required=True), clicks=2)]
+            return _mouse_action(
+                LiteDesktopActionSpace.click(coordinate=_coord(required=True), clicks=2)
+            )
 
         elif action_type in ("type", "type_text"):
             return [LiteDesktopActionSpace.type(text=action.get("text", ""))]
 
         elif action_type in ("key", "keypress", "hotkey"):
-            key_text = _string_arg("text")
-            keys = key_text if key_text else []
-            return [LiteDesktopActionSpace.key(keys=keys)]
+            keys = _keys_arg("text")
+            repeat = action.get("repeat", 1)
+            if type(repeat) is not int or not 1 <= repeat <= 100:
+                raise ModelToolCallParseError("key requires repeat between 1 and 100")
+            return [LiteDesktopActionSpace.key(keys=keys) for _ in range(repeat)]
 
         elif action_type == "scroll":
             coord = _coord()
@@ -422,13 +446,13 @@ class ClaudeDesktopActionSpace(BaseActionSpace, key=r"claude@(desktop|browser)")
                     key="scroll_amount",
                 )
             )
-            return [
+            return _mouse_action(
                 LiteDesktopActionSpace.scroll(
                     direction=direction,
                     amount=amount,
                     coordinate=coord,
                 )
-            ]
+            )
 
         elif action_type in ("left_click_drag", "drag"):
             start = _coord("start_coordinate")
@@ -440,12 +464,12 @@ class ClaudeDesktopActionSpace(BaseActionSpace, key=r"claude@(desktop|browser)")
                 raise ModelToolCallParseError(
                     f"{action_type} requires end_coordinate or coordinate"
                 )
-            return [
+            return _mouse_action(
                 LiteDesktopActionSpace.drag(
                     coordinate=end,
                     start_coordinate=start,
                 )
-            ]
+            )
 
         elif action_type in ("mouse_move", "move_cursor", "move"):
             return [LiteDesktopActionSpace.mouse_move(coordinate=_coord(required=True))]
@@ -454,7 +478,9 @@ class ClaudeDesktopActionSpace(BaseActionSpace, key=r"claude@(desktop|browser)")
             return [LiteDesktopActionSpace.screenshot()]
 
         elif action_type == "triple_click":
-            return [LiteDesktopActionSpace.click(coordinate=_coord(required=True), clicks=3)]
+            return _mouse_action(
+                LiteDesktopActionSpace.click(coordinate=_coord(required=True), clicks=3)
+            )
 
         elif action_type == "wait":
             duration = _require_number(
@@ -465,8 +491,7 @@ class ClaudeDesktopActionSpace(BaseActionSpace, key=r"claude@(desktop|browser)")
             return [LiteDesktopActionSpace.wait(duration=float(duration))]
 
         elif action_type == "hold_key":
-            key_text = _string_arg("key")
-            keys = key_text if key_text else []
+            keys = _keys_arg("text" if "text" in action else "key")
             duration = _require_number(
                 action.get("duration", 1.0),
                 action_type=action_type,
