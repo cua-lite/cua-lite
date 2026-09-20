@@ -944,6 +944,7 @@ gym = [
     { name = "zstandard", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 quick-start = [
+    { name = "anthropic", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "litellm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "sglang", extra = ["all"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -952,6 +953,7 @@ quick-start = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anthropic", marker = "extra == 'quick-start'", specifier = ">=0.97" },
     { name = "datasets", marker = "extra == 'data'", specifier = ">=4.8.5" },
     { name = "docker", marker = "extra == 'gym'", specifier = ">=7.0" },
     { name = "fastapi", marker = "extra == 'gym'", specifier = ">=0.110" },

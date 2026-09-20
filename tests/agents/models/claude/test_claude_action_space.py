@@ -154,6 +154,8 @@ def test_claude_mobile_filter_keeps_extras_even_with_empty_valid_actions() -> No
         ("ctrl+-", ["ctrl", "-"]),
         ("ctrl+=", ["ctrl", "="]),
         ("ctrl+,", ["ctrl", ","]),
+        ("Next", ["pagedown"]),
+        ("Prior", ["pageup"]),
     ],
 )
 def test_claude_desktop_key_text_uses_core_key_grammar(text, expected):
@@ -196,7 +198,7 @@ def test_claude_desktop_hold_key_text_uses_core_key_grammar(text, expected):
 def test_claude_desktop_key_actions_reject_phrase_like_strings(action, key_arg, raw_keys):
     space = ClaudeDesktopActionSpace()
 
-    with pytest.raises(ValueError, match="unknown key token"):
+    with pytest.raises(ModelToolCallParseError, match="unknown key token"):
         space.convert_tool_calls_from_agent(
             [{"action": action, key_arg: raw_keys, "duration": 2.0}]
         )
@@ -210,6 +212,69 @@ def test_claude_desktop_key_actions_reject_non_string_payload(action, key_arg):
         space.convert_tool_calls_from_agent(
             [{"action": action, key_arg: ["ctrl", "c"], "duration": 2.0}]
         )
+
+
+@pytest.mark.parametrize("action", ["key", "hold_key"])
+def test_claude_desktop_key_constructor_errors_stay_loud(monkeypatch, action):
+    def broken_constructor(**kwargs):
+        raise ValueError("internal converter bug")
+
+    monkeypatch.setattr(
+        f"lite.agents.models.claude.action_space.LiteDesktopActionSpace.{action}",
+        broken_constructor,
+    )
+    with pytest.raises(ValueError, match="internal converter bug") as caught:
+        ClaudeDesktopActionSpace().convert_tool_calls_from_agent(
+            [{"action": action, "text": "Return", "duration": 2.0}]
+        )
+    assert not isinstance(caught.value, ModelToolCallParseError)
+
+
+def test_claude_desktop_key_repeat_and_hold_text():
+    space = ClaudeDesktopActionSpace()
+    repeated = space.convert_tool_calls_from_agent([{"action": "key", "text": "Tab", "repeat": 3}])
+    assert tool_call_arguments(repeated[0])["actions"] == [{"action": "key", "keys": ["tab"]}] * 3
+    held = space.convert_tool_calls_from_agent(
+        [{"action": "hold_key", "text": "Shift", "duration": 2}]
+    )
+    assert _single_desktop_action(held) == {
+        "action": "hold_key", "keys": ["shift"], "duration": 2.0,
+    }
+
+
+@pytest.mark.parametrize("repeat", [0, 101, True, 1.5])
+def test_claude_desktop_rejects_invalid_repeat(repeat):
+    with pytest.raises(ModelToolCallParseError, match="repeat"):
+        ClaudeDesktopActionSpace().convert_tool_calls_from_agent(
+            [{"action": "key", "text": "Tab", "repeat": repeat}]
+        )
+
+
+@pytest.mark.parametrize(
+    "payload,expected_action",
+    [
+        ({"action": "left_click", "coordinate": [500, 300]}, "click"),
+        ({"action": "right_click", "coordinate": [500, 300]}, "click"),
+        ({"action": "middle_click", "coordinate": [500, 300]}, "click"),
+        ({"action": "double_click", "coordinate": [500, 300]}, "click"),
+        ({"action": "triple_click", "coordinate": [500, 300]}, "click"),
+        ({"action": "scroll", "scroll_direction": "down", "scroll_amount": 2}, "scroll"),
+        (
+            {"action": "left_click_drag", "start_coordinate": [0, 0], "coordinate": [500, 500]},
+            "drag",
+        ),
+    ],
+)
+def test_claude_mouse_modifiers_surround_the_action(payload, expected_action):
+    out = ClaudeDesktopActionSpace().convert_tool_calls_from_agent(
+        [{**payload, "text": "ctrl+shift"}], resolution=(1000, 1000)
+    )
+    actions = tool_call_arguments(out[0])["actions"]
+    assert actions[0] == {"action": "key_down", "keys": ["ctrl", "shift"]}
+    assert actions[1]["action"] == expected_action
+    assert actions[2] == {"action": "key_up", "keys": ["ctrl", "shift"]}
+    if expected_action == "click":
+        assert actions[1]["coordinate"] == [500, 300]
 
 
 class TestRoundTripPixel:

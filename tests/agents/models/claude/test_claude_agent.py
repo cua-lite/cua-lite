@@ -49,6 +49,7 @@ from lite.agents.models.claude.utils.history import (
 from lite.agents.models.claude.utils.parse import (
     parse_response_with_provenance,
 )
+from lite.agents.models.claude.utils.toolset import _messages_for_anthropic
 from lite.core import (
     STATUS_COMPLETED,
     STATUS_FAILED,
@@ -522,13 +523,19 @@ class TestModelToolMapping:
             "claude-opus-4-6",
             "claude-opus-4-7",
             "claude-opus-4-8",
+            "claude-opus-5",
             "claude-sonnet-4-6",
             "anthropic/claude-opus-4-8",
         ],
     )
     async def test_current_models_use_current_computer_use_tool(self, model_id, monkeypatch):
         mock = AsyncMock(return_value=_fake_completion_response())
-        monkeypatch.setattr("litellm.acompletion", mock)
+        if model_id == "claude-opus-5":
+            monkeypatch.setattr(
+                "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
+            )
+        else:
+            monkeypatch.setattr("litellm.acompletion", mock)
 
         agent = ClaudeDesktopUseAgent(
             model_id=model_id,
@@ -536,8 +543,74 @@ class TestModelToolMapping:
         )
         await agent.sample(_FakeEnv(terminate_after=1), max_steps=2)
 
-        assert mock.call_args.kwargs["tools"][0]["type"] == "computer_20251124"
-        assert mock.call_args.kwargs["headers"]["anthropic-beta"] == "computer-use-2025-11-24"
+        if model_id == "claude-opus-5":
+            assert mock.call_args.kwargs["tools"][0] == {
+                "type": "computer_toolset_20260801",
+                "configs": {
+                    "zoom": {"enabled": False},
+                    "cursor_position": {"enabled": False},
+                },
+            }
+            assert "computer-use-2025-11-24" not in mock.call_args.kwargs.get(
+                "headers", {}
+            ).get("anthropic-beta", "")
+        else:
+            assert mock.call_args.kwargs["tools"][0]["type"] == "computer_20251124"
+            assert mock.call_args.kwargs["headers"]["anthropic-beta"] == "computer-use-2025-11-24"
+
+    async def test_opus5_toolset_replays_screenshot_with_toolset_name(self, monkeypatch):
+        mock = AsyncMock(side_effect=[
+            _fake_completion_response(
+                content=[{
+                    "type": "tool_use", "id": "toolu_screenshot", "name": "screenshot",
+                    "input": {}, "toolset_name": "computer",
+                }],
+                finish_reason="tool_calls",
+            ),
+            _fake_completion_response(content="done"),
+        ])
+        monkeypatch.setattr(
+            "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
+        )
+        agent = ClaudeDesktopUseAgent(model_id="claude-opus-5")
+        await agent.sample(_FakeEnv(terminate_after=2), max_steps=2)
+
+        _, wire_messages = _messages_for_anthropic(mock.call_args_list[1].kwargs["messages"])
+        tool_use = next(b for m in wire_messages for b in m["content"]
+                        if isinstance(m["content"], list) and b.get("type") == "tool_use")
+        tool_result = next(b for m in wire_messages for b in m["content"]
+                           if isinstance(m["content"], list) and b.get("type") == "tool_result")
+        assert (tool_use["name"], tool_use["toolset_name"]) == ("screenshot", "computer")
+        assert tool_result["tool_use_id"] == "toolu_screenshot"
+        assert tool_result["toolset_name"] == "computer"
+        assert any(b["type"] == "image" for b in tool_result["content"])
+
+    async def test_opus5_invalid_action_feedback_keeps_toolset_name(self, monkeypatch):
+        mock = AsyncMock(side_effect=[
+            _fake_completion_response(
+                content=[{
+                    "type": "tool_use", "id": "toolu_bad", "name": "left_click",
+                    "input": {}, "toolset_name": "computer",
+                }, {
+                    "type": "tool_use", "id": "toolu_good", "name": "screenshot",
+                    "input": {}, "toolset_name": "computer",
+                }],
+                finish_reason="tool_calls",
+            ),
+            _fake_completion_response(content="done"),
+        ])
+        monkeypatch.setattr(
+            "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
+        )
+        await ClaudeDesktopUseAgent(model_id="claude-opus-5").sample(
+            _FakeEnv(terminate_after=2), max_steps=2
+        )
+        _, wire_messages = _messages_for_anthropic(mock.call_args_list[1].kwargs["messages"])
+        result = next(b for m in wire_messages if isinstance(m["content"], list)
+                      for b in m["content"] if b.get("type") == "tool_result")
+        assert result["tool_use_id"] == "toolu_bad"
+        assert result["toolset_name"] == "computer"
+        assert result["is_error"] is True
 
     @pytest.mark.parametrize(
         "model_id",
@@ -932,9 +1005,10 @@ class TestToolSchema:
 
         assert any(str(t.get("type", "")).startswith("computer_") for t in tools)
 
-    async def test_grounding_left_click_schema_is_action_space_owned(self, monkeypatch):
+    @pytest.mark.parametrize("model_id", ["claude-opus-4-6", "claude-opus-5"])
+    async def test_grounding_left_click_schema_is_action_space_owned(self, monkeypatch, model_id):
         """Grounding declares only the action-space-owned left_click function."""
-        agent = ClaudeDesktopGroundingPointAgent(model_id="claude-opus-4-6")
+        agent = ClaudeDesktopGroundingPointAgent(model_id=model_id)
         owner_schema = type(agent.action_space).get_tool_schema("left_click")
         assert owner_schema is not None
 
@@ -1193,7 +1267,7 @@ class TestModelRejectsTemperature:
 
     @pytest.mark.parametrize(
         "model_id",
-        ["claude-opus-4-7", "claude-opus-4-8", "anthropic/claude-opus-4-7"],
+        ["claude-opus-4-7", "claude-opus-4-8", "claude-opus-5", "anthropic/claude-opus-4-7"],
     )
     async def test_adaptive_opus_rejects_temperature(self, monkeypatch, model_id):
         mock = AsyncMock(return_value=_fake_completion_response())
@@ -1226,12 +1300,17 @@ class TestModelRejectsTemperature:
 
     @pytest.mark.parametrize(
         "model_id",
-        ["claude-opus-4-7", "claude-opus-4-8", "anthropic/claude-opus-4-8"],
+        ["claude-opus-4-7", "claude-opus-4-8", "claude-opus-5", "anthropic/claude-opus-4-8"],
     )
     async def test_adaptive_opus_with_thinking_omits_temperature(self, monkeypatch, model_id):
         """Adaptive thinking must not add fixed-budget temperature policy."""
         mock = AsyncMock(return_value=_fake_completion_response())
-        monkeypatch.setattr("litellm.acompletion", mock)
+        if model_id == "claude-opus-5":
+            monkeypatch.setattr(
+                "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
+            )
+        else:
+            monkeypatch.setattr("litellm.acompletion", mock)
 
         agent = ClaudeDesktopUseAgent(
             model_id=model_id,
@@ -1777,6 +1856,30 @@ class TestCanonicalPersistence:
 
         assert msg["tool_calls"] == []
         assert pop_model_output_error(msg)
+
+    @pytest.mark.parametrize(
+        "tool_name,payload",
+        [
+            ("computer", {"action": "key", "text": "Down shift"}),
+            ("key", {"text": "Down shift"}),
+        ],
+    )
+    def test_desktop_parser_reports_malformed_key_to_model(self, tool_name, payload):
+        response = _fake_completion_response(
+            tool_calls=[_fake_tool_call(tool_name, json.dumps(payload), id_="toolu_bad_key")]
+        )
+
+        parsed = parse_response_with_provenance(
+            response,
+            scale_x=1.0,
+            scale_y=1.0,
+            action_space=ClaudeDesktopActionSpace(),
+            resolution=(1024, 768),
+        )
+
+        assert parsed.message["tool_calls"] == []
+        assert "unknown key token" in parsed.provider_errors["toolu_bad_key"]
+        assert pop_model_output_error(parsed.message)
 
     def test_desktop_parser_marks_malformed_scaled_coordinate_as_model_output_error(self):
         response = _fake_completion_response(
