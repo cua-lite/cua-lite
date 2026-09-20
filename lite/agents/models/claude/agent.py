@@ -66,6 +66,7 @@ from lite.agents.models.claude.utils.parse import (
     parse_mobile_response_with_provenance,
     parse_response_with_provenance,
 )
+from lite.agents.models.claude.utils.toolset import acompletion_with_computer_toolset
 from lite.core import (
     LiteMessage,
     LiteRLSample,
@@ -91,6 +92,11 @@ logger = logging.getLogger(__name__)
 
 # Model version -> computer tool version + beta flag
 MODEL_TOOL_MAPPING = [
+    {
+        "pattern": r"(?:^|/)claude-(?:opus|sonnet)-5$",
+        "tool_version": "computer_toolset_20260801",
+        "beta_flag": "",
+    },
     {
         "pattern": r"(?:^|/)claude-(?:opus-4-(?:5|6|7|8)|sonnet-4-6)$",
         "tool_version": "computer_20251124",
@@ -147,8 +153,10 @@ def _get_tool_config_for_model(
 
 
 def _model_rejects_temperature(model: str) -> bool:
-    """Return whether the model rejects an explicit ``temperature`` param."""
-    return bool(re.search(r"(?:^|/)claude-opus-4-(?:7|8)$", model, re.IGNORECASE))
+    """Models for which this agent requires omitting explicit ``temperature``."""
+    return bool(
+        re.search(r"(?:^|/)claude-(?:opus-4-(?:7|8)|(?:opus|sonnet)-5)$", model, re.IGNORECASE)
+    )
 
 
 def _extra_tool_names(metadata: LiteBaseMetadata) -> frozenset[str]:
@@ -349,7 +357,7 @@ class _ClaudeBaseAgent(BaseAgent):
         }
 
     async def _acompletion_with_retry(self, **api_kwargs: Any) -> Any:
-        """wrap ``litellm.acompletion`` with capped exp backoff + jitter retry.
+        """Call the Claude transport with capped exp backoff + jitter retry.
 
         Delegates to the shared ``acompletion_with_retry`` (single source of
         truth for the backoff formula). Retries on any Exception up to
@@ -359,8 +367,19 @@ class _ClaudeBaseAgent(BaseAgent):
         """
         import litellm  # lazy — kept off the module-import path (see top-of-file note)
 
+        if any(
+            tool.get("type") == "computer_toolset_20260801"
+            for tool in api_kwargs.get("tools", [])
+        ):
+            completion = acompletion_with_computer_toolset
+        else:
+            completion = litellm.acompletion
+            # LiteLLM's bundled model metadata can lag supported Claude releases.
+            api_kwargs["custom_llm_provider"] = "anthropic"
+            if "thinking" in api_kwargs:
+                api_kwargs["allowed_openai_params"] = ["thinking"]
         return await acompletion_with_retry(
-            litellm.acompletion,
+            completion,
             max_retries=int(self.api_retry_max),
             base_delay=float(self.api_retry_base_delay),
             max_delay=float(self.api_retry_max_delay),
@@ -462,7 +481,7 @@ class _ClaudeBaseAgent(BaseAgent):
 class ClaudeDesktopUseAgent(_ClaudeBaseAgent, key=r"claude@(desktop|browser)@use"):
     """Self-contained Claude computer-use agent.
 
-    Manages the Anthropic API loop directly via liteLLM. No adapter,
+    Uses the Anthropic SDK for native toolsets and LiteLLM for older tools. No adapter,
     no processor, no generate_fn — all logic is self-contained.
 
     Args:
@@ -485,7 +504,7 @@ class ClaudeDesktopUseAgent(_ClaudeBaseAgent, key=r"claude@(desktop|browser)@use
             "required"|"auto"|"none"|dict, "cache_breakpoints": int,
             "token_efficient_tools_beta": bool, "computer_tool_version": str,
             "computer_use_beta_flag": str}``. ``temperature`` is not set by
-            default. Adaptive-only Opus models reject explicit temperature;
+            default. This agent rejects explicit temperature for adaptive-only models;
             fixed-budget thinking requires ``temperature=1.0`` and
             ``max_tokens > thinking_budget``; forced ``tool_choice`` rejects
             positive ``thinking_budget`` before the API request.
@@ -515,10 +534,10 @@ class ClaudeDesktopUseAgent(_ClaudeBaseAgent, key=r"claude@(desktop|browser)@use
     def _build_beta_header(self, tool_config: dict[str, str]) -> str:
         """Build the comma-separated anthropic-beta header value.
 
-        Always includes the computer-use beta. Adds prompt-caching and/or
-        token-efficient-tools betas when their kwargs are on.
+        Includes the selected computer-use beta, if required, plus optional
+        prompt-caching and token-efficient-tools betas.
         """
-        betas: list[str] = [tool_config["beta_flag"]]
+        betas: list[str] = [tool_config["beta_flag"]] if tool_config["beta_flag"] else []
         if self.api_kwargs.get("prompt_caching"):
             # caching requires its own beta flag to actually activate
             # cache_control breakpoints server-side.
@@ -564,11 +583,18 @@ class ClaudeDesktopUseAgent(_ClaudeBaseAgent, key=r"claude@(desktop|browser)@use
     ) -> dict[str, Any]:
         """The Anthropic native computer tool schema.
 
-        Uses the liteLLM-wrapped (OpenAI-style) schema which liteLLM
-        translates to Anthropic's native flat form under the hood. Verified
-        lossless for ``display_width_px`` / ``display_height_px`` /
-        ``display_number`` in production.
+        Opus 5 and Sonnet 5 use a native toolset; older computer tools use
+        LiteLLM's wrapper with explicit display dimensions. Toolset coordinates
+        follow the image.
         """
+        if tool_config["tool_version"] == "computer_toolset_20260801":
+            return {
+                "type": "computer_toolset_20260801",
+                "configs": {
+                    "zoom": {"enabled": False},
+                    "cursor_position": {"enabled": False},
+                },
+            }
         return {
             "type": tool_config["tool_version"],
             "function": {
@@ -917,7 +943,7 @@ CLAUDE_MOBILE_API_KWARGS_DEFAULTS: dict[str, Any] = {
 #      model's ``left_click(coordinate=[x,y])`` → cua-lite ``point(coord)``.
 #   2. Default ``system_prompt`` → focused grounding instruction so YAML
 #      configs don't need to repeat it.
-#   3. ``api_kwargs`` defaults: ``thinking_budget=0`` (no extended thinking),
+#   3. ``api_kwargs`` defaults: ``thinking_budget=0`` (omit the thinking field),
 #      ``effort=low`` (the family ships medium), and a smaller ``max_tokens``
 #      budget — the task is one click, no reasoning needed.
 #   4. ``_build_tools`` returns a single click-shaped function tool
@@ -939,7 +965,7 @@ CLAUDE_GROUNDING_SYSTEM_PROMPT = (
 CLAUDE_GROUNDING_API_KWARGS_DEFAULTS: dict[str, Any] = {
     **CLAUDE_API_KWARGS_DEFAULTS,
     "max_tokens": 1024,
-    "thinking_budget": 0,  # disable extended thinking on grounding
+    "thinking_budget": 0,  # omit thinking; Opus 5 / Sonnet 5 default to adaptive
     # One click, no reasoning wanted -- so grounding does NOT inherit the
     # family's ``medium``. ``low`` is the floor Claude's effort scale offers
     # (there is no ``none``), and effort shapes tool-call tokens too, which is
@@ -971,6 +997,10 @@ class ClaudeDesktopGroundingPointAgent(
         default_factory=ClaudeDesktopGroundingPointActionSpace
     )
     system_prompt: str | None = CLAUDE_GROUNDING_SYSTEM_PROMPT
+
+    def _computer_tool_config(self) -> dict[str, str]:
+        """Grounding uses function tools and needs no native computer version."""
+        return {}
 
     def _build_tools(
         self,

@@ -104,6 +104,7 @@ def append_provider_assistant_message(
         {
             "id": tc.provider_id,
             "type": "function",
+            **({"toolset_name": tc.toolset_name} if tc.toolset_name else {}),
             "function": {
                 "name": tc.name,
                 "arguments": tc.replay_arguments,
@@ -355,13 +356,15 @@ async def append_desktop_provider_feedback(
                         {
                             "role": "tool",
                             "name": tc.name,
+                            **({"toolset_name": tc.toolset_name} if tc.toolset_name else {}),
                             "tool_call_id": tc.provider_id,
                             "content": provider_error,
+                            **({"is_error": True} if tc.toolset_name else {}),
                         }
                     )
                     continue
 
-                if tc.name == "computer":
+                if tc.name == "computer" or tc.toolset_name == "computer":
                     provider_visible_result_images = _provider_visible_result_image_pairs(
                         results_by_call_id=results_by_call_id,
                         result_image_indices_by_call_id=result_image_indices_by_call_id,
@@ -398,7 +401,8 @@ async def append_desktop_provider_feedback(
                     completion_messages.append(
                         {
                             "role": "tool",
-                            "name": "computer",
+                            "name": tc.name,
+                            **({"toolset_name": tc.toolset_name} if tc.toolset_name else {}),
                             "tool_call_id": tc.provider_id,
                             "content": content,
                         }

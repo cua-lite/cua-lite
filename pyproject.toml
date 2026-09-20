@@ -29,6 +29,7 @@ quick-start = [
     # staying on the CUDA-12 host stack.
     "sglang[all]",
     "litellm>=1.72",
+    "anthropic>=0.97",
 ]
 
 # Env-server/direct-gym runtime. Env install.sh scripts install into this venv;
