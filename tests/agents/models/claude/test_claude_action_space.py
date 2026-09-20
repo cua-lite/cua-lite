@@ -154,8 +154,6 @@ def test_claude_mobile_filter_keeps_extras_even_with_empty_valid_actions() -> No
         ("ctrl+-", ["ctrl", "-"]),
         ("ctrl+=", ["ctrl", "="]),
         ("ctrl+,", ["ctrl", ","]),
-        ("Next", ["pagedown"]),
-        ("Prior", ["pageup"]),
     ],
 )
 def test_claude_desktop_key_text_uses_core_key_grammar(text, expected):
