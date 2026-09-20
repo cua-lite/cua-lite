@@ -698,20 +698,44 @@ the universe in a stable order and the complement preserves it.
 
 Most of this run is `run_grpo.sh`'s defaults. The previous campaign overrode the eval knobs; this
 one stops overriding them, so "greedy eval, one rollout per task" is not a new choice here but
-the shipped one. Four knobs deviate, plus the hardware and identity settings (`NUM_TRAIN_GPUS`,
+the shipped one. Three knobs deviate, plus the hardware and identity settings (`NUM_TRAIN_GPUS`,
 `TP_SIZE`, `MBS`, `MODEL_ID`, `HF_CKPT`, the two manifests, `CONFIG_PATH`, the save paths):
 
 | knob | value | default | why deviate |
 |---|---|---|---|
 | `ENV_CONCURRENCY` | `24` | 32 | what the site-holdout campaign ran at on 8xA100; the pods are known-good there |
 | `ROLLOUT_MAX_RESPONSE_LEN` | `2048` | 512 | the `.reasoning` surface emits `<think>` before its calls |
-| `LR` | `2e-6` | 1e-6 | the campaign's value, kept because it did move the policy over 30 rollouts |
 | `CUA_LITE_MULTIMODAL_LAZY_EXPAND` | `1` | 0 | expands multimodal rollout data lazily; what the campaign ran |
 
 The rest are defaults, written out so a later change to one cannot silently change this
-experiment: `ROLLOUT_BATCH_SIZE=16` and `N_SAMPLES_PER_PROMPT=8` (128 trajectories per rollout),
-`NUM_STEPS_PER_ROLLOUT=8` (global batch 16), `EVAL_TEMPERATURE=0`, `N_SAMPLES_PER_EVAL_PROMPT=1`,
-`EVAL_INTERVAL=SAVE_INTERVAL=5`, `SKIP_EVAL_BEFORE_TRAIN=0`.
+experiment: `LR=1e-6`, `ROLLOUT_BATCH_SIZE=16` and `N_SAMPLES_PER_PROMPT=8` (128 trajectories per
+rollout), `NUM_STEPS_PER_ROLLOUT=8` (global batch 16), `EVAL_TEMPERATURE=0`,
+`N_SAMPLES_PER_EVAL_PROMPT=1`, `EVAL_INTERVAL=SAVE_INTERVAL=5`, `SKIP_EVAL_BEFORE_TRAIN=0`.
+
+**`LR` was `2e-6` here, inherited from the site-holdout campaign; it is now the shipped `1e-6`.**
+Matched rollout for rollout on this manifest, one 1e-6 seed beat *both* 2e-6 seeds and by a
+widening margin — tasks gained out of 128 on the eval manifest, bracketed where a rollout lost
+tasks to environment errors:
+
+| rollout | 2e-6 seed A | 2e-6 seed B | 1e-6 |
+|---|---|---|---|
+| 5 | +3 .. +6 | +4 .. +8 | **+11 .. +14** |
+| 10 | +6 .. +7 | +8 | **+17 .. +18** |
+| 15 | — | — | **+21 .. +22** |
+
+Two agreeing control seeds against one treatment seed, so the ordering is better evidenced than
+the size of the gap. The failure mode matters more than the margin: both 2e-6 seeds drifted into
+degenerate policies — one inflating its responses from 108 to 229 tokens, the other shrinking
+them from 122 to 76 — and **both ended below their own step-0 baseline**. 2e-6 is not a slower
+version of this run, it is a different regime.
+
+Do not read the in-training `rollout/raw_reward` curve as a convergence curve here. With 494
+tasks and 16 prompts per rollout one epoch is 31 rollouts, so no training task repeats for the
+whole useful range of this run: that curve is a rolling *held-out* score at temperature 1.0, on
+16 tasks, and its per-rollout spread (sd ~0.06) hides the trend for a dozen rollouts. Over the
+first 18 rollouts of the 1e-6 run it rose about +0.11 with a slope of +0.006 per rollout (t=2.1),
+while greedy eval on the fixed 128 rose +0.17. The fixed eval set is the instrument; the train
+curve is not.
 
 `NUM_ROLLOUT=60` is 960 task draws over 494 tasks, just under two epochs. It is an upper bound,
 not a target — the campaign's best checkpoints were early (`iter_5` .. `iter_13` of 29) and its
@@ -783,7 +807,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 MBS=1 \
   NUM_STEPS_PER_ROLLOUT=8 \
   ROLLOUT_MAX_RESPONSE_LEN=2048 \
   ROLLOUT_TEMPERATURE=1.0 \
-  LR=2e-6 \
+  LR=1e-6 \
   EVAL_TEMPERATURE=0 \
   N_SAMPLES_PER_EVAL_PROMPT=1 \
   CUA_LITE_MULTIMODAL_LAZY_EXPAND=1 \
