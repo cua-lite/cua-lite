@@ -37,6 +37,7 @@ class ClaudeProviderToolUse:
     source: Any
     source_type: str
     parse_error: str | None = None
+    toolset_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -132,7 +133,10 @@ def _claude_active_provider_tool_names(tools: list[dict[str, Any]]) -> frozenset
     for tool in tools:
         tool_type = str(tool.get("type", ""))
         function = tool.get("function") if isinstance(tool.get("function"), dict) else None
-        if tool_type.startswith("computer_"):
+        if tool_type == "computer_toolset_20260801":
+            names.update(ClaudeDesktopActionSpace.get_declared_action_schema_names())
+            names.update({"triple_click", "hold_key"})
+        elif tool_type.startswith("computer_"):
             names.add(str((function or {}).get("name") or "computer"))
         elif tool_type == "function" and function and function.get("name"):
             names.add(str(function["name"]))
@@ -240,6 +244,7 @@ def _normalize_content_tool_use(block: dict[str, Any]) -> ClaudeProviderToolUse:
         source=block,
         source_type="content_tool_use",
         parse_error=parse_error,
+        toolset_name=block.get("toolset_name"),
     )
 
 
@@ -408,7 +413,7 @@ def _parse_desktop_provider_tool_calls(
                 error = str(e)
                 parse_errors.append(error)
                 _record_provider_error(provider_errors, tc, error)
-        elif tc.name in extra_tool_names:
+        elif tc.name in extra_tool_names and tc.toolset_name != "computer":
             # An advertised env tool routes to the env by name. Argument
             # admission belongs to env ingress (``prepare_env_tool_calls``),
             # which answers a bad value with feedback keyed to this call id;

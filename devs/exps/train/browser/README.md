@@ -393,8 +393,8 @@ unset SGLANG_SERVER_URL
 : "${CUA_LITE_ENV_SERVER_URL:?paste export line from env-server shell}"
 : "${CUA_LITE_ENV_SERVER_TOKEN:?paste export line from env-server shell}"
 
-EPOCH=epoch_2
 DS=webgym_gpt5_5_nogoto_wvclean
+EPOCH=epoch_2
 CFG=devs/exps/train/browser/configs/qwen3_5
 PULL=.ckpts/pulled
 LOGS=.logs/rollout/Qwen_Qwen3.5-4B/webharbor.webvoyager
@@ -565,41 +565,43 @@ Reading the table:
 
 ### RL
 
-One GRPO run from the local **`gpt5_5` + `<think>` SFT checkpoint** trained with
-[`browser.use.i1.reasoning.yaml`](/devs/exps/train/browser/configs/qwen3_5/browser.use.i1.reasoning.yaml).
-Train online on WebGym `train` tasks with `difficulty <= 3`, and keep the in-training eval curve
-on the fixed 128-row WebVoyager read-only parquet from the SFT Eval block. This is a transfer run:
-WebGym supplies online reward; WebVoyager supplies the held-out browser navigation score.
+One GRPO run where **train and eval are the same env, split by task**: the 622 read-only
+WebVoyager tasks are partitioned into the fixed 128-row eval manifest and its 494-row complement.
+Read [docs/grpo.md](/docs/grpo.md) first for the Slime lifecycle and shared GRPO knobs; this block
+pins only the browser-specific choices.
 
-Read [docs/grpo.md](/docs/grpo.md) first for the Slime lifecycle and shared GRPO knobs. This block
-only pins the browser-specific choices.
+#### Why a task split rather than a site split
 
-> **Two envs, one run.** Training rows are `webgym@...`; eval rows are
-> `webharbor.webvoyager@...`. `ENV_ID=webgym` is still correct: it controls the run label, default
-> preflight env, and cleanup scope. The eval dataset label will therefore be `webgym_eval`, even
-> though the eval tasks are WebVoyager. The env-server must serve both envs:
-> `--env-ids webgym webharbor.webvoyager`.
+An earlier campaign held out four whole sites (165 tasks) and trained on the other eleven. It
+measured +0.02 .. +0.07 at t=1, but per site, on every arm and checkpoint of both stages:
+
+    booking  +0.21 .. +0.32        arxiv   ~0
+    espn     -0.03 .. -0.15        github  ~0
+
+One site carried all of it: with four held-out sites the effective sample size is nearer **4**
+than 165, which is why only two of eight scored checkpoints reached 2σ. Splitting by task over
+all 15 sites puts it back on the order of the task count, at the cost of a weaker claim —
+transfer to unseen *tasks*, not to unseen *sites*.
+
+**That campaign's `train457` overlaps this eval manifest on 88 of 128 tasks.** Its checkpoints
+must never fill the Results table above — two thirds of those prompts were in their training set,
+and the score would not show it.
 
 <details>
 <summary>Data</summary>
 
+The universe is defined by the registry, not a file: a task is read-only when its metadata
+carries no `mutating` flag. The train manifest is **exactly the complement** of the existing
+128-row eval sample — no sampling, no seed, a pure function of (registry, eval manifest).
+
 ```bash
 # --- ONE-TIME DATA BUILD; skip generation for any file that already exists ---
-# These parquet files are fixed experiment manifests under the repo, so Slime sees them at
+# Both parquets are fixed experiment manifests under the repo, so Slime sees them at
 # /workspaces/cua-lite/devs/exps/train/browser/data.
 DATA=devs/exps/train/browser/data
-TRAIN="$DATA/webgym.train.dle3.sample1024.seed42.parquet"
 EVAL="$DATA/webvoyager.eval128.readonly.seed42.parquet"
+TRAIN="$DATA/webvoyager.train494.readonly.parquet"
 mkdir -p "$DATA"
-
-if [ -e "$TRAIN" ]; then
-  echo "keep existing fixed train manifest: $TRAIN"
-else
-  uv run python -m lite.train.export.export_tasks \
-    --env-id webgym --split train --sample 1024 --seed 42 \
-    --filter "lambda m: m.others.get('difficulty', 0) <= 3" \
-    -o "$TRAIN"
-fi
 
 if [ -e "$EVAL" ]; then
   echo "keep existing fixed eval manifest: $EVAL"
@@ -610,58 +612,145 @@ else
     -o "$EVAL"
 fi
 
-uv run python - "$TRAIN" "$EVAL" <<'PY'
+if [ -e "$TRAIN" ]; then
+  echo "keep existing fixed train manifest: $TRAIN"
+else
+  # The universe, then everything the eval manifest does not claim. `export_tasks` has no
+  # --exclude, so the complement is taken here; it is a set difference, not a sample.
+  # A unique temp path and a chained `&&`: a fixed /tmp name can be unwritable or stale
+  # (the pods set fs.protected_regular=2 and run as a different user), and without the
+  # chain the second step would silently build the complement of whatever was left there.
+  UNIV=$(mktemp -t wv_readonly_universe.XXXXXX.parquet) && \
+  uv run python -m lite.train.export.export_tasks \
+    --env-id webharbor.webvoyager --split eval \
+    --filter "lambda m: not m.others.get('mutating')" \
+    -o "$UNIV" && \
+  uv run python - "$UNIV" "$EVAL" "$TRAIN" <<'PY' && rm -f "$UNIV"
 import sys
+
+import pyarrow.parquet as pq
+
+from lite.data.staging import coerce_meta
+from lite.utils.parquet import write_records_to_parquet
+
+universe, eval_path, out = sys.argv[1], sys.argv[2], sys.argv[3]
+held = {
+    coerce_meta(r["metadata"])["env_key"]
+    for r in pq.read_table(eval_path).to_pylist()
+}
+rows = pq.read_table(universe).to_pylist()
+records = [r for r in rows if coerce_meta(r["metadata"])["env_key"] not in held]
+# the same writer export_tasks uses, so the schema matches the eval manifest
+write_records_to_parquet(records, out)
+print(f"wrote {len(records)} of {len(rows)} read-only tasks to {out}")
+PY
+fi
+```
+
+The two manifests must partition the universe exactly, and the train side must still be
+read-only — a `mutating` task leaking in would train the policy on a site it can damage for
+every later task on that mirror.
+
+```bash
+uv run python - "$TRAIN" "$EVAL" <<'PY'
 import hashlib
+import sys
 
 import pandas as pd
 
 import lite.gym as gym
 from lite.data.staging import coerce_meta
 
-train = pd.read_parquet(sys.argv[1])
-eval_ = pd.read_parquet(sys.argv[2])
-train_keys = [coerce_meta(row["metadata"])["env_key"] for _, row in train.iterrows()]
-eval_keys = [coerce_meta(row["metadata"])["env_key"] for _, row in eval_.iterrows()]
-train_hash = hashlib.sha256("\n".join(train_keys).encode()).hexdigest()
-eval_hash = hashlib.sha256("\n".join(eval_keys).encode()).hexdigest()
 
-assert len(train) == 1024
-assert len(eval_) == 128
-assert all(key.startswith("webgym@") for key in train_keys)
-assert all(key.startswith("webharbor.webvoyager@") for key in eval_keys)
-assert all(
-    gym.registry.task_metadata("webgym", key.split("@", 1)[1]).others.get("difficulty", 0) <= 3
-    for key in train_keys
-)
-assert all(
-    not gym.registry.task_metadata("webharbor.webvoyager", key.split("@", 1)[1]).others.get("mutating")
-    for key in eval_keys
-)
-print(
-    "browser RL data ok: 1024 WebGym d<=3 train tasks, 128 WebVoyager read-only eval tasks, "
-    f"train_sha256={train_hash} eval_sha256={eval_hash}"
-)
+def keys(path):
+    df = pd.read_parquet(path)
+    return [coerce_meta(row["metadata"])["env_key"] for _, row in df.iterrows()]
+
+
+train_keys, eval_keys = keys(sys.argv[1]), keys(sys.argv[2])
+assert len(train_keys) == 494 and len(eval_keys) == 128
+assert not (set(train_keys) & set(eval_keys)), "train and eval share a task"
+assert len(set(train_keys) | set(eval_keys)) == 622, "the two do not cover the universe"
+for key in train_keys + eval_keys:
+    assert key.startswith("webharbor.webvoyager@")
+    task = key.split("@", 1)[1]
+    assert not gym.registry.task_metadata("webharbor.webvoyager", task).others.get("mutating")
+sites = {key.split("@", 1)[1].split(".")[0] for key in train_keys}
+assert len(sites) == 15, sites
+print("train env_key_sha256 =", hashlib.sha256("\n".join(train_keys).encode()).hexdigest())
+print("eval  env_key_sha256 =", hashlib.sha256("\n".join(eval_keys).encode()).hexdigest())
 PY
 ```
 
+The committed manifests are pinned at
+
+    train  494 tasks, 15 sites, 28-37 per site
+           env_key_sha256 8ad1c3415bfc5dc7854ae64964d501787aec01c1c34a6b3da3fe277776125039
+    eval   128 tasks, 15 sites
+           env_key_sha256 72fe8df6c2056f21548a8f808ff09923986a4b0cb197dd2ac8a3cc7591742c7c
+
+and two independent builds of the train manifest are byte-identical, because `export_tasks` emits
+the universe in a stable order and the complement preserves it.
+
 </details>
+
+#### Parameters, and why
+
+Most of this run is `run_grpo.sh`'s defaults. The previous campaign overrode the eval knobs; this
+one stops overriding them, so "greedy eval, one rollout per task" is not a new choice here but
+the shipped one. Four knobs deviate, plus the hardware and identity settings (`NUM_TRAIN_GPUS`,
+`TP_SIZE`, `MBS`, `MODEL_ID`, `HF_CKPT`, the two manifests, `CONFIG_PATH`, the save paths):
+
+| knob | value | default | why deviate |
+|---|---|---|---|
+| `ENV_CONCURRENCY` | `24` | 32 | what the site-holdout campaign ran at on 8xA100; the pods are known-good there |
+| `ROLLOUT_MAX_RESPONSE_LEN` | `2048` | 512 | the `.reasoning` surface emits `<think>` before its calls |
+| `LR` | `2e-6` | 1e-6 | the campaign's value, kept because it did move the policy over 30 rollouts |
+| `CUA_LITE_MULTIMODAL_LAZY_EXPAND` | `1` | 0 | expands multimodal rollout data lazily; what the campaign ran |
+
+The rest are defaults, written out so a later change to one cannot silently change this
+experiment: `ROLLOUT_BATCH_SIZE=16` and `N_SAMPLES_PER_PROMPT=8` (128 trajectories per rollout),
+`NUM_STEPS_PER_ROLLOUT=8` (global batch 16), `EVAL_TEMPERATURE=0`, `N_SAMPLES_PER_EVAL_PROMPT=1`,
+`EVAL_INTERVAL=SAVE_INTERVAL=5`, `SKIP_EVAL_BEFORE_TRAIN=0`.
+
+`NUM_ROLLOUT=60` is 960 task draws over 494 tasks, just under two epochs. It is an upper bound,
+not a target — the campaign's best checkpoints were early (`iter_5` .. `iter_13` of 29) and its
+last ones were damaged — so stopping early costs nothing.
+
+**60 is a multiple of the interval, and that is load-bearing.** `should_run_periodic_action` fires
+on `(rollout_id + 1) % interval == 0`, but `train.py` passes `args.num_rollout` for **save** and
+not for eval, so the last rollout always saves whether or not the interval says to — and nothing
+grants eval the same exemption. Equal intervals do not pair the two; a `NUM_ROLLOUT` divisible by
+the interval does, because then the forced save lands on a step eval was going to run anyway. At 60/5 the 12 saves and 12 evals
+land on the same steps (~104 GB), plus a 13th eval before training. Re-check this for any other
+`NUM_ROLLOUT`.
+
+Greedy eval is the default, not a choice made here; the campaign's `EVAL_TEMPERATURE=1` was the
+override. It also matches the Results table above, which scores at `temperature: 0.0`. For scale,
+the campaign scored the same checkpoints both ways: +0.12 .. +0.15 at t=0, +0.02 .. +0.07 at t=1.
 
 ```bash
 # --- ENV-SERVER HOST ---
-# WebGym and WebVoyager both need the judge key; WebVoyager also needs the WebHarbor mirrors.
+# WebVoyager needs the WebHarbor mirrors and a judge key. Start this once, in its own terminal,
+# and paste the two exported CUA_LITE_* values into the training shell.
 uv run --no-sync bash lite/gym/envs/webharbor/webvoyager/scripts/install.sh status
 : "${OPENAI_API_KEY:?export OPENAI_API_KEY before starting the env-server}"
 
 PORT=30106
 HOST_IP=$(hostname -I | awk '{print $1}')
-SESSION_ID=browser-rl-webgym-webvoyager-$(date +%Y%m%d_%H%M%S)
+SESSION_ID=browser-rl-wv-readonly-$(date +%Y%m%d_%H%M%S)
 
 printf 'export CUA_LITE_ENV_SERVER_URL=http://%s:%s\n' "$HOST_IP" "$PORT"
 printf 'export CUA_LITE_ENV_SERVER_TOKEN=%s\n' "$SESSION_ID"
 
-WEBGYM_INSTANCES=16 WEBHARBOR_WEBVOYAGER_INSTANCES=16 uv run --no-sync python scripts/serve_env.py \
-  --port "$PORT" --env-ids webgym webharbor.webvoyager --token "$SESSION_ID"
+# --warm-singleton: SINGLETON backends are lazy, so the container is only created on the first
+# instance request -- but run_grpo's preflight wants /envs/<id> available=true before any rollout
+# exists. Without it the two conditions wait on each other.
+# The host derives the instance pool from the env config (server_kwargs.instances, RAM-based
+# when 0) and only passes the resolved number into the container; this variable does not raise
+# it. Check the pool the server actually chose before relying on ENV_CONCURRENCY fitting inside it.
+uv run --no-sync python scripts/serve_env.py \
+  --port "$PORT" --env-ids webharbor.webvoyager --warm-singleton --token "$SESSION_ID"
 ```
 
 ```bash
@@ -671,19 +760,9 @@ W=/workspaces/cua-lite
 P=browser.use.i1.reasoning
 DS=webgym_gpt5_5_nogoto_wvclean
 EPOCH=epoch_2
-RLDS=webgym_dle3_sample1024_webvoyager128
-CELL=grpo.$P.$RLDS.from_sft
+CELL=grpo.$P.wv_readonly_split.from_sft
 
-if [ -z "${CKPT:-}" ]; then
-  CKPT=$(ls -d "$W/.ckpts/qwen3_5-4b/sft.$P.$DS"/iter_* 2>/dev/null | sort -V | tail -1)
-fi
-if [ -z "$CKPT" ]; then
-  PULL="$W/.ckpts/pulled"
-  uv run hf download "ZHZisZZ/qwen3_5-4b.sft.$P.$DS" \
-    --include "$EPOCH/*" \
-    --local-dir "$PULL/sft.$P.$DS" < /dev/null
-  CKPT="$PULL/sft.$P.$DS/$EPOCH"
-fi
+CKPT=${CKPT:-$(ls -d "$W/.ckpts/qwen3_5-4b/sft.$P.$DS"/iter_* 2>/dev/null | sort -V | tail -1)}
 
 : "${CUA_LITE_ENV_SERVER_URL:?paste export line from env-server shell}"
 : "${CUA_LITE_ENV_SERVER_TOKEN:?paste export line from env-server shell}"
@@ -695,50 +774,59 @@ done
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 MBS=1 \
   MODEL_ID=Qwen/Qwen3.5-4B \
   HF_CKPT="$CKPT" \
-  ENV_ID=webgym \
-  PROMPT_DATA="$W/devs/exps/train/browser/data/webgym.train.dle3.sample1024.seed42.parquet" \
+  ENV_ID=webharbor.webvoyager \
+  PROMPT_DATA="$W/devs/exps/train/browser/data/webvoyager.train494.readonly.parquet" \
   EVAL_PROMPT_DATA="$W/devs/exps/train/browser/data/webvoyager.eval128.readonly.seed42.parquet" \
-  ENV_CONCURRENCY=16 \
+  ENV_CONCURRENCY=24 \
   ROLLOUT_BATCH_SIZE=16 \
   N_SAMPLES_PER_PROMPT=8 \
   NUM_STEPS_PER_ROLLOUT=8 \
   ROLLOUT_MAX_RESPONSE_LEN=2048 \
+  ROLLOUT_TEMPERATURE=1.0 \
+  LR=2e-6 \
+  EVAL_TEMPERATURE=0 \
+  N_SAMPLES_PER_EVAL_PROMPT=1 \
+  CUA_LITE_MULTIMODAL_LAZY_EXPAND=1 \
   CONFIG_PATH="$W/devs/exps/train/browser/configs/qwen3_5/$P.yaml" \
-  SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=10 EVAL_INTERVAL=5 NUM_ROLLOUT=100 \
+  SKIP_EVAL_BEFORE_TRAIN=0 \
+  SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=5 EVAL_INTERVAL=5 NUM_ROLLOUT=60 \
   SAVE_HF_DIR="$W/.ckpts/qwen3_5-4b/$CELL/iter_{rollout_id}" \
   SAVE_DIR="/root/checkpoints/qwen3_5-4b/$CELL/megatron" \
   WANDB_GROUP_SUFFIX=".$CELL" \
   bash "$W/scripts/train/run_grpo.sh" < /dev/null
 ```
 
-- **`CONFIG_PATH` is mandatory.** The default compact WebGym config includes `goto` and the WebGym
-  reset wrapper; this campaign must keep the no-goto WebVoyager-transfer surface.
-- **`HF_CKPT` is mandatory for this RL run.** It must point at the
-  `browser.use.i1.reasoning` SFT HF export. The block prefers an explicit `CKPT`, then the local
-  train-host `iter_*`, then pulls `epoch_2` from
-  `ZHZisZZ/qwen3_5-4b.sft.browser.use.i1.reasoning.webgym_gpt5_5_nogoto_wvclean`. Omitting the
-  checkpoint entirely would start from base Qwen3.5-4B and answer a different question.
-- **`difficulty <= 3` defines the WebGym training tier.** It is not a WebVoyager filter and it is
-  not a guarantee that the task never leaves a site; the no-goto action surface is enforced by the
-  browser config.
-- **Eval stays WebVoyager 128.** Do not replace `EVAL_PROMPT_DATA` with a WebGym eval parquet for
-  this run, or the curve stops measuring transfer to the held-out WebVoyager subset. The intended
-  subset is the `--sample 128 --seed 42` parquet above; record and compare its `env_key_sha256`
-  across SFT eval and RL eval rather than relying on the filename alone.
-- **Compare GRPO against its `gpt5_5` + `<think>` SFT parent.** Step 0 should line up with that
-  checkpoint's WebVoyager score up to normal 128-task noise; a large gap usually means the wrong
-  checkpoint or config was used.
-- **Final score uses the same Eval block.** Reuse the Eval section's `score` / `show` helpers with
-  `score browser.use.i1.reasoning "$GRPO_CKPT" "grpo.browser.use.i1.reasoning.webgym_dle3_sample1024_webvoyager128.from_sft@$RUN.$(basename "$GRPO_CKPT")"`
-  for the saved GRPO `iter_*` being considered.
-- **Rollout shape matches `desktop.use` RL.** `ROLLOUT_BATCH_SIZE=16` and
-  `N_SAMPLES_PER_PROMPT=8` collect 128 trajectories per rollout; `NUM_STEPS_PER_ROLLOUT=8` splits
-  those into 8 learner updates, so the derived GRPO global batch is 16. Keep this shape fixed when
-  comparing WebGym RL against the desktop GRPO recipe.
-- **Keep env concurrency conservative first.** `ENV_CONCURRENCY=16` matches the browser eval
-  section's stable starting point, so the 128 trajectories run in several waves instead of
-  pressuring all browser instances at once. Raise it only after the combined WebGym + WebVoyager
-  env-server is healthy.
-- **Pick checkpoints deliberately.** `SAVE_INTERVAL=10` avoids filling the repo-mounted volume with
-  every fifth rollout. Score several saved `iter_*` checkpoints on the same 128-task WebVoyager
-  parquet before copying one number into the GRPO row.
+- **`HF_CKPT` is mandatory.** It must point at the local
+  `sft.browser.use.i1.reasoning.webgym_gpt5_5_nogoto_wvclean` HF export. Omitting it is silent:
+  `run_grpo.sh:146-147` defaults `HF_CKPT` to `/root/models/$MODEL_ID` and downloads base
+  Qwen3.5-4B, which answers a different question. If the train host has no local `iter_*`, pull
+  the export first and point `CKPT` at it:
+  `uv run hf download "ZHZisZZ/qwen3_5-4b.sft.$P.$DS" --include "epoch_2/*" --local-dir "$W/.ckpts/pulled/sft.$P.$DS"`.
+  Step 0's eval should land on that parent's WebVoyager score within 128-task noise; a large gap
+  usually means the wrong checkpoint or config.
+- **`CONFIG_PATH` is mandatory.** Unset, `run_grpo.sh` derives
+  `scripts/configs/qwen3_5/compact/webharbor.webvoyager.yaml`, which does not exist, and exits 1
+  before Ray starts. Pointing it at another `compact/*.yaml` would be silent and would stop the
+  run being comparable to its `gpt5_5` + `<think>` / `i1.reasoning` parent.
+
+#### Scoring
+
+The in-training curve selects; it does not report. Scoring a checkpoint with the data that chose
+it is winner's curse — at SE ~0.03 over a dozen candidates, worth +0.04-0.05, the size of the
+effect itself. Re-measure the selected checkpoints on fresh trajectories before any number goes
+into the Results table, using the Eval block's own `score` / `show` helpers so the GRPO row is
+measured exactly like the SFT rows above it:
+
+Run it from inside the Eval block's shell, where `score` and its ambient `GPUS/CONC/TASKS/CFG/
+LOGS` are defined, once per checkpoint being considered:
+
+```bash
+# relative, like the rest of the Eval block -- $W is an RL-block variable
+CELL=grpo.browser.use.i1.reasoning.wv_readonly_split.from_sft
+for CKPT_DIR in ".ckpts/qwen3_5-4b/$CELL"/iter_*; do
+  score browser.use.i1.reasoning "$CKPT_DIR" "$CELL@$RUN.$(basename "$CKPT_DIR")"
+done
+```
+
+Score several saved `iter_*` before copying one number across; the curve's argmax is not
+automatically the checkpoint to report.
