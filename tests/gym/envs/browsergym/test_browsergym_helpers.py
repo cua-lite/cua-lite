@@ -158,18 +158,66 @@ class TestExtractInstruction:
         assert _extract_instruction(obs) == "Part 1\nPart 2"
 
     def test_goal_object_with_image(self):
-        # Mixed text + image_url: only text parts are concatenated.
+        # Multimodal goals keep the human instruction and drop BrowserGym's
+        # image carrier text, because the image itself is transported in
+        # metadata and rendered by the VWA goal-image agent.
         obs = {"goal_object": [
             {"type": "text", "text": "Find this product:"},
             {"type": "text", "text": "Input image 1/1 below"},
             {"type": "image_url", "image_url": {"url": "data:image/png;base64,XXX"}},
         ]}
-        assert _extract_instruction(obs) == "Find this product:\nInput image 1/1 below"
+        assert _extract_instruction(obs) == "Find this product:"
+
+    def test_goal_object_with_image_ignores_legacy_goal_warning(self):
+        obs = {
+            "goal": (
+                "Find this product:\n"
+                "Input image 1/1 below (local path: PosixPath('/tmp/input.png'), "
+                "url: 'http://localhost:8677/input.png')\n"
+                "WARNING: This goal cannot be converted to a text-only goal format. "
+                "Use the new goal format instead (\"goal_object\" field). Any agent "
+                "reading this should abort immediately."
+            ),
+            "goal_object": [
+                {"type": "text", "text": "Find this product:"},
+                {
+                    "type": "text",
+                    "text": (
+                        "Input image 1/1 below (local path: PosixPath('/tmp/input.png'), "
+                        "url: 'http://localhost:8677/input.png')"
+                    ),
+                },
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,XXX"}},
+            ],
+        }
+        assert _extract_instruction(obs) == "Find this product:"
+
+    def test_goal_object_image_only_does_not_fall_back_to_legacy_warning(self):
+        obs = {
+            "goal": (
+                "Input image 1/1 below (local path: PosixPath('/tmp/input.png'), "
+                "url: 'http://localhost:8677/input.png')\n"
+                "WARNING: This goal cannot be converted to a text-only goal format. "
+                "Use the new goal format instead (\"goal_object\" field). Any agent "
+                "reading this should abort immediately."
+            ),
+            "goal_object": [
+                {
+                    "type": "text",
+                    "text": (
+                        "Input image 1/1 below (local path: PosixPath('/tmp/input.png'), "
+                        "url: 'http://localhost:8677/input.png')"
+                    ),
+                },
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,XXX"}},
+            ],
+        }
+        assert _extract_instruction(obs) == ""
 
     def test_empty(self):
         assert _extract_instruction({}) == ""
 
-    def test_string_goal_takes_precedence(self):
+    def test_string_goal_takes_precedence_for_text_only_goal_object(self):
         obs = {"goal": "primary", "goal_object": [{"type": "text", "text": "ignored"}]}
         assert _extract_instruction(obs) == "primary"
 

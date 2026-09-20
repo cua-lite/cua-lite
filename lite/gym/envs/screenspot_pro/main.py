@@ -270,7 +270,6 @@ class ScreenSpotProEnv(LiteBaseEnv):
         )
         action_errors: dict[str, ToolErrorFeedback] = dict(ingress_errors)
         model_error_actions: list[LiteExecutedAction] = []
-        had_model_action_error = False
         # Classifier-gate inactive finish tools exactly as sibling grounding
         # envs do: a model calling ``terminate`` when it was never advertised
         # must not be scored as if it had answered.
@@ -298,7 +297,6 @@ class ScreenSpotProEnv(LiteBaseEnv):
                 try:
                     self._extract_click([action])
                 except MODEL_ACTION_ERROR_TYPES as e:
-                    had_model_action_error = True
                     malformed_action_ids.add(id(action))
                     record_model_action_error(action_errors, result_call_id, e, action_name=name)
                     model_error_actions.append({
@@ -308,27 +306,10 @@ class ScreenSpotProEnv(LiteBaseEnv):
                     continue
             executable_actions.append((action, result_call_id))
         actions = [action for action, _ in executable_actions]
-        # The reward scores the ANSWER. It is 0.0 when the answer is missing,
-        # ambiguous, or malformed -- and ONLY then. Two inputs decide that, and
-        # the split between them is what the gate is FOR:
-        #
-        #   * a botched ATTEMPT TO ANSWER poisons the score. That is
-        #     ``had_model_action_error`` (a ``point`` whose coordinate would not
-        #     parse) and ``ingress_errors`` (a call rejected as an invalid
-        #     action for this task -- notably answering through the wrong
-        #     wrapper, ``computer(actions=[{"action": "point", ...}])``). Both
-        #     are the model reaching for the answer and missing, which makes the
-        #     surviving ``point`` one of SEVERAL attempts, not a lone answer.
-        #   * a rejected NON-ANSWER call does not. An unknown tool, or a
-        #     ``terminate`` this task never advertised, is reported to the model
-        #     as feedback and otherwise ignored. These pass ingress and are
-        #     caught in the loop above as inactive/unknown STANDALONE tools, so
-        #     they land in ``unsupported_reasons`` -- never in ``ingress_errors``.
-        #
-        # A model emitting ONLY ``terminate`` needs no gate: ``_evaluate`` sees
-        # no ``point``, so there is no answer and it returns 0.0 by itself.
-        answer_is_malformed = had_model_action_error or bool(ingress_errors)
-        reward = 0.0 if answer_is_malformed else self._evaluate(actions)
+        # Feedback/logging still records malformed or rejected calls, but the
+        # benchmark score follows the first surviving well-formed point. If no
+        # usable point remains, ``_evaluate`` returns 0.0.
+        reward = self._evaluate(actions)
         # Log executed actions in de-normalized native pixels so the trajectory
         # log line is directly comparable with ``annotation.bbox`` (mirrors
         # osworld_g convention).
@@ -406,14 +387,12 @@ class ScreenSpotProEnv(LiteBaseEnv):
         center, using ``reward = max(0, 1 - dist / max_dist)`` where max_dist is
         half the image diagonal (so clicks at the image edge get ~0).
 
-        EXACTLY ONE ``point`` scores. Zero points is no answer. Two or more is
-        an ambiguous answer, and taking the first (which is what this used to
-        do) pays a model for hedging -- emitting several candidate clicks and
-        letting the grader find the hit turns a single-shot grounding benchmark
-        into a multiple-choice one. Both are 0.0.
+        The first well-formed ``point`` scores. Zero points is no answer.
+        Later points are ignored so migration results stay comparable with the
+        original first-valid benchmark scoring rule.
         """
         answer_actions = [action for action in actions if action["name"] == "point"]
-        if len(answer_actions) != 1:
+        if not answer_actions:
             return 0.0
 
         click = self._extract_click(answer_actions)

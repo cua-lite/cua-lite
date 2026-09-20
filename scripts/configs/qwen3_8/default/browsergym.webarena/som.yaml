@@ -52,6 +52,7 @@ agent_kwargs:
 
 env_id: "browsergym.webarena"
 env_kwargs:
+  include_page_context_text: true
   with_homepage_hint: true  # WebArena p_cot homepage hint: appends homepage URL + site list + /password.html creds to the goal (helps weak models navigate, avoids wandering to public URLs). WA-only (VWA TypeErrors).
   max_steps: 30
   # ─── Obs: Set-of-Marks screenshot (image), no AXTree text ────────────────

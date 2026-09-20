@@ -37,11 +37,15 @@ spec.loader.exec_module(asset_lock)
 from lite.gym.envs.lite.osworld import exclude_reasons
 
 
-def validate_catalog(path):
+def catalog_summary(path):
+    rows = 0
+    excluded_rows = 0
+    reason_counts = {}
     with path.open() as stream:
         for line_number, line in enumerate(stream, 1):
             if not line.strip():
                 continue
+            rows += 1
             try:
                 row = json.loads(line)
             except json.JSONDecodeError as exc:
@@ -58,6 +62,14 @@ def validate_catalog(path):
                     raise SystemExit(
                         f"{path}:{line_number}: invalid exclude_reason {reason!r}: {exc}"
                     )
+                excluded_rows += 1
+                reason_counts[reason] = reason_counts.get(reason, 0) + 1
+    return {
+        "rows": rows,
+        "excluded_rows": excluded_rows,
+        "scored_rows": rows - excluded_rows,
+        "exclude_reasons": dict(sorted(reason_counts.items())),
+    }
 
 
 expected_asset = asset_lock.component_identity(env_dir, "synth")
@@ -72,15 +84,19 @@ for split, entry in sorted(lock["splits"].items()):
     path = env_dir / "data" / entry["path"]
     if not path.is_file():
         raise SystemExit(f"missing catalog for {split}: {path}")
-    validate_catalog(path)
     data = path.read_bytes()
-    rows = sum(1 for line in data.splitlines() if line.strip())
+    summary = catalog_summary(path)
     digest = hashlib.sha256(data).hexdigest()
-    if rows != entry["rows"] or digest != entry["sha256"]:
+    mismatches = []
+    for field in ("rows", "excluded_rows", "scored_rows", "exclude_reasons"):
+        if summary[field] != entry.get(field):
+            mismatches.append(f"{field}: {summary[field]!r} != {entry.get(field)!r}")
+    if digest != entry["sha256"]:
+        mismatches.append(f"sha256: {digest} != {entry['sha256']}")
+    if mismatches:
         raise SystemExit(
             f"{path} does not match catalog.lock.json for {split}\n"
-            f"  rows:   {rows} != {entry['rows']}\n"
-            f"  sha256: {digest} != {entry['sha256']}"
+            + "\n".join(f"  {line}" for line in mismatches)
         )
 print("catalogs fresh")
 PY
@@ -104,11 +120,15 @@ spec.loader.exec_module(asset_lock)
 from lite.gym.envs.lite.osworld import exclude_reasons
 
 
-def validate_catalog(path):
+def catalog_summary(path):
+    rows = 0
+    excluded_rows = 0
+    reason_counts = {}
     with path.open() as stream:
         for line_number, line in enumerate(stream, 1):
             if not line.strip():
                 continue
+            rows += 1
             try:
                 row = json.loads(line)
             except json.JSONDecodeError as exc:
@@ -125,6 +145,14 @@ def validate_catalog(path):
                     raise SystemExit(
                         f"{path}:{line_number}: invalid exclude_reason {reason!r}: {exc}"
                     )
+                excluded_rows += 1
+                reason_counts[reason] = reason_counts.get(reason, 0) + 1
+    return {
+        "rows": rows,
+        "excluded_rows": excluded_rows,
+        "scored_rows": rows - excluded_rows,
+        "exclude_reasons": dict(sorted(reason_counts.items())),
+    }
 
 
 splits = {
@@ -143,11 +171,9 @@ lock = {
 }
 for split, rel in splits.items():
     path = env_dir / "data" / rel
-    validate_catalog(path)
     data = path.read_bytes()
-    lock["splits"][split] = {
+    lock["splits"][split] = catalog_summary(path) | {
         "path": rel,
-        "rows": sum(1 for line in data.splitlines() if line.strip()),
         "sha256": hashlib.sha256(data).hexdigest(),
     }
 lock_path.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")

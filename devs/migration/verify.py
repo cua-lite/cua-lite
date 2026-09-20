@@ -348,7 +348,7 @@ def _validate_shared_publish_schema_contract(
             lite_meta,
             schema_free_names=_migration_builtin_tool_names_for_metadata(lite_meta),
             extra_schemas_by_name=extra_tool_schemas_by_name(lite_meta),
-            unknown_tool_error_only_results={},
+            model_visible_error_results={},
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise VerificationError(str(exc)) from exc

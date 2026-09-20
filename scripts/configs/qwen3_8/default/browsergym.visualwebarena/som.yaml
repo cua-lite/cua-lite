@@ -48,6 +48,7 @@ agent_kwargs:
 
 env_id: "browsergym.visualwebarena"
 env_kwargs:
+  include_page_context_text: true
   max_steps: 30
   use_screenshot: true
   use_ax_tree: false

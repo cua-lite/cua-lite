@@ -686,7 +686,10 @@ class SandboxBaseEnv(EnvServerPoolable, EnvServerResource):
                 )
 
                 try:
-                    image_for(self._env_id, tag=str(image_tag)).ensure_runnable()
+                    def _ensure_image_runnable() -> None:
+                        image_for(self._env_id, tag=str(image_tag)).ensure_runnable()
+
+                    await asyncio.to_thread(_ensure_image_runnable)
                 except UnknownImageFreshnessProvider:
                     # Generic sandbox tasks may point at non-CUA-Lite images.
                     pass

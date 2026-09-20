@@ -20,6 +20,7 @@ env_kwargs:
   post_action_delay: 0.0     # asyncio.sleep before the post-step screenshot (browsergym renders synchronously → 0)
   seed: null                 # null = unseeded bare construction; registration hardcodes a fixed task seed
   extra_tools: null          # null = all action_subset tools; [] = none; [names] = subset
+  include_page_context_text: false  # screenshot-first default; text/SoM configs opt in explicitly
 
 server_kwargs:
   # The ONLY change from default.yaml: strict serializes writers on the shared

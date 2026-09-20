@@ -48,6 +48,20 @@ class TestGoalImagesAreResetOnly:
         return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
 
     @staticmethod
+    def _is_metadata_passthrough(node: ast.AST | None) -> bool:
+        if isinstance(node, ast.Name):
+            return node.id == "metadata"
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or) and len(node.values) == 2:
+            left, right = node.values
+            return (
+                isinstance(left, ast.Name)
+                and left.id == "metadata"
+                and isinstance(right, ast.Constant)
+                and right.value is None
+            )
+        return False
+
+    @staticmethod
     def _str_consts(node: ast.AST) -> set[str]:
         return {
             n.value for n in ast.walk(node)
@@ -59,7 +73,7 @@ class TestGoalImagesAreResetOnly:
         assert "_extract_goal_images_b64" in self._names(reset)
         assert "goal_images_b64" in self._str_consts(reset)
         metas = self._obs_metadata_kwargs(reset)
-        assert any(isinstance(m, ast.Name) and m.id == "metadata" for m in metas), (
+        assert any(self._is_metadata_passthrough(m) for m in metas), (
             "reset must pass the built goal-image metadata into its observation"
         )
 

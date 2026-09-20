@@ -116,7 +116,7 @@ async def test_screenspot_pro_malformed_point_python_detail_is_not_model_visible
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("arguments", MALFORMED_POINT_ARGUMENTS)
-async def test_screenspot_pro_malformed_point_without_call_id_poisons_reward(
+async def test_screenspot_pro_malformed_point_without_call_id_does_not_poison_reward(
     arguments: dict[str, Any],
 ) -> None:
     from lite.gym.envs.screenspot_pro.main import ScreenSpotProEnv
@@ -137,14 +137,14 @@ async def test_screenspot_pro_malformed_point_without_call_id_poisons_reward(
         make_tool_call("point", arguments),
     ])
 
-    assert result.reward == 0.0
+    assert result.reward == 1.0
     assert result.terminated is True
     assert result.truncated is False
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("arguments", MALFORMED_POINT_ARGUMENTS)
-async def test_screenspot_pro_wrong_action_wrapper_poisons_valid_sibling_reward(
+async def test_screenspot_pro_wrong_action_wrapper_does_not_poison_valid_sibling_reward(
     arguments: dict[str, Any],
 ) -> None:
     from lite.gym.envs.screenspot_pro.main import ScreenSpotProEnv
@@ -169,7 +169,7 @@ async def test_screenspot_pro_wrong_action_wrapper_poisons_valid_sibling_reward(
         ),
     ])
 
-    assert result.reward == 0.0
+    assert result.reward == 1.0
     assert result.terminated is True
     assert result.truncated is False
     assert len(result.results) == 1
@@ -300,7 +300,7 @@ async def test_screenspot_pro_inactive_response_returns_error_only_feedback() ->
 
 
 @pytest.mark.asyncio
-async def test_screenspot_pro_multiple_points_are_not_a_single_answer() -> None:
+async def test_screenspot_pro_multiple_points_score_the_first_valid_answer() -> None:
     from lite.gym.envs.screenspot_pro.main import ScreenSpotProEnv
 
     annotation = {
@@ -317,7 +317,7 @@ async def test_screenspot_pro_multiple_points_are_not_a_single_answer() -> None:
         make_tool_call("point", {"coordinate": [900, 900]}, call_id="outside"),
     ])
 
-    assert result.reward == 0.0
+    assert result.reward == 1.0
     assert result.terminated is True
     assert result.truncated is False
     assert result.info["annotation"] == annotation
@@ -400,7 +400,7 @@ async def test_osworld_g_malformed_point_python_detail_is_not_model_visible() ->
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("arguments", MALFORMED_POINT_ARGUMENTS)
-async def test_osworld_g_malformed_point_without_call_id_poisons_reward(
+async def test_osworld_g_malformed_point_without_call_id_does_not_poison_reward(
     arguments: dict[str, Any],
 ) -> None:
     from lite.gym.envs.osworld_g.main import OSWorldGEnv
@@ -426,14 +426,14 @@ async def test_osworld_g_malformed_point_without_call_id_poisons_reward(
         make_tool_call("point", arguments),
     ])
 
-    assert result.reward == 0.0
+    assert result.reward == 1.0
     assert result.terminated is True
     assert result.truncated is False
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("arguments", MALFORMED_POINT_ARGUMENTS)
-async def test_osworld_g_wrong_action_wrapper_poisons_valid_sibling_reward(
+async def test_osworld_g_wrong_action_wrapper_does_not_poison_valid_sibling_reward(
     arguments: dict[str, Any],
 ) -> None:
     from lite.gym.envs.osworld_g.main import OSWorldGEnv
@@ -463,7 +463,7 @@ async def test_osworld_g_wrong_action_wrapper_poisons_valid_sibling_reward(
         ),
     ])
 
-    assert result.reward == 0.0
+    assert result.reward == 1.0
     assert result.terminated is True
     assert result.truncated is False
     assert len(result.results) == 1
@@ -614,7 +614,7 @@ async def test_osworld_g_inactive_report_infeasible_returns_error_only_feedback(
 
 
 @pytest.mark.asyncio
-async def test_osworld_g_multiple_points_are_not_a_single_answer() -> None:
+async def test_osworld_g_multiple_points_score_the_first_valid_answer() -> None:
     from lite.gym.envs.osworld_g.main import OSWorldGEnv
 
     annotation = {
@@ -638,7 +638,7 @@ async def test_osworld_g_multiple_points_are_not_a_single_answer() -> None:
         make_tool_call("point", {"coordinate": [900, 900]}, call_id="outside"),
     ])
 
-    assert result.reward == 0.0
+    assert result.reward == 1.0
     assert result.terminated is True
     assert result.truncated is False
     assert result.info["annotation"] == annotation

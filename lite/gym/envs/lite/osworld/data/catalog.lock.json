@@ -6,18 +6,36 @@
   },
   "splits": {
     "eval": {
+      "exclude_reasons": {
+        "google_auth": 8,
+        "infeasible": 29,
+        "trivial_pass:color_precheck": 1,
+        "upstream_generated_eval_bug": 1,
+        "upstream_live_site_drift": 2
+      },
+      "excluded_rows": 41,
       "path": "eval.jsonl",
       "rows": 369,
+      "scored_rows": 328,
       "sha256": "c6fea2868e34d46f65d4d1c590bbd03366be52e4b7dbb75faca722b1b9ee3937"
     },
     "train.perturb": {
+      "exclude_reasons": {},
+      "excluded_rows": 0,
       "path": "train.perturb.jsonl",
       "rows": 707,
+      "scored_rows": 707,
       "sha256": "1f5a1ad29fb545becd06140aafb12cd81a9b1b21b769d5e66ba8a0fdf9810640"
     },
     "train.synth": {
+      "exclude_reasons": {
+        "unverifiable:ocr": 14,
+        "upstream_live_site_drift": 4
+      },
+      "excluded_rows": 18,
       "path": "train.synth.jsonl",
       "rows": 1722,
+      "scored_rows": 1704,
       "sha256": "af4df9b85e8f54768793a9444219e8e38c33c1e94a821db0d7524ebf357be5c5"
     }
   },

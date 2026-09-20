@@ -37,10 +37,17 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 try:
+    import urllib3
     from selenium import webdriver
-    from selenium.common.exceptions import TimeoutException
+    from selenium.common.exceptions import (
+        ElementClickInterceptedException,
+        ElementNotInteractableException,
+        StaleElementReferenceException,
+        TimeoutException,
+    )
     from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.common.action_chains import ActionChains
+    from selenium.webdriver.common.actions.action_builder import ActionBuilder
     from selenium.webdriver.common.by import By
     from selenium.webdriver.common.keys import Keys
 except ModuleNotFoundError:  # Host-side unit tests import pure helpers only.
@@ -64,10 +71,15 @@ except ModuleNotFoundError:  # Host-side unit tests import pure helpers only.
         SPACE = "space"
         TAB = "tab"
 
+    urllib3 = None  # type: ignore[assignment]
     webdriver = None  # type: ignore[assignment]
     TimeoutException = RuntimeError  # type: ignore[assignment]
+    ElementClickInterceptedException = RuntimeError  # type: ignore[assignment]
+    ElementNotInteractableException = RuntimeError  # type: ignore[assignment]
+    StaleElementReferenceException = RuntimeError  # type: ignore[assignment]
     Service = None  # type: ignore[assignment]
     ActionChains = None  # type: ignore[assignment]
+    ActionBuilder = None  # type: ignore[assignment]
     By = None  # type: ignore[assignment]
     Keys = _MissingKeys  # type: ignore[assignment]
 
@@ -90,6 +102,27 @@ _CAPTURE_CURSOR_HEIGHT = 24
 # Keep in sync with host-side ``MODEL_ACTION_ERROR_TYPES``. This file runs as an
 # in-container script and must not import the host ``lite.gym`` package.
 _MODEL_ACTION_ERROR_TYPES = (ValueError, TypeError, IndexError, KeyError)
+# Selenium raises these when the MODEL's action was wrong about the page: the
+# element went stale under it, something covers the click point, the target is
+# not interactable, or the page it drove to never settled. They are per-action
+# feedback exactly like the tuple above -- but they cannot join it, because that
+# tuple is a byte-for-byte copy of the host contract
+# (tests/gym/utils/backend/test_docker_copy_parity.py) and selenium is not a
+# host-side dependency. Until now they escaped to `except Exception: raise` and
+# became an HTTP 500, which destroys the whole trajectory over one unlucky
+# click. Over 35 minutes of one training run every single exception that
+# reached that branch was a member of this tuple: StaleElementReference 42,
+# ElementClickIntercepted 19, Timeout 2, ElementNotInteractable 1.
+# TimeoutException belongs here even though ``_safe_get`` already absorbs it for
+# NAVIGATION: raised inside an action it means the page the model drove to did
+# not settle, which is feedback, not a dead driver.
+_SELENIUM_ACTION_ERROR_TYPES = (
+    ElementClickInterceptedException,
+    ElementNotInteractableException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
+_ACTION_ERROR_TYPES = _MODEL_ACTION_ERROR_TYPES + _SELENIUM_ACTION_ERROR_TYPES
 _DEFAULT_MODEL_DURATION_CAP_SECONDS = 30.0
 _MODEL_DURATION_CAPS_SECONDS = {
     "wait": 30.0,
@@ -233,6 +266,26 @@ _WINDOW_H = int(os.environ.get("WEBHARBOR_WEBVOYAGER_VIEWPORT_H", "720"))
 _CURSOR_ORIGIN_NORM: tuple[int, int] = (500, 500)
 _PAGE_LOAD_TIMEOUT_S = float(os.environ.get("WEBHARBOR_WEBVOYAGER_PAGE_LOAD_TIMEOUT_S", "15"))
 _SCRIPT_TIMEOUT_S = float(os.environ.get("WEBHARBOR_WEBVOYAGER_SCRIPT_TIMEOUT_S", "10"))
+# Both timeouts above are W3C commands that CHROMEDRIVER enforces, so neither
+# can fire when chromedriver is itself the unresponsive party -- and selenium's
+# own HTTP call to it carries no deadline (RemoteConnection.get_timeout() is
+# None). That was the only unbounded wait in the /step path, and it let a step
+# outlive the host client's 180s deadline (webvoyager/main.py `_post`) while
+# nothing was logged on this side: the host saw a timeout, the container's error
+# log stayed flat, and the env slot stayed held for the full three minutes.
+#
+# The value is pinned between two measured bounds. Below ~15s it would abort
+# legitimate navigations, since that is chromedriver's own page-load timeout.
+# Above ~36s it stops helping: a step against a wedged driver makes about five
+# webdriver calls (the action plus the closing observation), each of which must
+# time out in turn, and N x the deadline has to stay under the client's 180s.
+# Measured end to end on a pod by SIGSTOPping chromedriver: unpatched the step
+# never returned within a 200s cap; at 25s it answers 500 in 125s, and a healthy
+# step still answers 200 immediately. It bounds COMMANDS only -- session
+# creation is deliberately left unbounded (see _new_driver).
+_WEBDRIVER_CLIENT_TIMEOUT_S = float(
+    os.environ.get("WEBHARBOR_WEBVOYAGER_WEBDRIVER_CLIENT_TIMEOUT_S", "25")
+)
 _RESET_SETTLE_S = float(os.environ.get("WEBHARBOR_WEBVOYAGER_RESET_SETTLE_S", "5"))
 _POST_ACTION_DELAY_S = float(os.environ.get("WEBHARBOR_WEBVOYAGER_POST_ACTION_DELAY_S", "0.5"))
 _INSTANCE_TTL_S = float(os.environ.get("WEBHARBOR_WEBVOYAGER_INSTANCE_TTL_S", "600"))
@@ -317,6 +370,30 @@ def _new_driver(download_dir: Path, width: int, height: int) -> webdriver.Chrome
     download_dir.mkdir(parents=True, exist_ok=True)
     service = Service(_CHROMEDRIVER_BIN)
     driver = webdriver.Chrome(service=service, options=_chrome_options(download_dir, width, height))
+    # Bound the deadline on THIS driver's own urllib3 pool, after the session
+    # exists. `RemoteConnection.set_timeout` looks like the obvious knob and is
+    # not: it is a classmethod read at request time, so it also bounds session
+    # creation -- which legitimately takes longer than any command when 24
+    # browsers start at once (it failed 29 resets in a live run) -- and one
+    # thread tightening it would bound another thread's concurrent session
+    # creation. A per-driver pool has neither problem.
+    #
+    # Retries are switched off in the same breath: a retry cannot help a
+    # chromedriver that is not answering, and they turned a measured 30s
+    # deadline into 80s.
+    #
+    # ``command_executor._conn`` and urllib3's ``connection_pool_kw`` are both
+    # private surface, verified against the versions this image installs:
+    # selenium 4.15.2 / urllib3 2.x, where ``RemoteConnection._request`` passes
+    # no per-request timeout, so the pool is what governs. An upgrade that
+    # renames either raises AttributeError here rather than silently dropping
+    # the deadline, which is the failure direction to prefer.
+    _pool = driver.command_executor._conn
+    _pool.connection_pool_kw["retries"] = urllib3.Retry(total=0, connect=0, read=0, redirect=0)
+    _pool.connection_pool_kw["timeout"] = urllib3.Timeout(
+        connect=_WEBDRIVER_CLIENT_TIMEOUT_S, read=_WEBDRIVER_CLIENT_TIMEOUT_S
+    )
+    _pool.clear()
     driver.set_window_size(width, height)
     driver.set_page_load_timeout(_PAGE_LOAD_TIMEOUT_S)
     driver.set_script_timeout(_SCRIPT_TIMEOUT_S)
@@ -676,14 +753,50 @@ def _active_or_last_element(inst: _Instance):
     return inst.last_element
 
 
-def _exec_action_click(inst: _Instance, element: Any) -> None:
+def _exec_action_click(
+    inst: _Instance, element: Any, point: tuple[int, int] | None = None
+) -> None:
+    """Click ``element``, at ``point`` when the model chose one.
+
+    ``point`` is the viewport pixel a coordinate click named. It is not a
+    refinement of ``element.click()`` -- it is a different click, and the
+    difference is load-bearing:
+
+    ``element.click()`` implements the W3C element-click algorithm, which
+    DISCARDS the caller's coordinate and re-derives the element's own in-view
+    center point, then refuses with ElementClickIntercepted if anything covers
+    THAT pixel. A model that picked an uncovered pixel off the screenshot can
+    therefore be refused because some other part of the element it landed on is
+    covered -- measured on ``google_flights.8``, where a
+    ``<span class="material-symbols-outlined">`` icon sits over the centre of a
+    300px-wide search field. Across five turns the model correctly walked its x
+    from 684 to 530 to get out from under the icon, and every attempt was
+    re-aimed at the same covered centre (642, 544) and refused. The interception
+    was manufactured here, not present on the page.
+
+    So a coordinate click dispatches a real pointer event at the pixel the model
+    named. There is no hit test to fail: if the model DOES aim at a covered
+    pixel the covering element receives the click, which is what the screenshot
+    it was reading would predict. Index clicks keep ``element.click()`` -- there
+    the [N] id IS the target and no pixel was chosen.
+
+    ``last_cursor`` follows the same rule, because it draws the cursor overlay
+    the model sees next turn: the pixel actually clicked, not the element centre
+    the coordinate was silently snapped to.
+    """
     driver = inst.driver
     driver.execute_script("arguments[0].setAttribute('target', '_self')", element)
-    element.click()
+    if point is None:
+        element.click()
+        center = _element_center_viewport(driver, element)
+        if center is not None:
+            inst.last_cursor = center
+    else:
+        actions = ActionBuilder(driver)
+        actions.pointer_action.move_to_location(point[0], point[1]).click()
+        actions.perform()
+        inst.last_cursor = point
     inst.last_element = element
-    center = _element_center_viewport(driver, element)
-    if center is not None:
-        inst.last_cursor = center
     time.sleep(3)
 
 
@@ -844,17 +957,26 @@ def _execute_action(inst: _Instance, name: str, args: dict[str, Any]) -> dict[st
         return inst.web_eles[index]
 
     if name == "click":
+        point: tuple[int, int] | None = None
         if "index" in args:
             element = _elem_by_index("click")
         else:
             coordinate = args.get("coordinate")
             if coordinate is None:
                 raise ValueError("click requires coordinate or index")
-            inst.last_cursor = _norm_coord_to_viewport(driver, coordinate)
+            point = _norm_coord_to_viewport(driver, coordinate)
+            # Record where the model aimed as soon as the pixel is known, before
+            # anything downstream can fail. The overlay drawn from last_cursor is
+            # what the model reads next turn, and a click that was refused still
+            # has to show it where it pointed -- otherwise the next screenshot
+            # contradicts the action it just issued. The executor sets this again
+            # for the index path, where the pixel is only known after the element
+            # resolves; here the pixel came first.
+            inst.last_cursor = point
             element = _element_from_coordinate(driver, coordinate)
             if element is None:
                 raise ValueError(f"no element at coordinate {coordinate}")
-        _exec_action_click(inst, element)
+        _exec_action_click(inst, element, point)
 
     elif name == "input":
         text = str(args.get("text", ""))
@@ -996,6 +1118,21 @@ def _execute_action(inst: _Instance, name: str, args: dict[str, Any]) -> dict[st
             start = inst.last_cursor
         sx, sy = _norm_coord_to_viewport(driver, start)
         ex, ey = _norm_coord_to_viewport(driver, end)
+        # KNOWN BROKEN, left alone deliberately. ``move_by_offset`` is relative
+        # to wherever the pointer already rests, so the drag starts at
+        # last_position + (sx, sy) -- measured, a drag from (250, 120) issued
+        # with the pointer at (700, 400) began at (950, 520), and often raises
+        # MoveTargetOutOfBoundsException instead. Addressing both endpoints
+        # absolutely (ActionBuilder.move_to_location) fixes the coordinates but
+        # does NOT fix the drag: a range slider dragged that way after any
+        # earlier pointer move receives mousedown/mousemove/mouseup on itself,
+        # at the right pixels, and never fires `input` -- the pointer-capture
+        # state does not survive between two `perform()` calls. Releasing it
+        # first (W3C_CLEAR_ACTIONS) works in some scenarios and not others.
+        # So the absolute version trades a loud failure for a silent one, which
+        # is the wrong direction; `drag` is in no shipped config's
+        # `valid_actions`, so this stays as it is until someone can fix the
+        # capture state and verify it end to end.
         ActionChains(driver).move_by_offset(sx, sy).click_and_hold().move_by_offset(ex - sx, ey - sy).release().perform()
         inst.last_cursor = (ex, ey)
         time.sleep(1)
@@ -1004,10 +1141,20 @@ def _execute_action(inst: _Instance, name: str, args: dict[str, Any]) -> dict[st
         coordinate = args.get("coordinate")
         if coordinate is None:
             raise ValueError("mouse_move requires coordinate")
-        inst.last_cursor = _norm_coord_to_viewport(driver, coordinate)
+        # Same rule as the coordinate click: go to the pixel, not to the centre
+        # of whatever element happens to be under it. ``move_to_element`` aims
+        # at the element's centre, so hovering the left end of a 600px nav item
+        # landed the pointer 250px away -- a different hover target, and the
+        # cursor overlay (drawn at last_cursor) disagreed with the real pointer.
+        point = _norm_coord_to_viewport(driver, coordinate)
+        # Same rule as the click: the overlay records where the model aimed, so
+        # it is set before the move can fail rather than after it succeeds.
+        inst.last_cursor = point
+        actions = ActionBuilder(driver)
+        actions.pointer_action.move_to_location(point[0], point[1])
+        actions.perform()
         element = _element_from_coordinate(driver, coordinate)
         if element is not None:
-            ActionChains(driver).move_to_element(element).perform()
             inst.last_element = element
 
     elif name == "click_elem":
@@ -1217,7 +1364,7 @@ def _step_sync(body: dict[str, Any]) -> dict[str, Any]:
 
             try:
                 executed.append(_execute_action(inst, name, args))
-            except _MODEL_ACTION_ERROR_TYPES as e:
+            except _ACTION_ERROR_TYPES as e:
                 logger.warning("action failed for %s: %s(%s): %s", iid, name, args, e)
                 errors.append(f"{name}: {e}")
                 _append_action_error(

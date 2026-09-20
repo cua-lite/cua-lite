@@ -35,6 +35,7 @@ env_kwargs:
   extra_tools: ["response", "terminate", "goto", "back", "forward", "new_tab", "switch_tab", "close_tab"]
   use_screenshot: true
   use_ax_tree: false
+  include_page_context_text: false
 
 
   # Vision fast-path: explicitly skip BrowserGym's O(nodes) per-step DOM-
