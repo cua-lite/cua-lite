@@ -66,7 +66,7 @@ from lite.agents.models.claude.utils.parse import (
     parse_mobile_response_with_provenance,
     parse_response_with_provenance,
 )
-from lite.agents.models.claude.utils.toolset import acompletion_with_computer_toolset
+from lite.agents.models.claude.utils.toolset import acompletion_with_messages
 from lite.core import (
     LiteMessage,
     LiteRLSample,
@@ -367,11 +367,16 @@ class _ClaudeBaseAgent(BaseAgent):
         """
         import litellm  # lazy — kept off the module-import path (see top-of-file note)
 
+        # Claude 5's signature-only thinking must also survive function-tool responses.
         if any(
+            mapping["tool_version"] == "computer_toolset_20260801"
+            and re.search(mapping["pattern"], self.model_id, re.IGNORECASE)
+            for mapping in MODEL_TOOL_MAPPING
+        ) or any(
             tool.get("type") == "computer_toolset_20260801"
             for tool in api_kwargs.get("tools", [])
         ):
-            completion = acompletion_with_computer_toolset
+            completion = acompletion_with_messages
         else:
             completion = litellm.acompletion
             # LiteLLM's bundled model metadata can lag supported Claude releases.
@@ -481,7 +486,7 @@ class _ClaudeBaseAgent(BaseAgent):
 class ClaudeDesktopUseAgent(_ClaudeBaseAgent, key=r"claude@(desktop|browser)@use"):
     """Self-contained Claude computer-use agent.
 
-    Uses the Anthropic SDK for native toolsets and LiteLLM for older tools. No adapter,
+    Uses LiteLLM's Messages API for Claude 5 and Chat API for older models. No adapter,
     no processor, no generate_fn — all logic is self-contained.
 
     Args:
@@ -534,14 +539,10 @@ class ClaudeDesktopUseAgent(_ClaudeBaseAgent, key=r"claude@(desktop|browser)@use
     def _build_beta_header(self, tool_config: dict[str, str]) -> str:
         """Build the comma-separated anthropic-beta header value.
 
-        Includes the selected computer-use beta, if required, plus optional
-        prompt-caching and token-efficient-tools betas.
+        Includes the selected computer-use beta and optional token-efficient tools.
+        Prompt caching is generally available and needs no beta header.
         """
         betas: list[str] = [tool_config["beta_flag"]] if tool_config["beta_flag"] else []
-        if self.api_kwargs.get("prompt_caching"):
-            # caching requires its own beta flag to actually activate
-            # cache_control breakpoints server-side.
-            betas.append("prompt-caching-2024-07-31")
         if self.api_kwargs.get("token_efficient_tools_beta"):
             betas.append("token-efficient-tools-2025-02-19")
         return ",".join(betas)
@@ -1035,8 +1036,6 @@ class ClaudeDesktopGroundingPointAgent(
     def _build_beta_header(self, tool_config: dict[str, str]) -> str:
         """No computer-use beta needed when there's no native computer tool."""
         betas: list[str] = []
-        if self.api_kwargs.get("prompt_caching"):
-            betas.append("prompt-caching-2024-07-31")
         if self.api_kwargs.get("token_efficient_tools_beta"):
             betas.append("token-efficient-tools-2025-02-19")
         return ",".join(betas)
@@ -1072,13 +1071,11 @@ class ClaudeMobileUseAgent(_ClaudeBaseAgent, key="claude@mobile@use"):
         super().__post_init__()
 
     def _build_beta_header(self) -> str | None:
-        """mobile path does NOT activate computer-use beta; only caching /
-        token-efficient tools when their kwargs are on. Returns None if no
+        """Mobile only activates the optional token-efficient-tools beta.
+        Returns None if no
         betas need to be sent (in that case the caller should omit the header).
         """
         betas: list[str] = []
-        if self.api_kwargs.get("prompt_caching"):
-            betas.append("prompt-caching-2024-07-31")
         if self.api_kwargs.get("token_efficient_tools_beta"):
             betas.append("token-efficient-tools-2025-02-19")
         return ",".join(betas) if betas else None

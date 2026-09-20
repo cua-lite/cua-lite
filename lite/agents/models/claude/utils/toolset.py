@@ -1,4 +1,4 @@
-"""Native Claude computer toolset transport for LiteLLM-style agent history."""
+"""Native Claude Messages transport for LiteLLM-style agent history."""
 
 from __future__ import annotations
 
@@ -8,6 +8,11 @@ from typing import Any
 
 
 def _content_block(block: dict[str, Any]) -> dict[str, Any]:
+    if block.get("type") == "thinking" and block.get("thinking") == "" and block.get("signature"):
+        # LiteLLM 1.102 drops empty thinking, including valid omitted blocks.
+        # Anthropic ignores this text and restores thinking from the unchanged signature.
+        # https://platform.claude.com/docs/en/build-with-claude/thinking#controlling-thinking-display
+        return {**block, "thinking": "[omitted]"}
     if block.get("type") != "image_url":
         return block
     media_type, image_data = block["image_url"]["url"].split(";base64,", 1)
@@ -41,6 +46,12 @@ def _messages_for_anthropic(messages: list[dict[str, Any]]) -> tuple[Any, list[d
                     else content
                 ),
             }
+            # Follow Anthropic's format: cache the outer tool_result block.
+            if isinstance(result["content"], list) and result["content"]:
+                last = result["content"][-1]
+                if "cache_control" in last:
+                    last = result["content"][-1] = dict(last)
+                    result["cache_control"] = last.pop("cache_control")
             if msg.get("toolset_name"):
                 result["toolset_name"] = msg["toolset_name"]
             if msg.get("is_error"):
@@ -77,21 +88,34 @@ def _messages_for_anthropic(messages: list[dict[str, Any]]) -> tuple[Any, list[d
     return system, converted
 
 
-async def acompletion_with_computer_toolset(**kwargs: Any) -> Any:
-    """Use the native SDK: installed LiteLLM maps toolsets as legacy computer tools."""
-    import anthropic
+async def acompletion_with_messages(**kwargs: Any) -> Any:
+    """Use LiteLLM's Messages entrypoint to preserve native toolsets and effort."""
+    import litellm
 
     system, messages = _messages_for_anthropic(kwargs["messages"])
+    tools = []
+    for tool in kwargs["tools"]:
+        if "function" in tool:
+            function = tool["function"]
+            if tool["type"] == "function":
+                tool = {
+                    "name": function["name"],
+                    "description": function.get("description", ""),
+                    "input_schema": function["parameters"],
+                }
+            else:
+                tool = {"type": tool["type"], "name": function["name"], **function["parameters"]}
+        tools.append(tool)
     request: dict[str, Any] = {
-        "model": kwargs["model"].removeprefix("anthropic/"),
+        "model": kwargs["model"],
         "max_tokens": kwargs["max_tokens"],
         "messages": messages,
-        "tools": kwargs["tools"],
+        "tools": tools,
     }
     if system is not None:
         request["system"] = system
     if kwargs.get("headers"):
-        request["extra_headers"] = kwargs["headers"]
+        request["headers"] = kwargs["headers"]
     if kwargs.get("tool_choice"):
         choice = kwargs["tool_choice"]
         if isinstance(choice, str):
@@ -99,22 +123,18 @@ async def acompletion_with_computer_toolset(**kwargs: Any) -> Any:
         elif choice.get("type") == "function":
             choice = {"type": "tool", "name": choice["function"]["name"]}
         request["tool_choice"] = choice
-    extra_body = {k: kwargs[k] for k in ("thinking", "output_config") if k in kwargs}
-    if extra_body:
-        request["extra_body"] = extra_body
+    request.update({k: kwargs[k] for k in ("thinking", "output_config") if k in kwargs})
 
-    async with anthropic.AsyncAnthropic(
+    response = await litellm.anthropic.messages.acreate(
+        **request,
         api_key=kwargs.get("api_key"),
-        base_url=kwargs.get("api_base"),
-        max_retries=0,
-    ) as client:
-        response = await client.messages.create(**request)
-
-    message = SimpleNamespace(
-        content=[block.model_dump(exclude_none=True) for block in response.content],
-        tool_calls=[],
+        api_base=kwargs.get("api_base"),
+        custom_llm_provider="anthropic",
+        num_retries=0,
     )
+
+    message = SimpleNamespace(content=response["content"], tool_calls=[])
     return SimpleNamespace(
-        choices=[SimpleNamespace(message=message, finish_reason=response.stop_reason)],
-        model_dump=response.model_dump,
+        choices=[SimpleNamespace(message=message, finish_reason=response["stop_reason"])],
+        model_dump=lambda: response,
     )

@@ -298,9 +298,7 @@ class TestComputerUseBeta:
     def test_default_header_has_no_computer_use_beta(self):
         a = ClaudeMobileUseAgent(model_id="claude-opus-4-6")
         header = a._build_beta_header()
-        assert header is not None
-        assert "prompt-caching-2024-07-31" in header
-        assert "computer-use" not in header
+        assert header is None
 
     def test_caching_off_yields_no_header(self):
         a = ClaudeMobileUseAgent(
@@ -533,6 +531,7 @@ class TestSampleLoopMobilePath:
         tool_call = _fake_tap_tool_call(540, 1200)
         mock = AsyncMock(return_value=_fake_mobile_response(tool_calls=[tool_call]))
         monkeypatch.setattr("litellm.acompletion", mock)
+        monkeypatch.setattr("lite.agents.models.claude.agent.acompletion_with_messages", mock)
 
         agent = ClaudeMobileUseAgent(model_id=model_id)
         result = await agent.sample(_RecordingFakeMobileEnv(terminate_after=99), max_steps=1)

@@ -153,6 +153,7 @@ async def _tools_sent(agent, monkeypatch, env: Any = None) -> list[dict[str, Any
     """
     mock = AsyncMock(return_value=_fake_completion_response())
     monkeypatch.setattr("litellm.acompletion", mock)
+    monkeypatch.setattr("lite.agents.models.claude.agent.acompletion_with_messages", mock)
     await agent.sample(env if env is not None else _FakeEnv(terminate_after=1), max_steps=2)
     return mock.call_args.kwargs["tools"]
 
@@ -467,9 +468,9 @@ async def test_claude_unpaired_image_feedback_uses_result_ordered_indices():
 
 
 class TestPromptCachingBeta:
-    """anthropic-beta header must include prompt-caching-2024-07-31 when enabled."""
+    """Prompt caching works without its obsolete beta header."""
 
-    async def test_default_beta_includes_prompt_caching(self, monkeypatch):
+    async def test_default_beta_omits_prompt_caching(self, monkeypatch):
         mock = AsyncMock(return_value=_fake_completion_response())
         monkeypatch.setattr("litellm.acompletion", mock)
 
@@ -477,7 +478,7 @@ class TestPromptCachingBeta:
         await agent.sample(_FakeEnv(terminate_after=1), max_steps=2)
 
         header = mock.call_args.kwargs["headers"]["anthropic-beta"]
-        assert "prompt-caching-2024-07-31" in header
+        assert "prompt-caching-2024-07-31" not in header
         assert "computer-use-" in header  # computer-use beta still present
 
     async def test_prompt_caching_false_omits_beta(self, monkeypatch):
@@ -498,16 +499,14 @@ class TestPromptCachingBeta:
         header = mock.call_args.kwargs["headers"]["anthropic-beta"]
         assert "prompt-caching-2024-07-31" not in header
 
-    async def test_grounding_prompt_caching_beta_matches_cache_control(self, monkeypatch):
+    async def test_grounding_cache_control_needs_no_beta(self, monkeypatch):
         mock = AsyncMock(return_value=_fake_completion_response())
         monkeypatch.setattr("litellm.acompletion", mock)
 
         agent = ClaudeDesktopGroundingPointAgent(model_id="claude-opus-4-6")
         await agent.sample(_FakeEnv(terminate_after=1), max_steps=2)
 
-        header = mock.call_args.kwargs["headers"]["anthropic-beta"]
-        assert "computer-use" not in header
-        assert "prompt-caching-2024-07-31" in header
+        assert "headers" not in mock.call_args.kwargs
         assert mock.call_args.kwargs["messages"][0]["content"][0]["cache_control"] == {
             "type": "ephemeral"
         }
@@ -534,7 +533,7 @@ class TestModelToolMapping:
         mock = AsyncMock(return_value=_fake_completion_response())
         if model_id.removeprefix("anthropic/") in {"claude-opus-5", "claude-sonnet-5"}:
             monkeypatch.setattr(
-                "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
+                "lite.agents.models.claude.agent.acompletion_with_messages", mock
             )
         else:
             monkeypatch.setattr("litellm.acompletion", mock)
@@ -573,7 +572,7 @@ class TestModelToolMapping:
             _fake_completion_response(content="done"),
         ])
         monkeypatch.setattr(
-            "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
+            "lite.agents.models.claude.agent.acompletion_with_messages", mock
         )
         agent = ClaudeDesktopUseAgent(model_id=model_id)
         await agent.sample(_FakeEnv(terminate_after=2), max_steps=2)
@@ -604,7 +603,7 @@ class TestModelToolMapping:
             _fake_completion_response(content="done"),
         ])
         monkeypatch.setattr(
-            "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
+            "lite.agents.models.claude.agent.acompletion_with_messages", mock
         )
         await ClaudeDesktopUseAgent(model_id=model_id).sample(
             _FakeEnv(terminate_after=2), max_steps=2
@@ -1229,6 +1228,7 @@ class TestEffort:
         inherit the family's ``medium``."""
         mock = AsyncMock(return_value=_fake_completion_response())
         monkeypatch.setattr("litellm.acompletion", mock)
+        monkeypatch.setattr("lite.agents.models.claude.agent.acompletion_with_messages", mock)
 
         agent = ClaudeDesktopGroundingPointAgent(model_id=model_id)
         await agent.sample(_FakeEnv(terminate_after=1), max_steps=2)
@@ -1283,7 +1283,7 @@ class TestModelRejectsTemperature:
         mock = AsyncMock(return_value=_fake_completion_response())
         monkeypatch.setattr("litellm.acompletion", mock)
         monkeypatch.setattr(
-            "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
+            "lite.agents.models.claude.agent.acompletion_with_messages", mock
         )
 
         agent = ClaudeDesktopUseAgent(
@@ -1323,7 +1323,7 @@ class TestModelRejectsTemperature:
         mock = AsyncMock(return_value=_fake_completion_response())
         if model_id.removeprefix("anthropic/") in {"claude-opus-5", "claude-sonnet-5"}:
             monkeypatch.setattr(
-                "lite.agents.models.claude.agent.acompletion_with_computer_toolset", mock
+                "lite.agents.models.claude.agent.acompletion_with_messages", mock
             )
         else:
             monkeypatch.setattr("litellm.acompletion", mock)
