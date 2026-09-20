@@ -526,6 +526,21 @@ Mean episode return, (fully-solved / `num_valid`) in parentheses. Fill this from
 WebVoyager read-only passes. `over128` is the dense mean over the fixed prompt set and should be
 reported beside the valid-only mean whenever `err` is non-zero.
 
+**One pass per cell.** Scoring is at `temperature: 0.0` (from the config yaml, not a flag), and
+two things make a repeat pass a poor use of a GPU-hour:
+
+- *Greedy scoring repeats.* The same SFT parent scored five times on this manifest, on five pods
+  within one session, gave 76 / 76 / 75 / 76 / 75 of 128 — sd 0.55 task, range 1. A single pass
+  already separates differences of about 4 tasks (0.03) at 2σ. Across pods, images and days the
+  spread is wider (sd ~1.5 tasks over eight measurements, range 4), which is an argument for
+  running a row together, not for running it repeatedly.
+- *The harness already retries, at a finer grain.* `_eval_rollout` re-queues each errored
+  trajectory up to `max_eval_retries` (3), and only when the error was classified retryable where
+  it was raised (`engine.py:974,1015`). Measured over fourteen evals: 25 retries, 13 residual
+  errors — about half recover. So `err` is the **post-retry** residue, and re-running the whole
+  128 mostly re-runs into the same walls. Repeat passes were protecting against a bad host, which
+  the `err` column reports directly.
+
 | | `i4` | `i1` |
 |---|---:|---:|
 | **base** | TBD | TBD |
@@ -534,20 +549,22 @@ reported beside the valid-only mean whenever `err` is non-zero.
 | **`gpt5_5` + `<think>`** | TBD | TBD |
 | **GRPO from `gpt5_5` + `<think>`** | — | TBD |
 
-Every individual run - `MER (solved/num_valid) parse_failure err over128`, one column per pass:
+The same nine measurements with their full record - `MER (solved/num_valid) parse_failure err
+over128`. **One pass per cell** — the rationale is above, the one condition that forces a re-run is in
+"Reading the table" below:
 
-| | | `a` | `b` | `c` |
-|---|---|---:|---:|---:|
-| **base** | `i4` | TBD | TBD | TBD |
-|  | `i1` | TBD | TBD | TBD |
-| **base+`<think>`** | `i4` | TBD | TBD | TBD |
-|  | `i1` | TBD | TBD | TBD |
-| **`gpt5_5`** | `i4` | TBD | TBD | TBD |
-|  | `i1` | TBD | TBD | TBD |
-| **`gpt5_5`+`<think>`** | `i4` | TBD | TBD | TBD |
-|  | `i1` | TBD | TBD | TBD |
-| **GRPO from `gpt5_5`+`<think>`** | `i4` | — | — | — |
-|  | `i1` | TBD | TBD | TBD |
+| | | pass |
+|---|---|---:|
+| **base** | `i4` | TBD |
+|  | `i1` | TBD |
+| **base+`<think>`** | `i4` | TBD |
+|  | `i1` | TBD |
+| **`gpt5_5`** | `i4` | TBD |
+|  | `i1` | TBD |
+| **`gpt5_5`+`<think>`** | `i4` | TBD |
+|  | `i1` | TBD |
+| **GRPO from `gpt5_5`+`<think>`** | `i4` | — |
+|  | `i1` | TBD |
 
 Reading the table:
 
@@ -556,7 +573,13 @@ Reading the table:
 - **Do not paste old browser/WebVoyager numbers into this table.** This campaign changes the
   training data contract to `webgym_gpt5_5_nogoto_wvclean`, so every cell needs a fresh score.
 - **The denominator is part of the result.** `err` is `num_samples - num_valid`; keep it beside
-  every mean instead of silently averaging failures as reward 0.
+  every mean instead of silently averaging failures as reward 0. When `err > 0`, the true score
+  over the fixed 128 lies in `[solved, solved + err] / 128`; report that bracket, not a point.
+- **One pass per cell, and `err` decides whether to keep it.** `err <= 3` is the normal residue —
+  report the cell with its bracket. `err >= 5` is not residue, it is a sick host (a step-timeout
+  burst takes whole batches down together); discard that pass and re-run it. Run a row's cells in
+  one session on one pod: repeat measurements drift about three times as much across pods and
+  images as within one.
 - **This is a fixed-subset result, not a full WebVoyager benchmark.** Re-run multiple seeds or
   the full split before treating a cell as generally best.
 - **The GRPO row is the `i1` reasoning surface only.** It starts from the
