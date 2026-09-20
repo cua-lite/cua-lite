@@ -1,0 +1,116 @@
+{
+  "env": "androidlab",
+  "commit_dir": "2026-09-17T14-26_5268092",
+  "run_id": "run_0",
+  "commit": {
+    "short_sha": "5268092"
+  },
+  "artifact_root": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0",
+  "result_count": 13,
+  "results": [
+    {
+      "model": "GPT-5.5",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.6159420289855072,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.5",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.5/summary.json"
+    },
+    {
+      "model": "GPT-5.6 Sol",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.6086956521739131,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.6-sol",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.6-sol/summary.json"
+    },
+    {
+      "model": "GPT-6 Astra",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.6086956521739131,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-6-astra",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-6-astra/summary.json"
+    },
+    {
+      "model": "Qwen3.8-27B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.37681159420289856,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.8-27B",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.8-27B/summary.json"
+    },
+    {
+      "model": "UI-Venus-2-9B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.37681159420289856,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/inclusionAI_UI-Venus-2-9B",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/inclusionAI_UI-Venus-2-9B/summary.json"
+    },
+    {
+      "model": "MAI-UI-8B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.34782608695652173,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Tongyi-MAI_MAI-UI-8B",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Tongyi-MAI_MAI-UI-8B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-8B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.2898550724637681,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-8B-Instruct",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json"
+    },
+    {
+      "model": "Qwen3.5-27B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.2898550724637681,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-27B",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-27B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-32B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.2753623188405797,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-32B-Instruct",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json"
+    },
+    {
+      "model": "UI-TARS-1.5-7B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.2753623188405797,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json"
+    },
+    {
+      "model": "Qwen3.5-4B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.2536231884057971,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-4B",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-4B/summary.json"
+    },
+    {
+      "model": "Qwen3-VL-4B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.2463768115942029,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-4B-Instruct",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json"
+    },
+    {
+      "model": "Qwen3.5-9B",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "mean_episode_return": 0.2463768115942029,
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-9B",
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-9B/summary.json"
+    }
+  ]
+}
