@@ -526,18 +526,26 @@ class TestMobileConfigRejection:
 
 
 class TestSampleLoopMobilePath:
-    async def test_max_steps_exhaustion_marks_truncated_with_paired_feedback(self, monkeypatch):
+    @pytest.mark.parametrize("model_id", ["claude-opus-4-6", "claude-opus-5", "claude-sonnet-5"])
+    async def test_max_steps_exhaustion_marks_truncated_with_paired_feedback(
+        self, monkeypatch, model_id
+    ):
         tool_call = _fake_tap_tool_call(540, 1200)
         mock = AsyncMock(return_value=_fake_mobile_response(tool_calls=[tool_call]))
         monkeypatch.setattr("litellm.acompletion", mock)
 
-        agent = ClaudeMobileUseAgent()
+        agent = ClaudeMobileUseAgent(model_id=model_id)
         result = await agent.sample(_RecordingFakeMobileEnv(terminate_after=99), max_steps=1)
 
         assert result.terminated is False
         assert result.truncated is True
         assert result.steps[-1].status == "truncated"
         assert mock.call_count == 1
+        if model_id in {"claude-opus-5", "claude-sonnet-5"}:
+            assert mock.call_args.kwargs["thinking"] == {"type": "adaptive"}
+            assert mock.call_args.kwargs["output_config"] == {"effort": "medium"}
+            assert "temperature" not in mock.call_args.kwargs
+            assert all(tool["type"] == "function" for tool in mock.call_args.kwargs["tools"])
         assert [m["role"] for m in result.lite_sample.messages] == ["user", "assistant", "tool"]
         tool_msg = result.lite_sample.messages[-1]
         assert tool_msg["tool_call_id"] == "call_0000"

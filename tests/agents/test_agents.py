@@ -46,7 +46,11 @@ def _mock_env(
 
 class TestMakeAgentAPI:
     @pytest.mark.parametrize(
-        "model", ["claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-5"]
+        "model",
+        [
+            "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8",
+            "claude-opus-5", "claude-sonnet-5",
+        ],
     )
     def test_claude_model_returns_claude_agent(self, model):
         env = _mock_env()

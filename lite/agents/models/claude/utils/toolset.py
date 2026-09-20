@@ -1,4 +1,4 @@
-"""Claude Opus 5 computer toolset transport for LiteLLM-style agent history."""
+"""Native Claude computer toolset transport for LiteLLM-style agent history."""
 
 from __future__ import annotations
 
