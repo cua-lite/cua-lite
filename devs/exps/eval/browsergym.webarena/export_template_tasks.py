@@ -29,7 +29,6 @@ from typing import Any
 from lite.gym.envs.browsergym import isolation
 from lite.utils.parquet import write_records_to_parquet
 
-
 ENV_VAR = "WebArena_SRC"
 ENV_ID = "browsergym.webarena"
 EXPECTED_TEMPLATES = 241
@@ -109,7 +108,9 @@ def _load_webarena_configs(browsergym_src: Path) -> tuple[list[dict[str, Any]], 
     return json.loads(resource.read_text(encoding="utf-8")), str(resource)
 
 
-def _template_groups(configs: list[dict[str, Any]]) -> list[tuple[tuple[int, str], list[dict[str, Any]]]]:
+def _template_groups(
+    configs: list[dict[str, Any]],
+) -> list[tuple[tuple[int, str], list[dict[str, Any]]]]:
     grouped: dict[tuple[int, str], list[dict[str, Any]]] = defaultdict(list)
     for row in sorted(configs, key=lambda item: item["task_id"]):
         grouped[(row["intent_template_id"], row["intent_template"])].append(row)
@@ -130,7 +131,9 @@ def _record(
     task_id = str(row["task_id"])
     template_task_ids = [str(item["task_id"]) for item in rows_for_template]
     return {
-        "problem": row["intent"],
+        # Rollout resolves the real BrowserGym prompt from metadata.env_key at
+        # env reset time; this column is only the prompt-data table placeholder.
+        "problem": f"Complete the task: {task_id}",
         "metadata": {
             "env_key": f"{ENV_ID}@{task_id}",
             "split": "eval",
