@@ -911,6 +911,87 @@ exactly that cell under the same judge and manifest, so the cell reports their m
 74.3, within 2.5 tasks of those five — the evidence that the two scoring paths carry no
 systematic offset.
 
+#### Ship the checkpoints
+
+The GRPO checkpoints travel through the Hub the same way the SFT ones do, one level deeper
+because this cell has two axes instead of one: **repo** = the cell
+(`ZHZisZZ/qwen3_5-4b.grpo.browser.use.i1.reasoning.wv_readonly_split.from_sft`), **subdir** =
+`seed_<rollout_seed>/rollout_<N>/`, **tag** = the producing commit.
+
+Two departures from the SFT block, both deliberate:
+
+- **`rollout_<N>`, not `epoch_<k>`.** GRPO has no epoch here — 494 train tasks at
+  `ROLLOUT_BATCH_SIZE=16` take 31 rollouts to see the set once — so the subdir counts rollouts.
+  Slime writes `iter_<N>` 0-based, so `iter_29` is the checkpoint after **30** rollouts and
+  uploads as `rollout_30`; the same off-by-one as `eval 29`. Read the number off disk, never
+  predict it.
+- **Only the reported rollout goes up.** Each seed saves at `SAVE_INTERVAL=5`, so a full curve is
+  six checkpoints per seed and ~53 GB per seed, ~265 GB for five. The intermediate points are
+  already recorded numerically in Seed replication below, which is what reproducing the curve
+  actually needs; the weights that have to exist are the ones the Results table reports. Upload
+  another rollout only when a specific checkpoint is being selected, and say which in the commit
+  message.
+
+```bash
+# --- ANY POD HOLDING THE RUN ---  (commit first so the tag describes the weights)
+# `uv run hf`, not bare `hf`. Needs a WRITE-scoped token (HF_TOKEN, or `uv run hf auth login`).
+# The repo is public, so eval hosts need no auth.
+COMMIT="$(git rev-parse --short HEAD)"
+REPO="ZHZisZZ/qwen3_5-4b.grpo.browser.use.i1.reasoning.wv_readonly_split.from_sft"
+CKPTS=.ckpts/qwen3_5-4b
+ROLLOUT=30                       # what to publish; ITER is ROLLOUT-1 on disk
+ITER=$((ROLLOUT - 1))
+
+# "<run dir under $CKPTS>|<rollout_seed>" -- the seed is in the run name for the 2026-09
+# campaign (rs<rollout_seed>s<seed>); older runs left it at run_grpo.sh's default 42/1234.
+runs() {
+  printf '%s\n' \
+    "grpo.browser.use.i1.reasoning.grid494.lr1e6.rs101s5001.from_sft|101" \
+    "grpo.browser.use.i1.reasoning.grid494.lr1e6.rs202s5002.from_sft|202" \
+    "grpo.browser.use.i1.reasoning.grid494.lr1e6.rs303s5003.from_sft|303" \
+    "grpo.browser.use.i1.reasoning.grid494.lr1e6.rs404s5004.from_sft|404" \
+    "grpo.browser.use.i1.reasoning.wv_readonly_split.lr1e6.from_sft|42"
+}
+
+uv run hf repos create "$REPO" --repo-type model --exist-ok < /dev/null
+
+while IFS='|' read -r RUN SEED; do
+  D="$CKPTS/$RUN/iter_$ITER"
+  [ -d "$D" ] || { echo "SKIP seed_$SEED: no $D on this pod"; continue; }
+  # AutoProcessor needs all three later; a checkpoint missing one is not shippable.
+  for f in config.json tokenizer_config.json preprocessor_config.json; do
+    [ -e "$D/$f" ] || { echo "SKIP seed_$SEED: $D has no $f"; D=""; break; }
+  done
+  [ -n "$D" ] || continue
+  uv run hf upload "$REPO" "$D" "seed_$SEED/rollout_$ROLLOUT" --repo-type model \
+    --commit-message "$COMMIT: seed $SEED, rollout $ROLLOUT (from $RUN/iter_$ITER)" \
+    < /dev/null || echo "FAILED seed_$SEED -- not tagging"
+done <<< "$(runs)"
+
+uv run hf repos tag delete "$REPO" "$COMMIT" --repo-type model --yes < /dev/null \
+  || echo "note: no existing '$COMMIT' tag (expected on a first upload)"
+uv run hf repos tag create "$REPO" "$COMMIT" --repo-type model -m "$COMMIT" < /dev/null \
+  || echo "ERROR $REPO has NO '$COMMIT' tag; weights are on main -- re-tag by hand"
+```
+
+The five runs live on different pods (cc9, cc9b, cc9c, cc9d x2), so this runs once per pod and
+the `SKIP ... no <dir> on this pod` lines are expected — each pod uploads the run it holds.
+
+Two things that cost a re-run the first time:
+
+- **Detach it.** `hf upload` outlives the ssh session only under `nohup setsid`; without it the
+  session's SIGHUP kills the upload mid-flight. `hf repos create` has already returned by then,
+  so the repo exists and looks like progress while nothing is being sent.
+- **Verify against the Hub, not the console.** `hf upload` is single-commit and not resumable, so
+  a repo shows nothing at all until the commit lands — an in-flight upload and a dead one look
+  identical from the Hub side, and a `pgrep`-style check on the pod side can match its own
+  pattern and report a phantom process. The pair that actually settles it is the uploader's own
+  `UPLOADED`/`FAILED` log line plus `list_repo_files` afterwards.
+
+As of `0d81276` the repo holds all five seeds at `rollout_30` (46 files; 9 per seed), tagged
+`0d81276`. Uploading is fast despite ~8.7 GB per checkpoint — Xet dedupes against the SFT parent
+already on the Hub, so only 4.0-5.3 GB per seed is new data.
+
 #### Seed replication
 
 Five runs of the block above, identical except for `ROLLOUT_SEED` / `SEED`, all starting from the
