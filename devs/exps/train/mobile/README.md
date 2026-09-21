@@ -643,6 +643,59 @@ Reading the table, once it has numbers in it:
 - **The `> 0.5` row answers one question only** — see [Filter ablation](#filter-ablation) — and it is
   read against the `gpt5_5` + `<think>` / `i1` cell directly above it, never against another teacher.
 
+#### The `i4` + `<think>` cell does not train
+
+`mobile.use.i4.reasoning` is the one cell in this campaign that never produced a checkpoint. Six
+attempts on 2026-09-21 all died the same way, so the cell is `not run` rather than `TBD`: the work
+was done and the result was a failure.
+
+**Signature.** Training reaches iteration 12 (iteration 5 at `DP=2`), completes that step's last
+micro-batch, and then hangs. NCCL's watchdog aborts ~10 min later:
+
+```
+PG GUID 2 (DATA_PARALLEL_GROUP_WITH_CP)   x7
+PG GUID 25 (TENSOR_MODEL_PARALLEL_GROUP)  x1
+WorkNCCL(SeqNum=5, OpType=ALLREDUCE, NumelIn=1, Timeout(ms)=600000) ran for 600051 ms
+```
+
+The stalled collective carries ONE element, so this is a rank that never arrives, not a step that
+runs long. `py-spy` on all eight ranks at the moment of the hang shows the split:
+
+```
+6 ranks   get_grad_norm_fp32 (core/optimizer/clip_grads.py:133)  <- already in the optimizer step
+2 ranks   custom_backward (core/pipeline_parallel/schedules.py:190)  <- still in backward
+```
+
+**What was ruled out.** Each of these was tested, not reasoned about:
+
+| Hypothesis | How it was excluded |
+|---|---|
+| Sequence length | Longest final-step prompt is 6191 tokens (`i4`: 4943). Not long. |
+| Packing degraded by `<think>` | Prefix-compatibility is 677/835 = 81.1% for BOTH `i4` and `i4.reasoning`, and `image_indices` sawtooth identically. The exports are structurally the same. |
+| Uneven micro-batch counts across ranks | `i1` varies 62->99 per iteration and trains fine; the static path in `dp_schedule.py` raises rather than emitting a ragged count, and no such assert fired. |
+| A bad GPU or a bad DP group | Reproduces on `TP=2/DP=4` (GPUs 0-7) and on `TP=2/DP=2` (GPUs 0-3). |
+| CPU/IO contention with a concurrent eval | Persists after the eval is killed. |
+| Environment drift | `mobile.use.i4` — same launcher, same container, same 8 GPUs — was re-run THREE times, interleaved with the failures: 62/62 at 07:03, to iteration 17 at 16:36 (between failures 3 and 4), and to iteration 15 at 20:23 (after failure 7). Every one at 5.1-6.0 s/micro-batch with zero NCCL events. |
+| A poisoned trajectory | Shuffling the row order (seed 20260921, same 1016 rows) moves the failure from iteration 12 to iteration 15, and the two failing steps share ZERO rows. No single trajectory is implicated; the trigger is a property some 32-row steps have. |
+| Iteration index or accumulated state | Same shuffle: the failure moves with the data, not with the step number. |
+| `torch.compile` shape specialization | `TORCHDYNAMO_DISABLE=1` (via the existing `CUA_LITE_RAY_ENV_VARS` passthrough) hangs at the same iteration. It is also not a speed knob here: eager runs 5.5 s/micro-batch against 5.1-6.0 compiled. |
+
+**What is still open.** Nothing testable is left that this campaign could reach. The DP-imbalance
+lead was simulated offline against the real per-segment lengths and does not hold: strided
+round-robin over `dp_size=4` gives per-rank token loads within `max/min = 1.030`, and the figure is
+the same for `i4` and `i4.reasoning`, so `--balance-data` would not change anything. The failing
+steps also look ordinary on every axis measured (segment count, total tokens, longest segment,
+length CV) — each sits inside the range spanned by its neighbours.
+
+What survives is narrow but real: the trigger is a property that a 32-row training step can have,
+it is not carried by any individual trajectory, and it appears only when the 4-image budget and
+`<think>` are combined — `i1` + `<think>` and `i4` without `<think>` each train to 62/62.
+
+**What the cell would have answered.** Both single-axis gains are real and orthogonal on `i1`/`i4`:
+`<think>` is worth +6.7pp shaped (0.3444 vs 0.2776) and the 4-image budget +4.2pp (0.3195 vs
+0.2776), with the same ordering on the untrained base row (0.2162 vs 0.1896). Whether they compose
+is exactly what this cell measures, so it is worth another attempt.
+
 #### Filter ablation
 
 The eleventh cell is `(mobile.use.i1.reasoning, gpt5_5)` — the GRPO cell's own profile and teacher —
