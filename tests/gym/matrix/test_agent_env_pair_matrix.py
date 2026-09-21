@@ -101,10 +101,11 @@ _MIN_CONFIG_YAMLS = 150
 _MIN_DISTINCT_PAIRS = 110
 # +1 on each since the gpt mobilegym collect recipe landed: it is the first
 # gpt.teacher recipe for a MOBILE env, so it adds one agent row, one env row, and
-# the (gpt.teacher, mobilegym) pair.
-_EXPECTED_AGENT_CONFIG_ROWS = 197
-_EXPECTED_ENV_CONFIG_ROWS = 192
-_EXPECTED_DISTINCT_PAIRS = 154
+# the (gpt.teacher, mobilegym) pair. A further +1 on the agent row alone for
+# claude/default/waa.yaml (#30), which reuses an env already counted.
+_EXPECTED_AGENT_CONFIG_ROWS = 198
+_EXPECTED_ENV_CONFIG_ROWS = 193
+_EXPECTED_DISTINCT_PAIRS = 155
 
 
 class ConfigRow:
