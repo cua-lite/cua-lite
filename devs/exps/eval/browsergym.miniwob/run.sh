@@ -32,12 +32,14 @@
 #   # or open a fresh campaign at this commit:
 #   export EVAL_RUN_ID="run_1"        # bump past any existing run_0 / run_1 / ...
 #   CUDA_VISIBLE_DEVICES=<gpus> ./devs/exps/eval/browsergym.miniwob/run.sh <model-id>
+#   # thinking-on variant (default screenshot+coord mode unless EVAL_MODE is set):
+#   EVAL_ENABLE_THINKING=true ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Thinking
 #   # text+bid mode:
 #   EVAL_MODE=text_only ./devs/exps/eval/browsergym.miniwob/run.sh <model-id>
 #
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Instruct
-#   CUDA_VISIBLE_DEVICES=0       EVAL_MODE=text_only EVAL_RUN_ID=run_0_textonly EVAL_ENABLE_THINKING=false ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Thinking
+#   CUDA_VISIBLE_DEVICES=0       EVAL_ENABLE_THINKING=true ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Thinking
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-32B-Instruct
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3.5-27B
 #   ./devs/exps/eval/browsergym.miniwob/run.sh gpt-5.5              # API model, no GPU
@@ -68,10 +70,6 @@ case "${EVAL_ENABLE_THINKING:-false}" in
   0|false|FALSE|no|NO|off|OFF|"") ENABLE_THINKING=0 ;;
   *) echo "[run.sh] ERROR: EVAL_ENABLE_THINKING must be true/false, got: ${EVAL_ENABLE_THINKING}" >&2; exit 1 ;;
 esac
-if [[ "$ENABLE_THINKING" -eq 1 && "$MODE" != "text_only" ]]; then
-  echo "[run.sh] ERROR: EVAL_ENABLE_THINKING=true is only supported with EVAL_MODE=text_only" >&2
-  exit 1
-fi
 SUPPORTS_ENABLE_THINKING=0
 case "$MODEL" in
   Qwen/Qwen3-VL-*-Thinking|Qwen/Qwen3.5-*) SUPPORTS_ENABLE_THINKING=1 ;;
@@ -82,7 +80,7 @@ if [[ "$ENABLE_THINKING" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -ne 1 ]]; then
 fi
 BASE_SLUG="${MODEL//\//_}"
 CONFIG_ID="${EVAL_CONFIG_ID:-}"
-if [[ -z "$CONFIG_ID" && "$MODE" == "text_only" && "$ENABLE_THINKING_ENV_SET" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -eq 1 ]]; then
+if [[ -z "$CONFIG_ID" && "$ENABLE_THINKING_ENV_SET" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -eq 1 ]]; then
   if [ "$ENABLE_THINKING" -eq 1 ]; then
     CONFIG_ID="think_on"
   else
