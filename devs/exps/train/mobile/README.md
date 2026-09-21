@@ -599,15 +599,19 @@ Cells read `shaped-mean (solved/256)`.
 
 | | `i1` | `i4` |
 |---|---:|---:|
-| **base** | TBD | TBD |
-| **base + `<think>`** | TBD | TBD |
-| **`gpt5_5`** | TBD | TBD |
-| **`gpt5_5` + `<think>`** | TBD | TBD |
+| **base** | 60/256 only | TBD |
+| **base + `<think>`** | 0.1896 (38/256) | TBD |
+| **`gpt5_5`** | 0.2776 (56/256) | TBD |
+| **`gpt5_5` + `<think>`** | 200/256 only | TBD |
 | **`qwen3_5_27b`** | TBD | TBD |
 | **`qwen3_5_27b` + `<think>`** | TBD | TBD |
 | **`qwen3_8_27b`** | TBD | TBD |
 | **`gpt5_5` + `<think>`, `> 0.5` rows** | TBD | — |
-| **GRPO from `gpt5_5` + `<think>`** | TBD | — |
+| **GRPO from `gpt5_5` + `<think>`** | see below | — |
+
+Two cells read `N/256 only` rather than a number: those passes stopped early (the `base` `i1` pass at
+60 tasks, `gpt5_5` + `<think>` at 200), and a mean over a truncated prefix is not comparable to one
+over 256 — the eval split is ordered, not shuffled. Re-run them before citing either.
 
 Reading the table, once it has numbers in it:
 
@@ -766,6 +770,46 @@ sides by the rows, which is the point — but `loop_detect` or `extra_tools` cha
 surface change, and this is where it shows up.
 
 </details>
+
+#### What this cell actually measured
+
+Run as written below, this cell **does not move the eval**: `0.4688 -> 0.4600 -> 0.4569` over 20
+rollouts on a 176-task `L1-L3` slice (−1.19pp, 0.22σ). Five variants were run to find out why, all
+on Qwen3.5-4B, all with the same optimizer settings. Denominators differ between them, so compare
+each line's *delta*, never the absolute across lines.
+
+| variant | start | task pool | delta |
+|---|---:|---|---:|
+| as written (from SFT, `train160` → `eval256`) | 0.4688 | 176 `L1-L3` | −1.19pp (20 rollouts) |
+| same, from **base** | 0.2689 | 176 `L1-L3` | +0.70pp (7) |
+| **same templates**, fresh instance per rollout, from **base** | 0.4580 | 109 train-split | **+12.14pp** (11) |
+| same templates, **one fixed instance**, from base | 0.2094 | 175 eval-split | −1.16pp (5) |
+| same templates, fresh instance, from **SFT**, zero template overlap | 0.3779 | 85 `L1-L3` | +0.66pp (5) |
+
+Three things the spread rules out, and one it does not:
+
+- **Not the optimizer, and not a starved signal.** The same settings produce +12.14pp on line 3, and
+  the `rollout/mixed_group_ratio` this repo logs sat at 94% on line 5 — nearly every group carried
+  within-group variance, so homogeneous groups were not the constraint.
+- **Not difficulty.** `mixed_group_ratio` averages 36% on the 160-task full-difficulty pool vs 39% on
+  the `L1+L2` subset — within noise of each other. What L4 costs is the denominator, not the gradient:
+  it is 33% of the tasks and 38% of the step budget for a 4% solve rate, so dropping it lifts the same
+  checkpoint's start from 0.2983 to 0.3779 without training anything.
+- **It is the gap between the train and eval task distributions.** The only variant that moves is the
+  one where the two sides share templates (line 3). `train160` and `eval256` share **no class name**,
+  and the eval split is 34.4% cross-app against the train split's 11.2%.
+- **Unresolved: how much of line 3 survives SFT.** Line 5 is that question asked cleanly — same
+  protocol, templates the SFT teacher data never saw — and it returns +0.66pp. But it has one
+  post-training point at rollout 5, where line 3 was still only at +7.85pp; it reached +12.14pp at
+  rollout 10. Read line 5 as *not yet evidence either way*, not as a null.
+
+A Qwen3-VL-2B control run of the top-level README's GRPO example (same env, same task pool, 35
+rollouts) gains **+11.82pp**, and its gain is entirely `L1`: 2/20 → 12/20, McNemar p=0.002, with
+`L2` flat at 7→10. The mechanism is visible in the behaviour, not the score — 2B starts with a 25.8%
+truncation rate and 18.6 turns per episode; GRPO cuts those to 11.8% and 12.5, which converts tasks
+it could already do but could not finish inside the step budget. Qwen3.5-4B starts at 0.8% truncation
+and 10.9 turns, so that particular headroom does not exist for it. GRPO's reachable failure modes,
+not model scale, are what decide whether this cell pays.
 
 ```bash
 # --- Slime container ---
