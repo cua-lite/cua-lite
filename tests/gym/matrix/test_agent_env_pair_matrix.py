@@ -99,9 +99,12 @@ _CONFIG_ROOTS = (Path("scripts/configs"),)
 # vacuously passing.
 _MIN_CONFIG_YAMLS = 150
 _MIN_DISTINCT_PAIRS = 110
-_EXPECTED_AGENT_CONFIG_ROWS = 196
-_EXPECTED_ENV_CONFIG_ROWS = 191
-_EXPECTED_DISTINCT_PAIRS = 153
+# +1 on each since the gpt mobilegym collect recipe landed: it is the first
+# gpt.teacher recipe for a MOBILE env, so it adds one agent row, one env row, and
+# the (gpt.teacher, mobilegym) pair.
+_EXPECTED_AGENT_CONFIG_ROWS = 197
+_EXPECTED_ENV_CONFIG_ROWS = 192
+_EXPECTED_DISTINCT_PAIRS = 154
 
 
 class ConfigRow:

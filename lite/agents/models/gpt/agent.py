@@ -975,6 +975,33 @@ class GPTMobileUseAgent(_GPTBaseAgent, key="gpt@mobile@use"):
 
         return provider_tool_declarations
 
+    def _parse_output_items(
+        self,
+        output_items: list[dict[str, Any]],
+        *,
+        resolution: tuple[int, int],
+        active_provider_tool_names: frozenset[str] | None = None,
+        call_id_start: int = 0,
+    ) -> GPTParsedOutput:
+        """Parse mobile Responses-API output items into the Lite message + provenance.
+
+        Same name and signature as ``GPTDesktopUseAgent._parse_output_items``, so the
+        teacher subclasses can relabel controlled Thought/Action prose with ONE override
+        that serves both platforms.
+
+        ``resolution`` is the frame the model's coords are in: the sent screenshot dims,
+        which mobile resizes to per step.
+        """
+        return parse_gpt_mobile_output_items_with_provenance(
+            output_items,
+            action_space=self.action_space,
+            resolution=resolution,
+            extra_tool_names=self._extra_tool_names(),
+            declared_agent_tool_names=self._declared_agent_tool_names(),
+            active_provider_tool_names=active_provider_tool_names,
+            call_id_start=call_id_start,
+        )
+
     async def sample(
         self,
         env: LiteBaseEnv,
@@ -1124,12 +1151,9 @@ class GPTMobileUseAgent(_GPTBaseAgent, key="gpt@mobile@use"):
                 output_items = normalized_response.output_items
 
                 # 3. Parse: provider output -> canonical Lite assistant message.
-                parsed_output = parse_gpt_mobile_output_items_with_provenance(
+                parsed_output = self._parse_output_items(
                     output_items,
-                    action_space=self.action_space,
                     resolution=(sent_w, sent_h),
-                    extra_tool_names=self._extra_tool_names(),
-                    declared_agent_tool_names=self._declared_agent_tool_names(),
                     active_provider_tool_names=active_provider_tool_names,
                     call_id_start=next_call_id,
                 )
