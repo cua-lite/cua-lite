@@ -58,14 +58,17 @@ def test_opus_4_7_tier_keeps_larger_frames_when_within_budget() -> None:
     assert max(target_image_size(2560, 1440, "claude-opus-4-7", many_image=True)) <= 2000
 
 
-def test_opus_4_8_tier_keeps_larger_frames_when_within_budget() -> None:
+@pytest.mark.parametrize(
+    "model_id", ["claude-opus-4-8", "claude-opus-5", "claude-sonnet-5", "anthropic/claude-sonnet-5"]
+)
+def test_high_res_models_keep_larger_frames_when_within_budget(model_id: str) -> None:
     # 1920x1080 sits under BOTH ceilings, so it is kept in either regime.
-    assert target_image_size(1920, 1080, "claude-opus-4-8", many_image=False) == (1920, 1080)
-    assert target_image_size(1920, 1080, "claude-opus-4-8", many_image=True) == (1920, 1080)
+    assert target_image_size(1920, 1080, model_id, many_image=False) == (1920, 1080)
+    assert target_image_size(1920, 1080, model_id, many_image=True) == (1920, 1080)
     # 2560x1440 exceeds the many-image cap: kept whole only for a single-image
     # request, clamped once the request carries several images.
-    assert target_image_size(2560, 1440, "claude-opus-4-8", many_image=False) == (2560, 1440)
-    assert max(target_image_size(2560, 1440, "claude-opus-4-8", many_image=True)) <= 2000
+    assert target_image_size(2560, 1440, model_id, many_image=False) == (2560, 1440)
+    assert max(target_image_size(2560, 1440, model_id, many_image=True)) <= 2000
 
 
 def test_opus_4_8_tier_downsizes_frames_over_high_res_budget() -> None:
@@ -73,6 +76,12 @@ def test_opus_4_8_tier_downsizes_frames_over_high_res_budget() -> None:
 
     assert target != (4000, 2500)
     assert not would_trigger_claude_auto_downsample(*target, "claude-opus-4-8", many_image=True)
+
+
+@pytest.mark.parametrize("model_id", ["claude-opus-5", "claude-sonnet-5"])
+def test_high_res_phone_keeps_more_detail(model_id: str) -> None:
+    assert effective_max_edge_px(model_id, many_image=True) == 2000
+    assert target_image_size(1080, 2400, model_id, many_image=True)[1] == 2000
 
 
 def test_resize_returns_b64_and_sent_dimensions() -> None:

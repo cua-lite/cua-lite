@@ -52,6 +52,23 @@ def align_tool_results_to_tool_calls(
     Non-terminal env steps must return one paired result per model-emitted tool
     call. Terminal env steps may omit results; in that case the trajectory
     naturally ends on the assistant tool_call.
+
+    A step may also carry result frames that no assistant call addresses. Envs
+    build "one per EXECUTED action" (``build_tool_results_from_decisions``), and
+    a wrapper may expand one assistant call into several env actions — e.g.
+    ``LoopDetectWrapper`` forwards the truncated prefix of a ``computer`` batch
+    before its internal ``terminate``, and only the terminate answers the
+    assistant's call id. Those extra frames are unpaired by construction, so
+    they are skipped here rather than treated as a malformed env response.
+    Skipping them does not weaken the contract where the contract applies:
+    ``missing`` below still fails loudly for a call the assistant *did* make,
+    whenever ``require_all`` is set — which both callers do except on a terminal
+    step, where a step carrying no paired result at all was already legal.
+
+    This handles the expansion's *result* frames, not the case where the wrapper
+    stops forwarding: ``LoopDetectWrapper`` breaks out of the action loop once a
+    loop trips, so a later call in the same assistant turn is never executed and
+    gets no frame. That still raises here, as ``missing``.
     """
     expected = [action_id for action in actions if (action_id := tool_call_id(action))]
     if not expected and all(not result.tool_call_id for result in results):
@@ -64,7 +81,8 @@ def align_tool_results_to_tool_calls(
     for result in results:
         call_id = result.tool_call_id
         if not call_id:
-            raise RuntimeError("Env returned a per-call result without tool_call_id")
+            # Unaddressed frame from a wrapper-expanded action (see docstring).
+            continue
         if call_id in by_call_id:
             duplicate.add(call_id)
         by_call_id[call_id] = result
