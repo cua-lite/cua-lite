@@ -34,6 +34,7 @@
 #   CUDA_VISIBLE_DEVICES=<gpus> ./devs/exps/eval/browsergym.miniwob/run.sh <model-id>
 #   # thinking-on variant (default screenshot+coord mode unless EVAL_MODE is set):
 #   EVAL_ENABLE_THINKING=true ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Thinking
+#   EVAL_ENABLE_THINKING=true ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3.8-27B
 #   # text+bid mode:
 #   EVAL_MODE=text_only ./devs/exps/eval/browsergym.miniwob/run.sh <model-id>
 #
@@ -72,17 +73,20 @@ case "${EVAL_ENABLE_THINKING:-false}" in
 esac
 SUPPORTS_ENABLE_THINKING=0
 case "$MODEL" in
-  Qwen/Qwen3-VL-*-Thinking|Qwen/Qwen3.5-*) SUPPORTS_ENABLE_THINKING=1 ;;
+  Qwen/Qwen3-VL-*-Thinking|Qwen/Qwen3.5-*|Qwen/Qwen3.8-*) SUPPORTS_ENABLE_THINKING=1 ;;
 esac
 if [[ "$ENABLE_THINKING" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -ne 1 ]]; then
-  echo "[run.sh] ERROR: EVAL_ENABLE_THINKING=true is only supported for Qwen3-VL Thinking/Qwen3.5 local models, got: $MODEL" >&2
+  echo "[run.sh] ERROR: EVAL_ENABLE_THINKING=true is only supported for Qwen3-VL Thinking/Qwen3.5/Qwen3.8 local models, got: $MODEL" >&2
   exit 1
 fi
 BASE_SLUG="${MODEL//\//_}"
 CONFIG_ID="${EVAL_CONFIG_ID:-}"
 if [[ -z "$CONFIG_ID" && "$ENABLE_THINKING_ENV_SET" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -eq 1 ]]; then
   if [ "$ENABLE_THINKING" -eq 1 ]; then
-    CONFIG_ID="think_on"
+    case "$MODEL" in
+      Qwen/Qwen3.8-*) CONFIG_ID="think_xhigh" ;;
+      *) CONFIG_ID="think_on" ;;
+    esac
   else
     CONFIG_ID="think_off"
   fi
