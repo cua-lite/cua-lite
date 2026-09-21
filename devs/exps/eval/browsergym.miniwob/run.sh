@@ -162,12 +162,15 @@ if [ ! -d "$COMMIT_DIR/$RUN_ID" ] && [ -d "$COMMIT_DIR" ]; then
   fi
 fi
 
-# model-family → rollout config dir; $MODE picks default.yaml vs text_only.yaml.
-# GPT and Claude currently have only default.yaml committed for this env,
-# so $MODE applies to the Qwen arms only.
+# model-family -> rollout config dir; $MODE picks default.yaml vs text_only.yaml
+# for Qwen-family arms that publish both. Other families use default.yaml only.
 case "$MODEL" in
   Qwen/Qwen3-VL-*-Instruct|Qwen/Qwen3-VL-*-Thinking) CFG=scripts/configs/qwen3_vl/default/browsergym.miniwob/${MODE}.yaml ;;
   Qwen/Qwen3.5-*)                                      CFG=scripts/configs/qwen3_5/default/browsergym.miniwob/${MODE}.yaml ;;
+  Qwen/Qwen3.8-*)                                      CFG=scripts/configs/qwen3_8/default/browsergym.miniwob/${MODE}.yaml ;;
+  ByteDance-Seed/UI-TARS-1.5-7B)                       CFG=scripts/configs/ui_tars_15_v1/default/browsergym.miniwob/default.yaml ;;
+  meituan/EvoCUA-*)                                    CFG=scripts/configs/evocua/default/browsergym.miniwob/default.yaml ;;
+  inclusionAI/UI-Venus-2-*)                            CFG=scripts/configs/ui_venus_2/default/browsergym.miniwob/default.yaml ;;
   gpt-*)                                               CFG=scripts/configs/gpt/default/browsergym.miniwob/default.yaml ;;
   claude-*)                                            CFG=scripts/configs/claude/default/browsergym.miniwob/default.yaml ;;
   *) echo "unknown model: $MODEL — add a case in $0" >&2; exit 1 ;;

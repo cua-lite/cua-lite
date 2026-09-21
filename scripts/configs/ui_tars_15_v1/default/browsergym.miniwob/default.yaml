@@ -1,0 +1,23 @@
+# UI-TARS-1.5-7B vision+coord rollout eval on cua-lite browsergym.miniwob.
+#
+# Reference: ${CUA_LITE_REFERENCES_ROOT}/OSWorld/scripts/python/run_multienv_uitars15_v1.py
+# Sampling follows the UI-TARS-1.5 OSWorld eval rows: greedy decoding for a
+# deterministic campaign.
+#
+# Related configs:
+#   - scripts/configs/ui_tars_15_v1/default/lite.osworld.yaml
+#   - scripts/configs/qwen3_vl/default/browsergym.miniwob/default.yaml
+
+agent_id: "ui_tars_15_v1"
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 0.0
+
+env_id: "browsergym.miniwob"
+env_kwargs:
+  max_steps: 10
+  extra_tools: ["response", "terminate", "goto", "back", "forward"]
+  use_screenshot: true
+  use_ax_tree: false
+  include_page_context_text: false
+  skip_dom_extraction: true
