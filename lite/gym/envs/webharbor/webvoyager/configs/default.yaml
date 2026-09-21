@@ -11,10 +11,11 @@ env_kwargs:
   max_steps: null                    # null -> per-task value from data/tasks.json
   # 300, not 90: the terminal step runs the VLM JUDGE inside env.step, and that
   # call's own latency is mean ~77s / p90 144s / p99 274s (measured for the same
-  # judge on the same deployment, recorded in webgym's config). A 90s cap sits at
-  # the MEAN of that distribution, so under any extra load a large share of judge
+  # judge on the same deployment, recorded in webgym's config). A 90s cap sits
+  # between that mean and p90, so under any extra load a large share of judge
   # calls cross it and raise EnvTimeoutError -- which discards a trajectory whose
-  # reward the judge was about to return. Measured here: four concurrent training
+  # reward the judge was about to return. webgym measured the same cap killing
+  # 16-29% of its calls at 90/120. Measured here: four concurrent training
   # runs sat at ~0 step timeouts for hours; adding two 128-task scoring jobs took
   # three of them to 35 / 44 / 46 timeouts in a single rollout, with the scoring
   # jobs' own err going 5-7 -> 31-33 of 128. No HTTP 429 appeared anywhere (656 /

@@ -145,7 +145,9 @@ def test_unaddressed_expansion_frame_is_skipped_not_rejected() -> None:
     the batch's first action, where no prefix is forwarded at all and the
     terminate is the call's only possible result.
     """
-    canonical = _unmerged_canonical_calls()[:1]
+    # A merged (two-action) batch on purpose: `prefix_len > 0` needs at least two
+    # children, so a single-action batch cannot produce the prefix frame below.
+    canonical = _merged_canonical_calls()
     call_id = tool_call_id(canonical[0])
     expanded = LiteEnvStepResult(
         results=[

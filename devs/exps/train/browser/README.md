@@ -310,8 +310,9 @@ path-in-repo and so cannot express `epoch_<k>/`.
 
 #### Eval
 
-Eight runs on the fixed 128-row WebVoyager read-only eval subset: four base prompt surfaces and
-four SFT checkpoints. A checkpoint must be scored with the same config stem it was trained with;
+Twenty-four runs on the fixed 128-row WebVoyager read-only eval subset: four base prompt
+surfaces and four SFT checkpoints, each scored three times (see Results for why one pass is
+not a measurement). A checkpoint must be scored with the same config stem it was trained with;
 an `i1` checkpoint under `i4` is measuring a prompt surface it never saw.
 
 The base model runs once per full prompt surface, not once per image cap. A reasoning checkpoint's
@@ -446,24 +447,29 @@ score() {  # $1 = config stem, $2 = model path (empty means base), $3 = log slug
   GPU_I=$((GPU_I + 1))
 }
 
-while read -r P; do
-  score "$P" "" "base.$P@$RUN"
-done <<< "$(base_profiles)"
+# Three passes per cell (see Results). A distinct TAG per pass keeps them independent
+# draws: rollout resumes an existing --log-root sample by sample, so reusing one slug
+# would re-report the first pass instead of measuring again.
+for TAG in p1 p2 p3; do
+  while read -r P; do
+    score "$P" "" "base.$P@$RUN.$TAG"
+  done <<< "$(base_profiles)"
 
-while read -r P; do
-  score "$P" "$PULL/sft.$P.$DS@$RUN/$EPOCH" "sft.$P.$DS@$RUN.$EPOCH"
-done <<< "$(profiles)"
+  while read -r P; do
+    score "$P" "$PULL/sft.$P.$DS@$RUN/$EPOCH" "sft.$P.$DS@$RUN.$TAG.$EPOCH"
+  done <<< "$(profiles)"
+done
 
 wait
 ```
 
 `--model-id` picks the Qwen3.5 adapter and action space; the weights, tokenizer and chat template
-come from `--model-path` for SFT cells. The default `GPUS=0` serializes the eight runs, slow but
+come from `--model-path` for SFT cells. The default `GPUS=0` serializes the runs, slow but
 correct. If `GPUS` names several cards, `score` drains with `wait` before reusing the first card.
 
 #### Record the scores
 
-Collect all eight runs under `devs/exps/train/browser/logs/$RUN.md`: one file per campaign,
+Collect all twenty-four runs under `devs/exps/train/browser/logs/$RUN.md`: one file per campaign,
 edited as runs land, not reconstructed later from memory.
 
 ```bash
@@ -532,7 +538,7 @@ flag), but greedy is not deterministic: the `gpt5_5` + `<think>` / `i1` parent s
 76, 76, 76, 77, 78, 78, 79** of 128 under one judge and manifest — nine measurements, mean 76.0,
 **sd 2.7, range 9** — and two passes over that checkpoint differ on 13 of 128 tasks, spread over
 eleven sites rather than concentrated in one. An earlier note here put the spread at sd 0.55 over five passes and concluded one pass was
-enough; that is superseded. Three passes bring the mean's standard error to ≈ 1.7 tasks. Use a
+enough; that is superseded. Three passes bring the mean's standard error to ≈ 1.6 tasks. Use a
 distinct tag per pass so passes are independent draws, not a resume of one another.
 
 | | `i4` | `i1` |
@@ -546,7 +552,8 @@ distinct tag per pass so passes are independent draws, not a resume of one anoth
 Every individual run — `MER (solved) parse_failure`, one column per pass. The pod is named
 because a pass here is a (time, host) pair, not just a time. **Every cell above is summarised
 over `p1`-`p3`**; a `p4` in *italics* is a spare pass that an idle pod picked up, recorded here
-but held out of the mean so that all cells share n=3 and their `±` are comparable.
+but held out of the mean so that all cells share n=3 and their `±` are comparable. The one
+exception is `gpt5_5` + `<think>` / `i1`, reported over five GRPO `eval 0` points — see below.
 
 | | | `p1` | `p2` | `p3` | `p4` |
 |---|---|---:|---:|---:|---:|
@@ -895,7 +902,7 @@ automatically the checkpoint to report.
 
 **Score each cell three times and report the mean.** A single pass carries sd ≈ 3 tasks (measured
 below), which is the size of most of the differences the table is being asked to show — one pass
-per cell cannot separate `i1` from `i4`. Three passes bring the mean's standard error to ≈ 1.7
+per cell cannot separate `i1` from `i4`. Three passes bring the mean's standard error to ≈ 1.6
 tasks. Use a distinct tag per pass so the passes are independent draws rather than a resume:
 
 ```bash
@@ -907,8 +914,8 @@ done
 The one cell that does not follow this is `gpt5_5` + `<think>` / `i1`, which is the GRPO parent:
 its five GRPO `eval 0` measurements (78, 76, 76, 78, 76 — see Seed replication) are five draws of
 exactly that cell under the same judge and manifest, so the cell reports their mean, **76.8/128 =
-0.600**. Its own standalone passes (70, 79, 74, and a 77 from a repeat of the first) average
-74.3, within 2.5 tasks of those five — the evidence that the two scoring paths carry no
+0.600**. Its three tagged standalone passes (70, 79, 74) average 74.3 — within 2.5 tasks of
+those five; a fourth, untagged repeat of the first pass scored 77 — the evidence that the two scoring paths carry no
 systematic offset.
 
 #### Ship the checkpoints
@@ -933,7 +940,8 @@ Two departures from the SFT block, both deliberate:
   message.
 
 ```bash
-# --- ANY POD HOLDING THE RUN ---  (commit first so the tag describes the weights)
+# --- ANY POD HOLDING THE RUN ---  (from the repo root; commit first so the tag
+# describes the weights)
 # `uv run hf`, not bare `hf`. Needs a WRITE-scoped token (HF_TOKEN, or `uv run hf auth login`).
 # The repo is public, so eval hosts need no auth.
 COMMIT="$(git rev-parse --short HEAD)"
@@ -942,8 +950,12 @@ CKPTS=.ckpts/qwen3_5-4b
 ROLLOUT=30                       # what to publish; ITER is ROLLOUT-1 on disk
 ITER=$((ROLLOUT - 1))
 
-# "<run dir under $CKPTS>|<rollout_seed>" -- the seed is in the run name for the 2026-09
-# campaign (rs<rollout_seed>s<seed>); older runs left it at run_grpo.sh's default 42/1234.
+# "<run dir under $CKPTS>|<rollout_seed>". These are the names the 2026-09 campaign
+# actually wrote, NOT what the launch block above produces: that block hardcodes
+# CELL=grpo.$P.wv_readonly_split.from_sft, while the seeded runs set CELL per seed
+# (grid494.lr1e6.rs<rollout_seed>s<seed>) and the 42/1234 run predates that scheme and
+# carried the lr in its name instead. Read the directory names off the pod with
+# `ls .ckpts/qwen3_5-4b/`; do not retype this list for a new campaign.
 runs() {
   printf '%s\n' \
     "grpo.browser.use.i1.reasoning.grid494.lr1e6.rs101s5001.from_sft|101" \
@@ -955,8 +967,12 @@ runs() {
 
 uv run hf repos create "$REPO" --repo-type model --exist-ok < /dev/null
 
-while IFS='|' read -r RUN SEED; do
-  D="$CKPTS/$RUN/iter_$ITER"
+FAIL=""
+# NOT `RUN` -- that is the campaign slug this file asserts with ${RUN:?} above, and a
+# `while read RUN` both overwrites it and leaves it EMPTY at EOF, which would send every
+# later score() to a "...@." log root without a word.
+while IFS='|' read -r RUN_DIR SEED; do
+  D="$CKPTS/$RUN_DIR/iter_$ITER"
   [ -d "$D" ] || { echo "SKIP seed_$SEED: no $D on this pod"; continue; }
   # AutoProcessor needs all three later; a checkpoint missing one is not shippable.
   for f in config.json tokenizer_config.json preprocessor_config.json; do
@@ -964,14 +980,20 @@ while IFS='|' read -r RUN SEED; do
   done
   [ -n "$D" ] || continue
   uv run hf upload "$REPO" "$D" "seed_$SEED/rollout_$ROLLOUT" --repo-type model \
-    --commit-message "$COMMIT: seed $SEED, rollout $ROLLOUT (from $RUN/iter_$ITER)" \
-    < /dev/null || echo "FAILED seed_$SEED -- not tagging"
+    --commit-message "$COMMIT: seed $SEED, rollout $ROLLOUT (from $RUN_DIR/iter_$ITER)" \
+    < /dev/null || { echo "FAILED seed_$SEED"; FAIL=1; }
 done <<< "$(runs)"
 
-uv run hf repos tag delete "$REPO" "$COMMIT" --repo-type model --yes < /dev/null \
-  || echo "note: no existing '$COMMIT' tag (expected on a first upload)"
-uv run hf repos tag create "$REPO" "$COMMIT" --repo-type model -m "$COMMIT" < /dev/null \
-  || echo "ERROR $REPO has NO '$COMMIT' tag; weights are on main -- re-tag by hand"
+# The tag says "these weights are commit $COMMIT". Tagging after a failed upload would
+# assert that about a repo missing a seed, so the flag has to gate it.
+if [ -n "$FAIL" ]; then
+  echo "NOT TAGGING: an upload failed above -- fix it, re-run, then tag"
+else
+  uv run hf repos tag delete "$REPO" "$COMMIT" --repo-type model --yes < /dev/null \
+    || echo "note: no existing '$COMMIT' tag (expected on a first upload)"
+  uv run hf repos tag create "$REPO" "$COMMIT" --repo-type model -m "$COMMIT" < /dev/null \
+    || echo "ERROR $REPO has NO '$COMMIT' tag; weights are on main -- re-tag by hand"
+fi
 ```
 
 The five runs live on different pods (cc9, cc9b, cc9c, cc9d x2), so this runs once per pod and
@@ -994,15 +1016,25 @@ already on the Hub, so only 4.0-5.3 GB per seed is new data.
 
 #### Seed replication
 
-Five runs of the block above, identical except for `ROLLOUT_SEED` / `SEED`, all starting from the
+Five runs of the block above, identical except for the seed, all starting from the
 same `sft.browser.use.i1.reasoning.webgym_gpt5_5_nogoto_wvclean` export and scored by the same
 `gpt-4.1` judge on the same 128-row eval manifest. Four ran to rollout 30 and stopped; seed
 42/1234 is an earlier run of the same recipe that went to 35; only its rollouts 0-30 survive
 in the eval record.
 
+**`run_grpo.sh` as committed cannot set the seed** — it has no `ROLLOUT_SEED`/`SEED` knob and no
+generic env passthrough, so every run of the block above lands on slime's defaults
+(`--rollout-seed` 42, `--seed` 1234; `slime/slime/utils/arguments.py:383,826`). The four seeded
+runs used a pod-local patch adding those two knobs and forwarding them as `--rollout-seed` /
+`--seed`; it was deliberately never committed here. Reproducing the four seeds needs that patch,
+and the launcher should assert the knobs are present before training rather than discover
+afterwards that all four runs shared a seed. Verify against slime's own argument table in the
+training log, not against the launcher's own echo of what it meant to pass.
+
 One seed is not a result here. At rollout 20 the seeds sat at +22/+18/+17/+4; at rollout 25 they
 moved +3/+12/−4/−11 in the same hour under the same judge. Final gains are +22, +21, +11, +9
-(mean **+15.75**) — a 13-task spread across runs that differ only in a seed.
+(mean **+15.75** over the four 30-rollout seeds) — a 13-task spread across runs that differ
+only in a seed.
 
 **A single eval pass is worth about ±3 tasks, so read the mean.** The parent checkpoint was scored
 nine times under the identical judge and manifest — five times as `eval 0` of a GRPO run, four
@@ -1025,8 +1057,9 @@ as `eval N` with `N = rollouts - 1`, so `eval 29` is the score after 30 rollouts
 | 42/1234  | cc9d | 76 | 87 | 93 | 97 | 94 | 99 | **94**  | **+18** |
 
 All points of the four 30-rollout seeds are `num_valid = 128`. Seed 42/1234 is not: its
-`num_valid` runs `128, 125, 127, 127, 128, 128, 127` — rollouts 27-29 were caught in a step-timeout
-burst — so its rate is solved ÷ `num_valid`, not solved ÷ 128.
+`num_valid` runs `128, 125, 127, 127, 128, 128, 127`, so its rate is solved ÷ `num_valid`, not
+solved ÷ 128. The step-timeout burst at rollouts 27-29 accounts for the last of those dips; the
+earlier ones are ordinary env errors.
 
 **Train** — `rollout/raw_reward`, one value per rollout, temperature 1.0. Not a convergence curve:
 494 tasks at `ROLLOUT_BATCH_SIZE=16` means no train task repeats inside 31 rollouts, so this is a

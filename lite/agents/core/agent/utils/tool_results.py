@@ -60,8 +60,15 @@ def align_tool_results_to_tool_calls(
     before its internal ``terminate``, and only the terminate answers the
     assistant's call id. Those extra frames are unpaired by construction, so
     they are skipped here rather than treated as a malformed env response.
-    Skipping them does not weaken the contract: ``missing`` below still fails
-    loudly when a call the assistant *did* make never got its result.
+    Skipping them does not weaken the contract where the contract applies:
+    ``missing`` below still fails loudly for a call the assistant *did* make,
+    whenever ``require_all`` is set — which both callers do except on a terminal
+    step, where a step carrying no paired result at all was already legal.
+
+    This handles the expansion's *result* frames, not the case where the wrapper
+    stops forwarding: ``LoopDetectWrapper`` breaks out of the action loop once a
+    loop trips, so a later call in the same assistant turn is never executed and
+    gets no frame. That still raises here, as ``missing``.
     """
     expected = [action_id for action in actions if (action_id := tool_call_id(action))]
     if not expected and all(not result.tool_call_id for result in results):
