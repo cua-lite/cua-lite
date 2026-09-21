@@ -599,19 +599,25 @@ Cells read `shaped-mean (solved/256)`.
 
 | | `i1` | `i4` |
 |---|---:|---:|
-| **base** | 60/256 only | TBD |
+| **base** | 0.1823 (34/256) | 0.2162 (43/256) |
 | **base + `<think>`** | 0.1896 (38/256) | TBD |
-| **`gpt5_5`** | 0.2776 (56/256) | TBD |
-| **`gpt5_5` + `<think>`** | 200/256 only | TBD |
+| **`gpt5_5`** | 0.2776 (56/256) | 0.3195 (66/256) |
+| **`gpt5_5` + `<think>`** | 0.3444 (69/256) | not run — see below |
 | **`qwen3_5_27b`** | TBD | TBD |
 | **`qwen3_5_27b` + `<think>`** | TBD | TBD |
 | **`qwen3_8_27b`** | TBD | TBD |
-| **`gpt5_5` + `<think>`, `> 0.5` rows** | TBD | — |
+| **`gpt5_5` + `<think>`, `> 0.5` rows** | not run | — |
 | **GRPO from `gpt5_5` + `<think>`** | see below | — |
 
-Two cells read `N/256 only` rather than a number: those passes stopped early (the `base` `i1` pass at
-60 tasks, `gpt5_5` + `<think>` at 200), and a mean over a truncated prefix is not comparable to one
-over 256 — the eval split is ordered, not shuffled. Re-run them before citing either.
+Every number in the table is a full 256-task pass. Two earlier cells that read `N/256 only` — a
+truncated prefix is not comparable to a full pass, because the eval split is ordered rather than
+shuffled — were re-run to completion on 2026-09-21.
+
+Two cells read `not run`. The `> 0.5` filter ablation was dropped as uninformative on this corpus:
+the gate removes only 7% of the trajectories (1133 -> 1049) and 3% of the templates (158 -> 153),
+because MobileGym scores `1.0` iff success and `0.5 x progress` otherwise, so `> 0.5` IS the success
+set and `>= 0.30` adds back only the partial-progress runs above `progress 0.6` — of which this
+teacher produces few. The `gpt5_5` + `<think>` / `i4` cell is a training failure, recorded below.
 
 Reading the table, once it has numbers in it:
 
