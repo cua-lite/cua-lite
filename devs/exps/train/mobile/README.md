@@ -153,7 +153,10 @@ DS_SR=mobilegym_sr                       # the ablation recipe: true successes o
 DL=.data/huggingface                     # per-teacher roots: $DL/$T/cua-lite/<dataset>
 OUT=.data/sft/qwen3_5/mobile.use
 CFG=devs/exps/train/mobile/configs/qwen3_5
-HF_DS=MobileGym                          # CONFIRM against /devs/data/mobilegym/AGENTS.md before
+HF_DS=MobileGym                          # published 2026-09-21 as PRIVATE ZHZisZZ/MobileGym, tag
+                                         # `83e0629`, one config `mobile.use.gpt5_5`; export from it
+                                         # with HF_ORG=ZHZisZZ until it moves to the release org.
+                                         # CONFIRM against /devs/data/mobilegym/AGENTS.md before
 VARIANT=mobile.use                       # the first run; this runbook does not own either name.
                                          # NOT `mobile.use.train`: the HF path already carries the
                                          # split (`mobile/use/train/`), and the config name is
@@ -191,8 +194,12 @@ done
 
 # No --sample: every cell takes its teacher's whole filtered pool, so the row counts differ
 # between teachers by construction and the campaign has no row-cap axis. The per-teacher pool
-# sizes are NOT MEASURED YET -- read them off the `Wrote N trajectory rows` lines of the first
-# run and write them into the Results front matter.
+# sizes are MEASURED for gpt5_5 as of 2026-09-21: 1099 rows pass the `>= 0.30` filter and 1016
+# convert; the other 83 are dropped by export_sft because Qwen3-VL mobile cannot render
+# `tap(clicks=2)` (its action enum has only `click` and the wire carries no repeat count). That
+# 1016/83 split is identical across all four profiles, so the image budget and `<think>` change
+# the prompt, not which rows survive. Read the other teachers' pool sizes off their own
+# `Wrote N trajectory rows` lines.
 # The `exclude_reason` clause is the shared publish-time quality gate; whether these rows carry
 # one is /devs/data/mobilegym/AGENTS.md's call. The clause is NOT decorative: filter.py does tag
 # mobilegym rows (measured: incomplete / footgun:loop / teacher_gave_up), and dropping it changes
@@ -213,6 +220,7 @@ while read -r P T D; do
       -o "$OUT/$P.$D.$T.parquet" < /dev/null   # or the child eats the rest of the cell list
 done <<< "$(cells)"
 
+
 # `--no-strict` makes a conversion failure a SKIP, not an error: a wrong --image-root prints
 # "Skipped N rows ... Wrote 0 trajectory rows" and still exits 0, and run_sft.sh would then train
 # on an empty parquet. With no --sample there is no target row count to check against, so check
@@ -228,6 +236,14 @@ print(('EMPTY' if n == 0 else 'ok   '), n, sys.argv[1])
 " "$OUT/$P.$D.$T.parquet" < /dev/null
 done <<< "$(cells)"
 ```
+
+The download + export pair is **idempotent and verified**. Run on 2026-09-21 against the published
+`ZHZisZZ/MobileGym`, it reproduces byte-for-byte the parquet this campaign's checkpoints were
+trained from -- 1016 rows, 83 skipped, the same SHA-256 over every step's prompt / response /
+`image_indices` / reward, the same 8131 images -- and a second consecutive run reproduces itself.
+`--overwrite` on both commands is what makes a re-run clean rather than additive. The three
+published checkpoints predate the dataset's publication and were exported straight from the local
+annotated root, so this check is what establishes that they and the Hub path carry the same rows.
 
 #### Train
 
