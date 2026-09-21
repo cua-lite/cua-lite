@@ -522,49 +522,51 @@ Front matter:
 
 ### Results
 
-Mean episode return, (fully-solved / `num_valid`) in parentheses. Fill this from fresh
-WebVoyager read-only passes. `over128` is the dense mean over the fixed prompt set and should be
-reported beside the valid-only mean whenever `err` is non-zero.
+Mean episode return, (fully-solved / `num_valid`) in parentheses, then the pass count — the
+cell format of `desktop/README.md`. `±` is **half the range** of the passes; with n=3 a range is
+what there is, and an SD over three points pretends to more.
 
-**One pass per cell.** Scoring is at `temperature: 0.0` (from the config yaml, not a flag), and
-two things make a repeat pass a poor use of a GPU-hour:
-
-- *Greedy scoring repeats.* The same SFT parent scored five times on this manifest, on five pods
-  within one session, gave 76 / 76 / 75 / 76 / 75 of 128 — sd 0.55 task, range 1. A single pass
-  already separates differences of about 4 tasks (0.03) at 2σ. Across pods, images and days the
-  spread is wider (sd ~1.5 tasks over eight measurements, range 4), which is an argument for
-  running a row together, not for running it repeatedly.
-- *The harness already retries, at a finer grain.* `_eval_rollout` re-queues each errored
-  trajectory up to `max_eval_retries` (3), and only when the error was classified retryable where
-  it was raised (`engine.py:974,1015`). Measured over fourteen evals: 25 retries, 13 residual
-  errors — about half recover. So `err` is the **post-retry** residue, and re-running the whole
-  128 mostly re-runs into the same walls. Repeat passes were protecting against a bad host, which
-  the `err` column reports directly.
+**Three passes per cell**, as in the desktop campaign — same convention, and here is the
+browser-side evidence for it. Scoring is at `temperature: 0.0` (from the config yaml, not a
+flag), but greedy is not deterministic: the `gpt5_5` + `<think>` / `i1` parent scored **70, 74,
+76, 76, 76, 77, 78, 78, 79** of 128 under one judge and manifest — nine measurements, mean 76.0,
+**sd 2.7, range 9** — and two passes over that checkpoint differ on 13 of 128 tasks, spread over
+eleven sites rather than concentrated in one. An earlier note here put the spread at sd 0.55 over five passes and concluded one pass was
+enough; that is superseded. Three passes bring the mean's standard error to ≈ 1.7 tasks. Use a
+distinct tag per pass so passes are independent draws, not a resume of one another.
 
 | | `i4` | `i1` |
 |---|---:|---:|
-| **base** | TBD | TBD |
-| **base + `<think>`** | TBD | TBD |
-| **`gpt5_5`** | TBD | TBD |
-| **`gpt5_5` + `<think>`** | TBD | TBD |
+| **base** | 0.0833 ±0.0156 (10.7/128) 3/3 | 0.0443 ±0.0039 (5.7/128) 3/3 |
+| **base + `<think>`** | 0.1354 ±0.0391 (17.3/128) 3/3 | 0.1484 ±0.0195 (19.0/128) 3/3 |
+| **`gpt5_5`** | 0.5052 ±0.0156 (64.7/128) 3/3 | 0.4869 ±0.0060 (62.0/127) 3/3 |
+| **`gpt5_5` + `<think>`** | 0.5964 ±0.0079 (76.3/128) 3/3 | **0.6000** ±0.0078 (76.8/128) 5/5 |
 | **GRPO from `gpt5_5` + `<think>`** | — | TBD |
 
-The same nine measurements with their full record - `MER (solved/num_valid) parse_failure err
-over128`. **One pass per cell** — the rationale is above, the one condition that forces a re-run is in
-"Reading the table" below:
+Every individual run — `MER (solved) parse_failure`, one column per pass. The pod is named
+because a pass here is a (time, host) pair, not just a time. **Every cell above is summarised
+over `p1`-`p3`**; a `p4` in *italics* is a spare pass that an idle pod picked up, recorded here
+but held out of the mean so that all cells share n=3 and their `±` are comparable.
 
-| | | pass |
-|---|---|---:|
-| **base** | `i4` | TBD |
-|  | `i1` | TBD |
-| **base+`<think>`** | `i4` | TBD |
-|  | `i1` | TBD |
-| **`gpt5_5`** | `i4` | TBD |
-|  | `i1` | TBD |
-| **`gpt5_5`+`<think>`** | `i4` | TBD |
-|  | `i1` | TBD |
-| **GRPO from `gpt5_5`+`<think>`** | `i4` | — |
-|  | `i1` | TBD |
+| | | `p1` | `p2` | `p3` | `p4` |
+|---|---|---:|---:|---:|---:|
+| **base** | `i4` | 0.0781 (10) 1 *cc9* | 0.1016 (13) 1 *cc9* | 0.0703 (9) 1 *cc9* | — |
+|  | `i1` | 0.0391 (5) 1 *cc9* | 0.0469 (6) 1 *cc9* | 0.0469 (6) 1 *cc9* | — |
+| **base+`<think>`** | `i4` | 0.1250 (16) 2 *cc9d* | 0.1016 (13) 4 *cc9b* | 0.1797 (23) 2 *cc9b* | — |
+|  | `i1` | 0.1328 (17) 2 *cc9d* | 0.1719 (22) 2 *cc9b* | 0.1406 (18) 1 *cc9b* | — |
+| **`gpt5_5`** | `i4` | 0.4922 (63) 0 *cc9e* | 0.5000 (64) 0 *cc9c* | 0.5234 (67) 0 *cc9c* | *0.5312 (68) 0 cc9e* |
+|  | `i1` | 0.4922 (63/128) 0 *cc9e* | 0.4803 (61/127) 0 *cc9c* | 0.4882 (62/127) 0 *cc9c* | *0.4882 (62/127) 0 cc9e* |
+| **`gpt5_5`+`<think>`** | `i4` | 0.6016 (77) 0 *cc9b* | 0.5859 (75) 0 *cc9d* | 0.6016 (77) 0 *cc9d* | — |
+|  | `i1` *(standalone)* | 0.5469 (70) 0 *cc9b* | 0.6172 (79) 0 *cc9d* | 0.5781 (74) 0 *cc9d* | *0.6016 (77) 0 cc9b* |
+|  | `i1` *(GRPO `eval 0`)* | 78 · 76 · 76 · 78 · 76 — seeds 101/202/303/404/42 | | | |
+| **GRPO from `gpt5_5`+`<think>`** | `i1` | TBD | TBD | TBD | — |
+
+The `gpt5_5` + `<think>` / `i1` cell reports the GRPO runs' five `eval 0` points (78, 76, 76, 78,
+76 — mean **76.8/128 = 0.600**) rather than its own three standalone passes: they are five draws
+of exactly that checkpoint under this judge and manifest. The standalone row above it (70, 79, …,
+mean 74.3 over the three tagged passes) agrees to 2.5 tasks, which is also the evidence that
+slime's in-training eval and `scripts/rollout.py` carry no systematic offset — so the rest of the
+column stays comparable.
 
 Reading the table:
 
@@ -572,14 +574,27 @@ Reading the table:
   not on the SFT dataset recipe.
 - **Do not paste old browser/WebVoyager numbers into this table.** This campaign changes the
   training data contract to `webgym_gpt5_5_nogoto_wvclean`, so every cell needs a fresh score.
-- **The denominator is part of the result.** `err` is `num_samples - num_valid`; keep it beside
-  every mean instead of silently averaging failures as reward 0. When `err > 0`, the true score
-  over the fixed 128 lies in `[solved, solved + err] / 128`; report that bracket, not a point.
-- **One pass per cell, and `err` decides whether to keep it.** `err <= 3` is the normal residue —
-  report the cell with its bracket. `err >= 5` is not residue, it is a sick host (a step-timeout
-  burst takes whole batches down together); discard that pass and re-run it. Run a row's cells in
-  one session on one pod: repeat measurements drift about three times as much across pods and
-  images as within one.
+- **`bbc_news.8` drops out of the `gpt5_5` / `i1` denominator, by design.** That cell reads
+  `/127` in three of its four passes. WebVoyager calls the judge once, at the terminating step:
+  every earlier step logs `reward=None`, then the final `/step` carries the screenshot to
+  gpt-4.1, which returns `400 content_policy_violation` ("your input image may contain content
+  that is not allowed by our content safety system") on this BBC News page. `client.py:335`
+  raises `RemoteEnvError`, `_run_one` marks the trajectory invalid, and `num_valid` falls to 127.
+  That is the right behaviour: a judge refusing to look at a page is not the model failing the
+  task, so it must not score 0. `mean_episode_return` already averages over `num_valid`, so
+  nothing else is needed — just do not read a `/127` cell as if one task were solved.
+  Three details worth keeping: the refusal is frequent but not certain (one pass in four got a
+  full 128); it is profile-skewed (`i1` hit it in three passes of four, `i4` in none of four, and
+  the one pass that did measure the task under `i1` scored it **0**, so dropping it if anything
+  flatters `i1`); and chasing a full 128 costs a ~20-minute pass at roughly one-in-four odds,
+  which is why the cell is reported at `/127` instead.
+- **`err > 0` otherwise means re-run that pass, not report it** (the desktop rule). A pass that
+  came up short for a transient reason is not a measurement of this cell, and averaging it in
+  imports whatever took the trajectory down. This supersedes the older `err <= 3` bracket rule:
+  with three passes there is no reason to keep a short one.
+- **A row on one pod, but passes across pods.** Each row's `i1` and `i4` run together on one pod
+  so the two columns share an environment. Passes moved between pods, so a pass-to-pass
+  difference mixes time and host; the `base` row is the exception, all three passes on cc9.
 - **This is a fixed-subset result, not a full WebVoyager benchmark.** Re-run multiple seeds or
   the full split before treating a cell as generally best.
 - **The GRPO row is the `i1` reasoning surface only.** It starts from the
@@ -877,3 +892,119 @@ done
 
 Score several saved `iter_*` before copying one number across; the curve's argmax is not
 automatically the checkpoint to report.
+
+**Score each cell three times and report the mean.** A single pass carries sd ≈ 3 tasks (measured
+below), which is the size of most of the differences the table is being asked to show — one pass
+per cell cannot separate `i1` from `i4`. Three passes bring the mean's standard error to ≈ 1.7
+tasks. Use a distinct tag per pass so the passes are independent draws rather than a resume:
+
+```bash
+for TAG in p1 p2 p3; do
+  score browser.use.i1 "" "base.browser.use.i1@$TAG"
+done
+```
+
+The one cell that does not follow this is `gpt5_5` + `<think>` / `i1`, which is the GRPO parent:
+its five GRPO `eval 0` measurements (78, 76, 76, 78, 76 — see Seed replication) are five draws of
+exactly that cell under the same judge and manifest, so the cell reports their mean, **76.8/128 =
+0.600**. Its own standalone passes (70, 79, 74, and a 77 from a repeat of the first) average
+74.3, within 2.5 tasks of those five — the evidence that the two scoring paths carry no
+systematic offset.
+
+#### Seed replication
+
+Five runs of the block above, identical except for `ROLLOUT_SEED` / `SEED`, all starting from the
+same `sft.browser.use.i1.reasoning.webgym_gpt5_5_nogoto_wvclean` export and scored by the same
+`gpt-4.1` judge on the same 128-row eval manifest. Four ran to rollout 30 and stopped; seed
+42/1234 is an earlier run of the same recipe that went to 35; only its rollouts 0-30 survive
+in the eval record.
+
+One seed is not a result here. At rollout 20 the seeds sat at +22/+18/+17/+4; at rollout 25 they
+moved +3/+12/−4/−11 in the same hour under the same judge. Final gains are +22, +21, +11, +9
+(mean **+15.75**) — a 13-task spread across runs that differ only in a seed.
+
+**A single eval pass is worth about ±3 tasks, so read the mean.** The parent checkpoint was scored
+nine times under the identical judge and manifest — five times as `eval 0` of a GRPO run, four
+standalone — and returned **70, 74, 76, 76, 76, 77, 78, 78, 79** (mean 76.0, sd 2.7, range 9). Two
+standalone passes differ on **13 of 128 tasks** (10 solved only in the second, 3 only in the
+first), scattered over eleven sites rather than concentrated in one, so this is per-task
+nondeterminism in the rollout — batching-dependent argmax under `EVAL_TEMPERATURE=0`, plus
+live-mirror timing — not a bad run or a broken site. Two passes of the same cell therefore differ
+by ~3 tasks typically and by 9 in the observed worst case.
+
+**Eval** — tasks solved out of `num_valid`, greedy, `N_SAMPLES_PER_EVAL_PROMPT=1`. Slime logs these
+as `eval N` with `N = rollouts - 1`, so `eval 29` is the score after 30 rollouts.
+
+| seed | pod | 0 | 5 | 10 | 15 | 20 | 25 | 30 | gain |
+|---|---|---|---|---|---|---|---|---|---|
+| 101/5001 | cc9  | 78 | 85 | 88 | 99 | 96 | 85 | **100** | **+22** |
+| 404/5004 | cc9d | 78 | 86 | 85 | 88 | 95 | 98 | **99**  | **+21** |
+| 303/5003 | cc9c | 76 | 77 | 87 | 84 | 98 | 94 | **87**  | **+11** |
+| 202/5002 | cc9b | 76 | 83 | 86 | 87 | 80 | 92 | **85**  | **+9**  |
+| 42/1234  | cc9d | 76 | 87 | 93 | 97 | 94 | 99 | **94**  | **+18** |
+
+All points of the four 30-rollout seeds are `num_valid = 128`. Seed 42/1234 is not: its
+`num_valid` runs `128, 125, 127, 127, 128, 128, 127` — rollouts 27-29 were caught in a step-timeout
+burst — so its rate is solved ÷ `num_valid`, not solved ÷ 128.
+
+**Train** — `rollout/raw_reward`, one value per rollout, temperature 1.0. Not a convergence curve:
+494 tasks at `ROLLOUT_BATCH_SIZE=16` means no train task repeats inside 31 rollouts, so this is a
+rolling held-out score and single-rollout swings of ±0.28 are ordinary.
+
+```python
+# devs/exps/train/browser -- GRPO seed replication, gpt-4.1 judge
+EVAL = {  # rollout -> (solved, num_valid)
+  "101/5001": {0:(78,128), 5:(85,128), 10:(88,128), 15:(99,128), 20:(96,128), 25:(85,128), 30:(100,128)},
+  "202/5002": {0:(76,128), 5:(83,128), 10:(86,128), 15:(87,128), 20:(80,128), 25:(92,128), 30:(85,128)},
+  "303/5003": {0:(76,128), 5:(77,128), 10:(87,128), 15:(84,128), 20:(98,128), 25:(94,128), 30:(87,128)},
+  "404/5004": {0:(78,128), 5:(86,128), 10:(85,128), 15:(88,128), 20:(95,128), 25:(98,128), 30:(99,128)},
+  "42/1234":  {0:(76,128), 5:(87,125), 10:(93,127), 15:(97,127), 20:(94,128), 25:(99,128), 30:(94,127)},
+}
+
+TRAIN = {  # rollout/raw_reward, index = rollout
+  "101/5001": [0.421875,0.4765625,0.5703125,0.578125,0.4609375,0.6484375,0.6484375,0.8671875,
+               0.6796875,0.6796875,0.6015625,0.6875,0.6328125,0.7734375,0.8046875,0.6953125,
+               0.8046875,0.7421875,0.671875,0.640625,0.6484375,0.7578125,0.734375,0.828125,
+               0.6875,0.8359375,0.71875,0.8671875,0.7421875,0.7265625],
+  "202/5002": [0.4609375,0.3203125,0.4375,0.5078125,0.7421875,0.65625,0.59375,0.640625,
+               0.546875,0.6640625,0.6328125,0.6328125,0.765625,0.84375,0.75,0.5625,
+               0.65625,0.8125,0.6171875,0.8046875,0.7734375,0.640625,0.625,0.6875,
+               0.625,0.7578125,0.8046875,0.78125,0.671875,0.71875],
+  "303/5003": [0.5,0.3046875,0.4765625,0.453125,0.640625,0.6953125,0.640625,0.7109375,
+               0.703125,0.703125,0.6015625,0.6328125,0.6796875,0.6328125,0.6796875,0.671875,
+               0.59375,0.8203125,0.7265625,0.8125,0.7421875,0.796875,0.671875,0.8125,
+               0.6875,0.8125,0.65625,0.765625,0.875,0.5546875,0.75],
+  "404/5004": [0.421875,0.578125,0.46875,0.6171875,0.5625,0.4765625,0.6953125,0.6640625,
+               0.65625,0.796875,0.625,0.6015625,0.5859375,0.84375,0.6875,0.7265625,
+               0.78125,0.6640625,0.84375,0.75,0.71875,0.6953125,0.6015625,0.6328125,
+               0.7421875,0.859375,0.65625,0.890625,0.7109375,0.7421875,0.8359375],
+  # NOT on the same denominator as the four above -- see the note below.
+  "42/1234":  [0.7063,0.5827,0.6719,0.6457,0.6746,0.5935,0.7295,0.7778,0.6929,0.5781,
+               0.6693,0.6719,0.6719,0.6032,0.7874,0.7344,0.7953,0.7869,0.6905,0.7344,
+               0.8504,0.8976,0.7540,0.7698,0.6800,0.7795,0.7165,0.6720,0.7500,0.7500,
+               0.7315,0.7589,0.7273,0.7647,0.7840],
+}
+```
+
+**Seed 42/1234's train series was recorded rescaled by each rollout's valid count**, while the four
+others are raw over a dummy-padded 128. Read it for shape, not height, and leave it out of any
+aggregate over the train reward. Its rollouts 27-29 (0.6720, 0.7500, 0.7500) are the timeout burst.
+
+To reproduce the two aggregate panels:
+
+```python
+import numpy as np
+xs = [0, 5, 10, 15, 20, 25, 30]
+rate = np.array([[100 * EVAL[s][x][0] / EVAL[s][x][1] for x in xs] for s in EVAL])
+mean, sem = rate.mean(0), rate.std(0, ddof=1) / np.sqrt(len(rate))   # eval: mean +- SEM
+
+four = [s for s in TRAIN if s != "42/1234"]
+n = min(len(TRAIN[s]) for s in four)                                  # 30; two seeds ran a 31st
+tr = np.array([TRAIN[s][:n] for s in four])
+tmean, tsd = tr.mean(0), tr.std(0, ddof=1)                            # train: mean +- SD
+```
+
+SEM for eval and SD for train on purpose: the eval panel asks how precisely the mean is known, the
+train panel asks how wide a single rollout's draw is — the spread that buries the trend in any one
+run. With n=5, rliable's IQM would average three seeds and is noisier here than the mean, so the
+mean is used and every run is drawn alongside it.
