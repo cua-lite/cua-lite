@@ -16,23 +16,43 @@ Tasks 103/104 use FreeCAD 0.19 inside the trusted evaluator container; their gue
 >
 > **Hugging Face auth required** — accept the gates on [`xlangai/v2-image`](https://huggingface.co/datasets/xlangai/v2-image), [`xlangai/osworld_v2_tasks`](https://huggingface.co/datasets/xlangai/osworld_v2_tasks), and [`xlangai/osworld_v2_assets_gated`](https://huggingface.co/datasets/xlangai/osworld_v2_assets_gated), then `hf auth login`.
 >
-> **Local OSWorld-V2 source required for the first image build** — set `OSWORLD_V2_SRC` to the official `osworld-v2.1` checkout. The build stages it under `lite/gym/envs/osworld_2/docker/_vendor/OSWorld-V2` for later freshness checks.
+The host needs Docker with Compose, `git`, `rsync`, `unzip`, and the CUA-Lite `uv` environment. Runtime/evaluator Python dependencies stay inside the container.
 
 ```bash
 # Choose one install path:
-# Source path: build cua-lite/osworld_2:osworld-v2.1-volume, provision the matching VM and task classes.
+# Clone pinned upstream code, build the evaluator with Python 3.12 + uv sync --frozen,
+# and download/verify the official VM, all 108 task classes, and all 1,084 gated assets.
 uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh
 
 # Or, published-image path: adopt a matching GHCR image, then provision gated V2 assets.
 # uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh pull
 
 # Optional lifecycle helpers:
-# uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh status    # image / qcow2 / task-class files / KVM+tun presence
-# uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh provision  # gated assets only, assumes image exists
+# uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh status    # image / source / VM / tasks / verified assets / devices
+# uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh provision  # source + gated files; leaves Docker images unchanged
 # uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh rebuild   # force-rebuild the image after an image-time source edit
 ```
 
-Download the matching gated assets using upstream's `scripts/tools/download_osworld_v2_assets.py --benchmark-release osworld-v2.1`, then set `OSWORLD_FILE_BASE_URL` to their absolute directory before launching the env server. CUA-Lite mounts that directory read-only inside each VM container. Self-host `Task-Web/OSWorld-web@osworld-v2.1` and set `website_host_suffix` in `OSWORLD_2_CONFIG` for website tasks. **Env-server mode (recommended)** uses [`scripts/serve_env.py`](/scripts/serve_env.py); clients set `CUA_LITE_ENV_SERVER_URL`.
+The installer clones the official code revision recorded in [`data/release.json`](/lite/gym/envs/osworld_2/data/release.json). That checkout's release manifest selects immutable task, asset, website, and VM revisions. Both the downloaded VM archive and extracted disk are SHA256-checked, including an existing disk cache. Task files are checked against the official task-hash manifest; asset files against Hugging Face LFS SHA256 or Git blob SHA1. The anonymous public asset repository is incomplete and is not used as a substitute. No upstream task files are patched.
+
+Files live under `lite/gym/envs/osworld_2/.cache/`. By default, CUA-Lite mounts the verified `osworld_v2_assets/` directory read-only into every VM container; no extra asset environment variable is needed. `OSWORLD_FILE_BASE_URL` can select another complete absolute asset directory or an upstream-compatible asset URL. `OSWORLD_V2_SRC` can reuse a clean checkout of the pinned official commit; use the same setting for image builds and env-server startup.
+
+**Website tasks also need the matching website stack.** After installation, run the fixed setup script with a DNS suffix that the VM can reach:
+
+```bash
+HOST_SUFFIX=<host-IP>.nip.io uv run --no-sync bash lite/gym/envs/osworld_2/scripts/setup_website.sh -p osworld-v21
+```
+
+The script selects the official website commit and initializes its pinned submodules over HTTPS, then runs upstream Docker Compose. It publishes ports 80/443 by default. On a shared host, pass native Compose options such as `-f /absolute/path/override.yaml` for your ports/socket; set `server_kwargs.website_host_suffix` to the matching suffix (including an HTTP port when needed) in a copy of [`configs/default.yaml`](/lite/gym/envs/osworld_2/configs/default.yaml), then export `OSWORLD_2_CONFIG=/absolute/path/config.yaml`. Check `http://mailhub.<suffix>/api/state` from the host and the VM. Website data/state is isolated per upstream task session.
+
+**Env-server mode (recommended)** uses [`scripts/serve_env.py`](/scripts/serve_env.py):
+
+```bash
+# OPENAI_API_KEY and optionally OPENAI_BASE_URL are required for upstream LLM judges.
+uv run python scripts/serve_env.py --env-ids osworld_2 --port 30100 --token <server-token>
+```
+
+Clients set `CUA_LITE_ENV_SERVER_URL=http://127.0.0.1:30100` and `CUA_LITE_ENV_SERVER_TOKEN=<server-token>`. Run `install.sh status` before rollout; an empty or unverified default asset directory fails before VM creation.
 
 **Direct mode** — `gym.make` brings the container up itself:
 
@@ -77,13 +97,13 @@ threaded into every container as an `-e` var (via `service_env`) so the in-conta
 reach the service:
 | knob | when unset | when set |
 |---|---|---|
-| `user_sim_model` | the 7 `human_in_the_loop` tasks are excluded | HITL tasks included (needs a user-sim LLM wired) |
+| `user_sim_model` | the 7 simulated-user conversation tasks are excluded | reserved; the conversation bridge is not implemented |
 | `website_host_suffix` | website tasks excluded | included when the matching v2.1 site is self-hosted |
 | `gitlab_url` + `gitlab_private_token` | gitlab-backed tasks excluded | included |
 
 **LLM-judge evaluators.** ~18 tasks call an LLM at `evaluate()` (desktop_env `model_client`), so they need a host **`OPENAI_API_KEY`** (+ optional `OPENAI_BASE_URL`), auto-threaded into each container. Without the key they'd 500/mis-score, so they're **excluded** (`exclude_reason: "llm_judge"`) unless it's set. The default judge model follows upstream (`gpt-4o`); `eval_model` can override it for a separate experiment.
 
-**Stateful-website tasks** need the matching self-hosted companion website service. Set the website suffix explicitly so these tasks are included.
+**Coverage limits.** Matching upstream files do not imply that every interaction protocol is implemented. The current wrapper does not support the seven simulated-user conversation tasks or the multi-phase task. GitLab tasks require the GitLab URL/token; website tasks require the stack above. Check `exclude_reason` and record the selected task IDs/count when reporting a run. Task 029's known setup timeout is also documented in the official v2.1 release; do not patch it silently.
 
 ## Available Tasks
 
@@ -92,13 +112,13 @@ import lite.gym as gym
 print(len(gym.registry.task_ids("osworld_2")))   # 108
 ```
 
-108 tasks across **10 overlapping capabilities** (not app-domains): `conflict_disambiguation`, `cross_source_reasoning`, `dynamic_environment`, `human_in_the_loop`, `implicit_state_inference`, `multi_item_state_tracking`, `multimodal_editing`, `streaming_interaction`, `tutorial_following`, `visual_spatial_precision`. Metadata identity lives in `env.metadata.others["task_id"]` / `env.metadata.others["env_id"]`; `env.metadata.others` also carries `capabilities` (a task is usually in several), the static service-dependency flags (`website`/`gitlab`/`multi_phase`/`user_sim`/`llm_judge`), the requested `volume_size` in GiB where present, and `exclude_reason` on service-gated tasks. The **scored count is environment-dependent** — `108 − (whichever services are unprovisioned)` — not a fixed number like v1's 325. Use the matching v2.1 website and judge credentials when reporting the available scored tasks. `google_auth`/`blocked` from v1 are dropped (V2 needs no Google accounts; the v1 uuid blocklist is unrelated to the v2 `001–108` id space).
+108 tasks across **10 overlapping capabilities** (not app-domains): `conflict_disambiguation`, `cross_source_reasoning`, `dynamic_environment`, `human_in_the_loop`, `implicit_state_inference`, `multi_item_state_tracking`, `multimodal_editing`, `streaming_interaction`, `tutorial_following`, `visual_spatial_precision`. Metadata identity lives in `env.metadata.others["task_id"]` / `env.metadata.others["env_id"]`; `env.metadata.others` also carries `capabilities` (a task is usually in several), the static service-dependency flags (`website`/`gitlab`/`multi_phase`/`user_sim`/`llm_judge`), the requested `volume_size` in GiB where present, and `exclude_reason` on service-gated tasks. The **scored count depends on provisioned services, supported interaction protocols, and the run's task filter**; report the actual selected task IDs/count. Provisioning every service does not enable the unsupported conversation or multi-phase tasks. Use the matching v2.1 website and judge credentials when reporting the available scored tasks. `google_auth`/`blocked` from v1 are dropped (V2 needs no Google accounts; the v1 uuid blocklist is unrelated to the v2 `001–108` id space).
 
 ## Evaluation
 
 Runs **only at episode end** (`terminate` / `response` / `max_steps`) via OSWorld-V2's native evaluators (custom Python `evaluate()` or the JSON fallback), returning a float `reward` in `[0.0, 1.0]` (extracted from `["score"]` when `evaluate()` returns a dict).
 
-The action surface is **identical to [`osworld` v1](/lite/gym/envs/osworld/README.md#evaluation)**: mouse, keyboard, scroll, wait, screenshot, and finish actions. **Extra tool:** `report_infeasible(reason)` (opt-in) gives up on infeasible tasks.
+The action surface is **identical to [`osworld` v1](/lite/gym/envs/osworld/README.md#evaluation)**: mouse, keyboard, scroll, wait, screenshot, and finish actions. If setup fails after changing the attached VM, rollout retries create a fresh VM; setup is never repeated on a dirty snapshot.
 
 <details>
 <summary>Architecture & background</summary>
@@ -112,10 +132,11 @@ lite/gym/envs/osworld_2/
 ├── data/              # (committed) release.json + test_v2.json + capabilities/*.json — registration metadata
 ├── scripts/
 │   ├── install.sh     # build / rebuild / pull / status image + gated assets + service scan
-│   ├── uninstall.sh   # rm v2 qcow2 + task_class/ + derived image
+│   ├── setup_website.sh # pinned website source + submodules + upstream Compose
+│   ├── uninstall.sh   # rm downloaded VM/tasks/assets/source + derived image
 │   └── cleanup.sh     # docker rm -f by -osworld_2- name filter
 ├── README.md
-└── .cache/            # (gitignored) osworld-v2-ubuntu-x86.qcow2 + task_class/task_*.py + evaluator goldens
+└── .cache/            # (gitignored) OSWorld-V2/ + VM + task_class/ + osworld_v2_assets/ + optional OSWorld-web/
 ```
 
 Runtime and evaluator code live inside the Docker image. The host creates one VM-backed container per trajectory, sends actions to it, and receives screenshots/rewards back through the env API. `install.sh status` is the quickest way to check the image, KVM/TUN access, qcow2, task classes, and service scan.

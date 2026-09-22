@@ -45,7 +45,7 @@
 #   - /dev/kvm AND /dev/net/tun rw-accessible.
 #   - cua-lite/osworld_2:osworld-v2.1-volume image + matching gated VM, assets and 108 task classes via
 #       uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh
-#     (needs HF auth with the xlangai/v2-image + xlangai/osworld_v2_tasks gates accepted).
+#     (accept the v2-image, osworld_v2_tasks, and osworld_v2_assets_gated HF gates).
 #   - OPENAI_API_KEY exported where the env MODULE IMPORTS (env-server launch,
 #     or this shell in direct mode); set OPENAI_BASE_URL only for a custom endpoint.
 #     The ~18 llm_judge tasks call an LLM at evaluate() (server_kwargs.eval_model,
@@ -64,7 +64,7 @@
 #     human_in_the_loop stay excluded until provisioned. Record num_tasks
 #     from summary.json.
 #   - No --env-kwargs step_timeout override: osworld_2's make_kwargs already
-#     set step_timeout=180 + reset_timeout=960 (configs/default.yaml), unlike
+#     set step_timeout=600 + reset_timeout=960 (configs/default.yaml), unlike
 #     androidworld/mobilegym whose specs leave the framework 120s default.
 #   - max_steps: env default 200 (OSWorld-v2.1 official GPT run) — no override.
 #     V2 trajectories are far longer than v1's 30-step runs; budget wall-clock

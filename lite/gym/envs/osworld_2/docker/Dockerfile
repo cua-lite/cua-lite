@@ -12,7 +12,7 @@
 # desktop_env + server.py; the host `docker exec -d`'s server.py once the VM's :5000 answers.
 #
 # Build context = this dir. install.sh stages the local OSWorld-V2 checkout into
-# `_vendor/OSWorld-V2/` (gitignored) first — no dependency on the pending V2 git tag.
+# `_vendor/OSWorld-V2/` (gitignored) first, at the official release commit.
 #
 # Build: uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh
 # The released guest installs FreeCAD 0.19 for tasks 103/104. The Debian runtime's
@@ -33,27 +33,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential ninja-build pkg-config \
  && rm -rf /var/lib/apt/lists/*
 
-# venv to sidestep Debian trixie's PEP 668 externally-managed marker + isolate the eval
-# stack from the base image's own python usage.
-RUN python3 -m venv /opt/venv
-ENV PATH=/opt/venv/bin:$PATH
+# Keep the evaluator separate from the base image's system Python.
+COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /usr/local/bin/uv
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    PATH=/opt/venv/bin:$PATH
 
-# ── 2. OSWorld-V2 — the FULL official install (`pip install .`) ───────────────
-# Follow the official setup completely: install the osworld package with ALL its declared
-# dependencies (pyproject is upstream's dependency source of truth; requirements.txt is just
-# `-e .`). Upstream's osworld-ffmpeg is a local uv source, so install that bundled package
-# before pip resolves the main project. No hand-curation — that breaks the upstream set
-# (e.g. pydrive's unpinned oauth2client). --prefer-binary favors wheels (avoids needless
-# source builds); build tools (step 1) cover the rest. The one required pin is `oauth2client
-# <4`: pydrive imports `CredentialsFileSymbolicLinkError`, removed in oauth2client 4.x — an
-# upstream-unpinned transitive break that any working install must constrain.
+# ── 2. OSWorld-V2 — the official frozen dependency environment ──────────────
+# uv.lock includes fastapi, uvicorn, and the bundled osworld-ffmpeg source.
 COPY _vendor/OSWorld-V2 /opt/osworld-v2
-RUN pip install --no-cache-dir --prefer-binary /opt/osworld-v2/packages/osworld-ffmpeg \
- && pip install --no-cache-dir --prefer-binary "oauth2client<4" /opt/osworld-v2 \
-      fastapi "uvicorn[standard]"
+WORKDIR /opt/osworld-v2
+RUN uv sync --frozen --no-dev --python 3.12 --project /opt/osworld-v2 --no-cache
 
 # ── 2b. Runtime system libs the eval stack needs (opencv → libGL etc.) ───────
-# Separate layer AFTER pip so tweaking system libs doesn't re-run the ~5-min pip install.
+# Separate layer so adjusting system libraries does not reinstall Python dependencies.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
       file imagemagick libreoffice-calc libreoffice-impress libreoffice-writer \

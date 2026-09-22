@@ -130,6 +130,41 @@ def test_qcow2_gate_checks_size(tmp_path, monkeypatch):
         m._check_qcow2()
 
 
+def test_unverified_default_assets_fail_before_vm_creation(tmp_path, monkeypatch):
+    monkeypatch.setattr(m, "ENV_DIR", str(tmp_path))
+    assets = tmp_path / ".cache" / "osworld_v2_assets"
+    assets.mkdir(parents=True)
+    monkeypatch.setattr(m, "_ASSET_BASE", str(assets))
+    with pytest.raises(Exception, match="complete gated v2.1 assets are not verified"):
+        m._check_runtime_deps()
+
+
+def test_attached_vm_refuses_dirty_setup_reuse(monkeypatch):
+    import importlib.util
+    import sys
+
+    class SetupError(RuntimeError):
+        pass
+
+    monkeypatch.setitem(sys.modules, "desktop_env.desktop_env", SimpleNamespace(
+        DesktopEnv=type("DesktopEnv", (), {}), EnvironmentSetupError=SetupError,
+    ))
+    for module, name in (("desktop_env.controllers.python", "PythonController"),
+                         ("desktop_env.controllers.setup", "SetupController")):
+        monkeypatch.setitem(sys.modules, module, SimpleNamespace(
+            **{name: lambda **kwargs: SimpleNamespace()},
+        ))
+    path = Path(c.__file__).parent / "docker" / "server.py"
+    spec = importlib.util.spec_from_file_location("osworld2_dirty_reset", path)
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)
+    env = server._attached_desktop_env()
+    assert env.is_environment_used is False
+    env.is_environment_used = True
+    with pytest.raises(SetupError, match="fresh VM"):
+        env._revert_to_snapshot()
+
+
 def test_v21_assets_mounted_for_in_container_task_setup(tmp_path, monkeypatch):
     assets = tmp_path / "assets"
     assets.mkdir()
@@ -262,6 +297,7 @@ def test_v21_local_website_probe_falls_back_to_http(monkeypatch):
 async def test_direct_reset_runs_full_dependency_gate(monkeypatch):
     env, _calls = _make_env(monkeypatch)
     checks: list[str] = []
+    monkeypatch.setattr(m, "_ASSET_BASE", "https://assets.example.test")
 
     monkeypatch.setattr(m, "_check_kvm", lambda: checks.append("kvm"))
     monkeypatch.setattr(m, "_check_tun", lambda: checks.append("tun"))

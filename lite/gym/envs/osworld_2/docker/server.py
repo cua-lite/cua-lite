@@ -99,7 +99,7 @@ def _attached_desktop_env():
     """Build a DesktopEnv that ATTACHES to this container's guest VM (:5000) instead of spawning
     one — a pure controller/setup/evaluator façade so reset/step/evaluate run upstream-verbatim
     (the provider is never created; /reset expands the guest volume before task setup)."""
-    from desktop_env.desktop_env import DesktopEnv
+    from desktop_env.desktop_env import DesktopEnv, EnvironmentSetupError
     from desktop_env.controllers.python import PythonController
     from desktop_env.controllers.setup import SetupController
 
@@ -151,12 +151,10 @@ def _attached_desktop_env():
             self._finalize_volume()
 
         def _revert_to_snapshot(self):
-            # Attach model has no snapshot + no provider. reset() marks the env dirty
-            # (is_environment_used=True) BEFORE task setup, so a setup-retry re-enters reset()'s
-            # revert branch → upstream would call provider.revert_to_snapshot(None) → crash (masking
-            # the real setup error). No-op: reset() re-attaches via _start_emulator() right after this,
-            # and there's nothing to revert to anyway (one trajectory per freshly-booted, reaped container).
-            pass
+            # The rollout retry creates a fresh container instead of reusing a dirty VM.
+            raise EnvironmentSetupError(
+                "Task setup changed the attached VM; retry with a fresh VM"
+            )
 
         def _finalize_volume(self):
             # /reset performs expansion once, before task setup; there is no provider here.

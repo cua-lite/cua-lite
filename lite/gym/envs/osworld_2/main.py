@@ -123,7 +123,9 @@ _USER_SIM_MODEL = CFG.server_kwargs["user_sim_model"]
 
 _EVAL_MODEL = CFG.server_kwargs["eval_model"]   # LLM-judge evaluator model override (None → V2 default gpt-4o)
 _HAS_OPENAI_KEY = bool(os.environ.get("OPENAI_API_KEY"))   # gates the ~18 LLM-judge tasks (else they'd mis-score)
-_ASSET_BASE = os.environ.get("OSWORLD_FILE_BASE_URL")
+_ASSET_BASE = os.environ.get("OSWORLD_FILE_BASE_URL") or str(
+    Path(ENV_DIR) / ".cache" / "osworld_v2_assets"
+)
 #: Finish tools cannot live in an env's own set, so the union is not optional.
 _KNOWN_STANDALONE_TOOL_NAMES = OsworldTools.get_tool_names() | LiteFinishToolSet.get_tool_names()
 
@@ -277,6 +279,10 @@ def _check_runtime_deps() -> None:
         not os.path.isabs(_ASSET_BASE) or not os.path.isdir(_ASSET_BASE)
     ):
         raise _dep_error(f"OSWORLD_FILE_BASE_URL must be an existing absolute directory: {_ASSET_BASE}")
+    if _ASSET_BASE == str(Path(ENV_DIR) / ".cache" / "osworld_v2_assets") and not (
+        Path(_ASSET_BASE) / ".asset_revision"
+    ).is_file():
+        raise _dep_error("complete gated v2.1 assets are not verified; run install.sh provision")
     _check_kvm()
     _check_tun()
     _check_image()
