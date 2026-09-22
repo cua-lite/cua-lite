@@ -1,7 +1,7 @@
-# mobile.use — teacher x screenshot-profile x reasoning campaign (SFT + one filter ablation + one RL run)
+# mobile.use — screenshot-profile x reasoning campaign (SFT + one filter ablation + one RL run)
 
-Train **eleven checkpoints** — two screenshot profiles x three teachers, plus a `<think>` arm on the
-two teachers that emit reasoning, plus one filter ablation — and score them on the full MobileGym
+Train **five checkpoints** — two screenshot profiles on the `gpt5_5` teacher, plus a `<think>` arm
+on each, plus one filter ablation — and score them on the full MobileGym
 eval split. A single GRPO run from the `gpt5_5` + `<think>` SFT cell closes the file (**RL** at the
 end), scored on that same eval.
 
@@ -10,11 +10,8 @@ end), scored on that same eval.
 | | 720x1600, 1 img | 720x1600, 1-4 img |
 | **`gpt5_5`** | ✓ | ✓ |
 | **`gpt5_5` + `<think>`** | ✓ | ✓ |
-| **`qwen3_5_27b`** | ✓ | ✓ |
-| **`qwen3_5_27b` + `<think>`** | ✓ | ✓ |
-| **`qwen3_8_27b`** | ✓ | ✓ |
 
-Ten cells, plus an eleventh that is not in the grid: the GRPO cell's own
+Four cells, plus a fifth that is not in the grid: the GRPO cell's own
 (`gpt5_5`, `mobile.use.i1.reasoning`) pair exported a second time under a **stricter row filter**.
 See [Filter ablation](#filter-ablation).
 
@@ -54,24 +51,23 @@ Qwen2.5-VL, which is pixel-in-resized-frame; it does not apply to this family.
 > no server is running, because a stale `export` in a reused shell is exactly how this bites.
 
 **What compares to what.** Within a ROW only the image budget moves: the two cells draw the same
-filtered pool from the same teacher. Within a COLUMN, a `+ <think>` row differs from the row above by
-`enable_thinking` alone — so read a reasoning cell against **its own teacher's** Action-only row,
-never the other teacher's. **Across teacher rows is NOT a clean contrast**: each teacher's pool is
-its own filtered trajectories, so the pools differ in membership and in size. How much they overlap
-on task id is **not measured here** (desktop measured 43% for its two extreme teachers; that number
-is desktop's, not mobile's). To make it clean, intersect the pools first and draw every teacher's
-rows from that intersection.
+filtered pool. Within a COLUMN, a `+ <think>` row differs from the row above by `enable_thinking`
+alone. Every cell here draws from the one `gpt5_5` pool, so both contrasts are clean by
+construction — there is no cross-teacher row to confound them. **Adding a second teacher would
+reintroduce that confound**: each teacher's pool is its own filtered trajectories, differing in
+membership and in size, and how much two pools overlap on task id is **not measured here** (desktop
+measured 43% for its two extreme teachers; that number is desktop's, not mobile's). Intersect the
+pools first and draw every teacher's rows from that intersection.
 
-`qwen3_8_27b` has no `<think>` arm: thinking was off when it was sampled, so the reasoning config
-would train an empty `<think>` on its rows — the same exclusion the desktop campaign documents. The
-other two reach the field by different routes: `gpt5_5` is prompted for a `Thought:` line that
-[`/devs/data/internalize_cot.py`](/devs/data/internalize_cot.py) canonicalizes before staging;
-`qwen3_5_27b` was sampled with `enable_thinking` and writes it natively. The mobile configs say the
-same thing in their own headers —
+`gpt5_5` reaches the `<think>` field by prompting: it is asked for a `Thought:` line that
+[`/devs/data/internalize_cot.py`](/devs/data/internalize_cot.py) canonicalizes before staging. A
+teacher sampled with thinking OFF gets no `<think>` arm at all — the reasoning config would train an
+empty `<think>` on its rows, the same exclusion the desktop campaign documents. The mobile configs
+say the same thing in their own headers —
 [`mobile.use.i1.reasoning.yaml`](/devs/exps/train/mobile/configs/qwen3_5/mobile.use.i1.reasoning.yaml).
 
 **Naming.** A cell is a `(config stem, teacher, dataset recipe)` triple; the SFT blocks enumerate the
-eleven from a `cells()` function that each block redefines (four copies — paste the one in the block
+five from a `cells()` function that each block redefines (four copies — paste the one in the block
 you are running). RL pins one of those cells explicitly. `$P` is the stem taken whole off the
 filename and `$DS` the dataset recipe (source + row filter). Both are threaded verbatim into every
 artifact — parquet `$P.$DS.$T.parquet`, checkpoint `sft.$P.$DS.$T`, HF repo
@@ -80,7 +76,7 @@ never collide. To ablate the dataset, change `DS=` **and** `--filter` together.
 
 ### Teacher data
 
-Collection, cleaning and publication of the three teachers' MobileGym trajectories are owned by
+Collection, cleaning and publication of the teacher's MobileGym trajectories are owned by
 [`/devs/data/mobilegym/AGENTS.md`](/devs/data/mobilegym/AGENTS.md). Read it before the Export block;
 nothing about collection is repeated here. Two handoffs matter to this campaign:
 
@@ -166,13 +162,13 @@ VARIANT=mobile.use                       # the first run; this runbook does not 
 FILTER_R30="lambda m: not m.others.get('exclude_reason') and (m.others.get('episode_return') or 0) >= 0.30"
 FILTER_SR="lambda m: not m.others.get('exclude_reason') and (m.others.get('episode_return') or 0) > 0.5"
 
-# The eleven cells as "<config stem> <teacher> <dataset recipe>". The <think> arm skips
-# qwen3_8_27b; the last line is the filter ablation, not a grid cell.
+# The five cells as "<config stem> <teacher> <dataset recipe>". The last line is the filter
+# ablation, not a grid cell.
 cells() {
-  for T in gpt5_5 qwen3_5_27b qwen3_8_27b; do
+  for T in gpt5_5; do
     for P in mobile.use.i1 mobile.use.i4; do echo "$P $T $DS"; done
   done
-  for T in gpt5_5 qwen3_5_27b; do
+  for T in gpt5_5; do
     for P in mobile.use.i1.reasoning mobile.use.i4.reasoning; do echo "$P $T $DS"; done
   done
   echo "mobile.use.i1.reasoning gpt5_5 $DS_SR"
@@ -183,7 +179,7 @@ cells() {
 # cannot drag in a sibling split. --overwrite makes this re-runnable. KEEP THIS LIST IN SYNC WITH
 # cells(): a teacher in cells() but not here exports against a data root that was never
 # downloaded -- and cells() is defined FOUR times below, so a teacher edit touches all four.
-for T in gpt5_5 qwen3_5_27b qwen3_8_27b; do
+for T in gpt5_5; do
   # --org defaults to `cua-lite`; the mobilegym runbook stages to a PRIVATE $HF_ORG first
   # (/devs/data/mobilegym/AGENTS.md), so pass it explicitly until the repo is public.
   env -u CUA_LITE_ENV_SERVER_URL -u CUA_LITE_ENV_SERVER_TOKEN \
@@ -192,14 +188,13 @@ for T in gpt5_5 qwen3_5_27b qwen3_8_27b; do
       --out "$DL/$T/cua-lite/$HF_DS" --overwrite
 done
 
-# No --sample: every cell takes its teacher's whole filtered pool, so the row counts differ
-# between teachers by construction and the campaign has no row-cap axis. The per-teacher pool
-# sizes are MEASURED for gpt5_5 as of 2026-09-21: 1099 rows pass the `>= 0.30` filter and 1016
+# No --sample: every cell takes the teacher's whole filtered pool, so the campaign has no row-cap
+# axis. The pool size is MEASURED for gpt5_5 as of 2026-09-21: 1099 rows pass the `>= 0.30` filter
+# and 1016
 # convert; the other 83 are dropped by export_sft because Qwen3-VL mobile cannot render
 # `tap(clicks=2)` (its action enum has only `click` and the wire carries no repeat count). That
 # 1016/83 split is identical across all four profiles, so the image budget and `<think>` change
-# the prompt, not which rows survive. Read the other teachers' pool sizes off their own
-# `Wrote N trajectory rows` lines.
+# the prompt, not which rows survive.
 # The `exclude_reason` clause is the shared publish-time quality gate; whether these rows carry
 # one is /devs/data/mobilegym/AGENTS.md's call. The clause is NOT decorative: filter.py does tag
 # mobilegym rows (measured: incomplete / footgun:loop / teacher_gave_up), and dropping it changes
@@ -254,7 +249,7 @@ annotated root, so this check is what establishes that they and the Hub path car
 #
 # SAVE_DIR / SAVE_HF_DIR / WANDB_GROUP_SUFFIX are all MANDATORY here. run_sft.sh keys the two
 # checkpoint dirs AND the W&B group off PROMPT_DATA's parent dir (DATA_SLUG, run_sft.sh:131),
-# which is `mobile.use` for all eleven cells -- so unset, the runs overwrite each other's
+# which is `mobile.use` for all five cells -- so unset, the runs overwrite each other's
 # checkpoints and land in one W&B group. WANDB_GROUP_SUFFIX has no default; separating them is
 # its job.
 #
@@ -266,12 +261,12 @@ annotated root, so this check is what establishes that they and the Hub path car
 # the checkpoints are still on disk.
 DS=mobilegym_r30
 DS_SR=mobilegym_sr
-# The eleven cells as "<config stem> <teacher> <dataset recipe>".
+# The five cells as "<config stem> <teacher> <dataset recipe>".
 cells() {
-  for T in gpt5_5 qwen3_5_27b qwen3_8_27b; do
+  for T in gpt5_5; do
     for P in mobile.use.i1 mobile.use.i4; do echo "$P $T $DS"; done
   done
-  for T in gpt5_5 qwen3_5_27b; do
+  for T in gpt5_5; do
     for P in mobile.use.i1.reasoning mobile.use.i4.reasoning; do echo "$P $T $DS"; done
   done
   echo "mobile.use.i1.reasoning gpt5_5 $DS_SR"
@@ -298,7 +293,7 @@ done <<< "$(cells)"
 - TP=2 is the starting point at 4B; `TP_SIZE=4` if it OOMs.
 - `NO_SAVE_OPTIM=1` keeps weights only — these checkpoints are for eval, not for resuming.
 - **Export `WANDB_API_KEY` before the first cell.** `run_sft.sh` builds its W&B arguments inside
-  `if [ -n "${WANDB_API_KEY:-}" ]`, so without it eleven multi-hour runs train with no logging at
+  `if [ -n "${WANDB_API_KEY:-}" ]`, so without it five multi-hour runs train with no logging at
   all.
 
 #### Ship the checkpoints
@@ -315,7 +310,7 @@ disk, never predict.
 
 ```bash
 # --- TRAIN HOST ---  (run from the repo root; commit FIRST -- `git rev-parse` reports a sha
-# for a dirty tree just as happily, so an uncommitted edit tags eleven public repos with a sha
+# for a dirty tree just as happily, so an uncommitted edit tags five public repos with a sha
 # that does not describe the weights, silently.)
 # `uv run hf`, NOT bare `hf`: `hf repos` needs huggingface_hub >= 1.17 and the system hf may be
 # older. Needs a WRITE-scoped token (`uv run hf auth login`, or HF_TOKEN). Repos are public,
@@ -325,12 +320,12 @@ DS=mobilegym_r30
 DS_SR=mobilegym_sr
 EPOCHS=2                                 # must match NUM_EPOCH in the Train block
 CKPTS=.ckpts/qwen3_5-4b
-# The eleven cells as "<config stem> <teacher> <dataset recipe>".
+# The five cells as "<config stem> <teacher> <dataset recipe>".
 cells() {
-  for T in gpt5_5 qwen3_5_27b qwen3_8_27b; do
+  for T in gpt5_5; do
     for P in mobile.use.i1 mobile.use.i4; do echo "$P $T $DS"; done
   done
-  for T in gpt5_5 qwen3_5_27b; do
+  for T in gpt5_5; do
     for P in mobile.use.i1.reasoning mobile.use.i4.reasoning; do echo "$P $T $DS"; done
   done
   echo "mobile.use.i1.reasoning gpt5_5 $DS_SR"
@@ -387,14 +382,14 @@ path-in-repo and so cannot express `epoch_<k>/`.
 
 #### Eval
 
-Fifteen runs on the **full 256-task `mobilegym` eval split** — no filter. `mobilegym` registers no
+Nine runs on the **full 256-task `mobilegym` eval split** — no filter. `mobilegym` registers no
 `exclude_reason`, and this campaign deliberately does NOT take the L1+L2 subset that
 [docs/grpo.md#mobilegym](/docs/grpo.md#mobilegym) uses for its 2B smoke runs, so the denominator here
 is 256 and not 93. Eval tasks carry registered deterministic seeds (`seed=42`), so the task
 instances are fixed across runs. Env setup:
 [`lite/gym/envs/mobilegym/README.md`](/lite/gym/envs/mobilegym/README.md).
 
-Fifteen, not eleven: **the base model runs once per config stem**, all four of them. A checkpoint
+Nine, not five: **the base model runs once per config stem**, all four of them. A checkpoint
 must be scored against a baseline that saw the same prompt surface, and `base` under an Action-only
 config runs with thinking OFF — the wrong baseline for a reasoning checkpoint. The ablation cell
 shares `mobile.use.i1.reasoning` with its parent, so it needs no base run of its own.
@@ -439,12 +434,12 @@ DS_SR=mobilegym_sr
 CFG=devs/exps/train/mobile/configs/qwen3_5
 PULL=.ckpts/pulled
 LOGS=.logs/rollout/Qwen_Qwen3.5-4B/mobilegym
-# The eleven cells as "<config stem> <teacher> <dataset recipe>".
+# The five cells as "<config stem> <teacher> <dataset recipe>".
 cells() {
-  for T in gpt5_5 qwen3_5_27b qwen3_8_27b; do
+  for T in gpt5_5; do
     for P in mobile.use.i1 mobile.use.i4; do echo "$P $T $DS"; done
   done
-  for T in gpt5_5 qwen3_5_27b; do
+  for T in gpt5_5; do
     for P in mobile.use.i1.reasoning mobile.use.i4.reasoning; do echo "$P $T $DS"; done
   done
   echo "mobile.use.i1.reasoning gpt5_5 $DS_SR"
@@ -566,8 +561,9 @@ for P in mobile.use.i1 mobile.use.i4 mobile.use.i1.reasoning mobile.use.i4.reaso
   show "base.$P@$RUN"
 done
 while read -r P T D; do show "sft.$P.$D.$T@$RUN.$EPOCH"; done <<< "$(cells)"
-# The RL run, if it was scored (see the RL section): 16th line, not part of cells().
-show "grpo.mobile.use.i1.reasoning.mobilegym_r30.gpt5_5.mobilegym_full.from_sft@$RUN.<iter>"
+# The RL run is NOT scored here. It uses its own eval manifests and its own in-training
+# eval points (see the RL section); mixing it into this table would put two different
+# protocols in one column.
 ```
 
 Paste the numbers into a snapshot file, reusing the table LAYOUT from **Results** below (the cell
@@ -577,11 +573,11 @@ format — `mean (solved/num_valid)` — is defined there). Front matter:
 # mobile.use @ <run>
 
 - **Checkpoints**: each cell repo's `main` as of `<date>`, tag `<sha>`. Ship can SKIP a cell and
-  re-run it later, so the eleven repos need not share a sha — if they diverge, list the odd ones
+  re-run it later, so the five repos need not share a sha — if they diverge, list the odd ones
   out here (`uv run hf repos tag list <repo>`), or a later `--revision` re-run pulls the wrong
   weights.
-- **Dataset**: `mobilegym_r30` (`episode_return >= 0.30`), whole filtered pool per teacher — record
-  the per-teacher row counts the Export block printed, they are part of the result
+- **Dataset**: `mobilegym_r30` (`episode_return >= 0.30`), the teacher's whole filtered pool — record
+  the row counts the Export block printed, they are part of the result
 - **Ablation**: `mobilegym_sr` (`episode_return > 0.5`), same cell, record its row count too
 - **Eval**: `mobilegym` eval, full 256 tasks, no filter, `reward_shaping` ON, `epoch_2` —
   record the shaped mean and the `solved/256` SR from the same pass
@@ -596,53 +592,82 @@ format — `mean (solved/num_valid)` — is defined there). Front matter:
 
 ### Results
 
-**Nothing here is measured yet.** This is the scaffold the first campaign fills in; every cell is
-`TBD` on purpose and no desktop or browser number transfers into it — different env, different
-teacher pools, different reward definition.
+**Measured 2026-09-22, campaign `20260922`.** Every cell of the grid carries three full 256-task
+passes. No desktop or browser number transfers into this table — different env, different teacher
+pool, different reward definition — and none is used as a substitute for a missing measurement here.
 
 Two numbers per cell, both from the SAME shaped pass: **shaped mean** first, then the **Success
 Rate** as `(solved / num_valid)` — the count of `episode_return == 1.0`, which under shaping is still
 exactly MobileGym's SR criterion. The shaped mean is the sensitive one and the SR is the comparable
 one; report both, and say which you are comparing when you cite a number elsewhere.
 
-**One pass per cell** — eval tasks carry registered seeds and the profiles pin `temperature: 0.0`, so
-a pass is reproducible up to env timing. There is still no error bar, and the SR half carries a
-binomial stderr of about 2.8pp at `n=256, p~0.3` all by itself; the shaped mean is tighter but its
-spread is unmeasured here. Read the table for moves that clear those, and re-run a specific pair
-rather than the whole table when one matters.
+**Three passes per cell**, as in the desktop and browser campaigns. Campaign `20260922`: every cell
+scored three times, interleaved across `cc9c`/`cc9d`/`cc9e` so host drift spreads across cells
+instead of landing on one. `±` is **half the range** of the three; with n=3 a range is what there is,
+and it is not a confidence interval. An earlier version of this table carried one pass per cell and
+said to "read only large moves"; those numbers are superseded by the ones below, and the reason is in
+[Three passes is a floor, not a measurement](#three-passes-is-a-floor-not-a-measurement).
 
-Cells read `shaped-mean (solved/256)`.
+Cells read `shaped-mean ±half-range (solved/256) n/3`.
 
 | | `i1` | `i4` |
 |---|---:|---:|
-| **base** | 0.1823 (34/256) | 0.2162 (43/256) |
-| **base + `<think>`** | 0.1896 (38/256) | TBD |
-| **`gpt5_5`** | 0.2776 (56/256) | 0.3195 (66/256) |
-| **`gpt5_5` + `<think>`** | 0.3444 (69/256) | not run — see below |
-| **`qwen3_5_27b`** | TBD | TBD |
-| **`qwen3_5_27b` + `<think>`** | TBD | TBD |
-| **`qwen3_8_27b`** | TBD | TBD |
+| **base** | 0.1954 ±0.0086 (37.3/256) 3/3 | 0.2023 ±0.0051 (39.0/256) 3/3 |
+| **base + `<think>`** | 0.1862 ±0.0260 (35.7/256) 3/3 | 0.2085 ±0.0152 (41.3/256) 3/3 |
+| **`gpt5_5`** | 0.2727 ±0.0140 (54.7/256) 3/3 | 0.3023 ±0.0033 (61.7/256) 3/3 |
+| **`gpt5_5` + `<think>`** | 0.3409 ±0.0157 (68.7/256) 3/3 | **0.3448** ±0.0056 (69.7/256) 3/3 |
 | **`gpt5_5` + `<think>`, `> 0.5` rows** | not run | — |
-| **GRPO from `gpt5_5` + `<think>`** | see below | — |
 
-Every number in the table is a full 256-task pass. Two earlier cells that read `N/256 only` — a
-truncated prefix is not comparable to a full pass, because the eval split is ordered rather than
-shuffled — were re-run to completion on 2026-09-21.
+Every individual run — `shaped-mean (solved) parse_failure`, one column per pass, pod in italics:
 
-Two cells read `not run`. The `> 0.5` filter ablation was dropped as uninformative on this corpus:
-the gate removes only 7% of the trajectories (1133 -> 1049) and 3% of the templates (158 -> 153),
-because MobileGym scores `1.0` iff success and `0.5 x progress` otherwise, so `> 0.5` IS the success
-set and `>= 0.30` adds back only the partial-progress runs above `progress 0.6` — of which this
-teacher produces few. The `gpt5_5` + `<think>` / `i4` cell is a training failure, recorded below.
+| | | p1 | p2 | p3 |
+|---|---|---|---|---|
+| **base** | `i1` | 0.2050 (40) 1 *cc9c* | 0.1879 (35) 0 *cc9c* | 0.1933 (37) 0 *cc9c* |
+| | `i4` | 0.1988 (39) 0 *cc9c* | 0.1992 (38) 0 *cc9d* | 0.2090 (40) 0 *cc9c* |
+| **base + `<think>`** | `i1` | 0.1651 (31) 0 *cc9c* | 0.2170 (44) 0 *cc9c* | 0.1766 (32) 0 *cc9c* |
+| | `i4` | 0.2218 (46) 0 *cc9e* | 0.2122 (42) 0 *cc9e* | 0.1914 (36) 2 *cc9e* |
+| **`gpt5_5`** | `i1` | 0.2892 (61) 0 *cc9e* | 0.2678 (54) 0 *cc9e* | 0.2612 (49) 1 *cc9d* |
+| | `i4` | 0.3019 (62) 1 *cc9e* | 0.2993 (61) 1 *cc9e* | 0.3058 (62) 1 *cc9e* |
+| **`gpt5_5` + `<think>`** | `i1` | 0.3453 (71) 0 *cc9d* | 0.3230 (63) 0 *cc9d* | 0.3543 (72) 0 *cc9e* |
+| | `i4` | 0.3383 (67) 1 *cc9e* | 0.3494 (71) 0 *cc9e* | 0.3467 (71) 0 *cc9e* |
 
-Reading the table, once it has numbers in it:
+Every pass in both tables is a full 256-task pass with `err=0` and `partial>0`. Passes are assigned
+to a cell by run slug in time order and the FIRST THREE are the ones aggregated — a rule fixed before
+the numbers were read, because some cells have four or five passes (see the section below) and
+picking which three after the fact would be picking the answer.
 
-- **There is no error bar, so read only large moves.** One pass per cell means the campaign's noise
-  floor is not measured, and desktop's (±0.0011 .. ±0.0207 over 328 OSWorld tasks) is not a
-  substitute — different env, different denominator. The SR half has a floor you can compute without
-  re-running: `sqrt(p(1-p)/256)`, about 2.8pp at `p~0.3`. Treat anything inside that as unread on the
-  SR, lean on the shaped mean for smaller moves, and re-run a specific pair rather than the whole
-  table when one matters.
+The `> 0.5` filter ablation was dropped as uninformative on this corpus: the gate removes only 7% of
+the trajectories (1133 -> 1049) and 3% of the templates (158 -> 153), because MobileGym scores `1.0`
+iff success and `0.5 x progress` otherwise, so `> 0.5` IS the success set and `>= 0.30` adds back
+only the partial-progress runs above `progress 0.6` — of which this teacher produces few.
+
+#### Three passes is a floor, not a measurement
+
+Seven passes beyond the three aggregated above were run on five of the cells. **Two of them fall
+outside their own cell's three-pass range**, and one of those is the cell the table calls tightest:
+
+| cell | aggregated three | extra passes | verdict |
+|---|---|---|---|
+| `gpt5_5` / `i4` | 0.2993 .. 0.3058 (±0.0033) | **0.2862** | outside, by 1.3pp |
+| `base` / `i4` | 0.1988 .. 0.2090 (±0.0051) | **0.2127** | outside, by 0.4pp |
+| `base` + `<think>` / `i1` | 0.1651 .. 0.2170 (±0.0260) | 0.1825, 0.1901 | inside |
+| `base` + `<think>` / `i4` | 0.1914 .. 0.2218 (±0.0152) | 0.1983 | inside |
+| `gpt5_5` + `<think>` / `i1` | 0.3230 .. 0.3543 (±0.0157) | 0.3432 | inside |
+
+So a small `±` can be three draws landing close together rather than a tight cell: `gpt5_5` / `i4`
+reads ±0.0033 over its three and ±0.0098 over four. **Compare against the larger of the two cells'
+own `±`, and treat any `±` under ~0.010 as un-measured rather than tight.** The moves this table
+supports (+13.6pp for SFT, +6.8pp for `<think>` after SFT) are far outside that; the ones it does not
+(`i4` vs `i1` at +3.0pp on the `gpt5_5` row, which is +2.6pp over four passes) are the ones this
+caveat bites.
+
+Reading the table:
+
+- **Compare against the larger of the two cells' own `±`.** Across the eight cells the half-range
+  spans ±0.0033 to ±0.0260 — an 8x spread — so one global threshold is either too strict or too
+  loose. The widest cell is `base` + `<think>` / `i1` (±0.0260, wider than desktop's worst at
+  ±0.0207); the tightest reading is not trustworthy (see above). The SR half also carries a binomial
+  floor of about 2.8pp at `n=256, p~0.3` all by itself.
 - **`mean_episode_return` averages over `num_valid`, not 256.** The `err=` that `show` prints is
   `num_samples - num_valid`: non-zero means that pass came up short and must be RE-RUN, not averaged
   in. Record the mean WITH its denominator.
@@ -659,11 +684,18 @@ Reading the table, once it has numbers in it:
 - **The `> 0.5` row answers one question only** — see [Filter ablation](#filter-ablation) — and it is
   read against the `gpt5_5` + `<think>` / `i1` cell directly above it, never against another teacher.
 
-#### The `i4` + `<think>` cell does not train
+#### The `i4` + `<think>` cell: six hangs on one host, then clean on another
 
-`mobile.use.i4.reasoning` is the one cell in this campaign that never produced a checkpoint. Six
-attempts on 2026-09-21 all died the same way, so the cell is `not run` rather than `TBD`: the work
-was done and the result was a failure.
+`mobile.use.i4.reasoning` failed six times on 2026-09-21, every time the same way, and the cell stood
+at `not run`. **It then trained to completion on 2026-09-22 on a different pod, at the same
+`TP_SIZE=2` the failures used** — 62 steps, `iter_30` and `iter_61` both written, zero NCCL events,
+loss 1.06 -> 0.358. The weights are on the Hub and the cell has a number in the table above.
+
+So the hang is **host-specific, not configuration-specific**. That is what the exclusion table below
+could not settle: it ruled out every property of the data and the parallelism it could reach, but
+"Environment drift" was excluded only by re-running `mobile.use.i4` on the SAME host. A second host
+was the one control not available at the time. Keep the analysis below — the failure is real, it will
+recur, and its signature is precise — but read it as a diagnosis of one machine.
 
 **Signature.** Training reaches iteration 12 (iteration 5 at `DP=2`), completes that step's last
 micro-batch, and then hangs. NCCL's watchdog aborts ~10 min later:
@@ -714,7 +746,7 @@ is exactly what this cell measures, so it is worth another attempt.
 
 #### Filter ablation
 
-The eleventh cell is `(mobile.use.i1.reasoning, gpt5_5)` — the GRPO cell's own profile and teacher —
+The fifth cell is `(mobile.use.i1.reasoning, gpt5_5)` — the GRPO cell's own profile and teacher —
 exported a second time under `episode_return > 0.5` instead of the campaign's `>= 0.30`. The `>= 0.30`
 pool keeps trajectories that passed at least 60% of their `check_goals` but did not finish cleanly
 or did not terminate; the `> 0.5` pool keeps only true successes.
@@ -731,22 +763,62 @@ how much data each filter left.
 
 ### RL
 
-One GRPO run from the local **`gpt5_5` + `<think>` SFT checkpoint** trained with
+GRPO from the local **`gpt5_5` + `<think>` SFT checkpoint** with
 [`mobile.use.i1.reasoning.yaml`](/devs/exps/train/mobile/configs/qwen3_5/mobile.use.i1.reasoning.yaml).
-Trains on the **full 160-task `mobilegym` train split**, evaluates on the **full 256-task eval
-split**. Read [docs/grpo.md](/docs/grpo.md) first: env-server prerequisite, sync-vs-async, and the
-knobs this block does not repeat.
+Read [docs/grpo.md](/docs/grpo.md) first: env-server prerequisite, sync-vs-async, and the knobs this
+block does not repeat.
 
-> **No difficulty filter on either side.** [docs/grpo.md#mobilegym](/docs/grpo.md#mobilegym)
-> filters both splits to L1+L2 (80 train / 93 eval) so a 2B has a non-trivial baseline; this campaign
-> does not, because its eval number has to be the full-split one the Results table above reports.
-> That means the step budget varies per task (the profile yaml omits `max_steps` precisely so it
-> does). L1 15 / L2 30 / L3 45 / L4 60 is exact on the TRAIN split; on the eval split a task may
-> declare its own `cls.max_steps`, so registered budgets vary WITHIN a tier there. The L3/L4 tail
-> is where a 4B is most likely to contribute
-> nothing but zero-advantage groups. Whether that tail is worth its rollout budget is not known here;
-> desktop's answer was a calibration pass ([`desktop/TASKS.md`](/devs/exps/train/desktop/TASKS.md)),
-> and mobile has no equivalent yet.
+**The cell is `fam37n`: same-family transfer, fresh instance per rollout, sampled eval.** Three
+choices define it, and each one was forced by a measurement rather than picked:
+
+| choice | value | why |
+|---|---|---|
+| task pool | 37 train / 52 eval, **same families**, `L1-L3` | `train160` and `eval256` share no class name; the only earlier variant that moved was the one where the two sides shared templates |
+| train instance | **fresh per rollout** (rows tagged `split="train"`) | the engine then injects `f(rollout_id, group_index)`; pinning one instance instead is the `fam37` control, and it is flat |
+| eval decoding | **`temperature=1.0`, 4 samples per task** | greedy scores a policy GRPO never optimised — see [Greedy hides the gain](#greedy-hides-the-gain) |
+
+**Building the pool.** Take `mobilegym`'s EVAL split, keep `L1-L3`, group by family (`app` + the
+first CamelCase token, so `wechat.PostSomething` -> `wechat.Post`), keep the 37 families with two or
+more members, and put ONE member in train and its siblings in eval: 37 train / 52 eval, zero task
+overlap, every eval family covered by a train family. `L4` is excluded — it is 31.2% of the eval
+split and 38.6% of the step budget for a 4% solve rate, so it costs denominator, not gradient.
+
+> **The row's `split` tag is what picks the instance policy, and it is not mobilegym's split.**
+> `engine.py:315` reads `split` from the PARQUET ROW. A row tagged `"train"` takes the injection
+> branch at `engine.py:341` and gets a group-shared seed derived from `(rollout_id, group_index)` —
+> a fresh task instance every rollout, shared across the 8 members of one group. A row tagged
+> `"eval"` skips that branch and falls back to the registry, which carries `seed=42` for eval-split
+> tasks and NOTHING for train-split tasks (`tasks.json`: `('eval',42) x256`, `('train',None) x160`)
+> — and a missing seed means `random.Random(None)`, i.e. a fresh instance every EPISODE, which
+> breaks the group baseline. So: eval manifests always `"eval"`; a train manifest is `"train"` for
+> fresh-per-rollout, or `"eval"` **plus an explicit `seed` in `env_kwargs`** to pin one instance.
+> Assembling a manifest by copying rows out of a mixed-provenance source inherits a MIXED policy
+> silently — the tag column reads uniform while the behaviour is not. Print the resolved policy per
+> row (`env_kwargs["seed"]` -> row tag -> `tasks.json` seed) before launching.
+
+**What "fresh instance per rollout" actually resolves to**, measured on the pod rather than read off
+the branch — the three conditions at `engine.py:340-344` all have to hold, and the third one fails
+OPEN into the control arm:
+
+    env_supports_kwarg(mobilegym, seed) = True        <- gate (c); False here would silently make
+                                                         fam37n identical to fam37, with no error
+    injected seed = Random(f"{rollout_id}:{group_index}").randint(0, 2**31-1)
+    group 0 over 30 rollouts -> 30/30 DISTINCT instances   (fam37 pins ONE for all 30)
+
+**Seed replicates change the policy, not the tasks.** That derivation reads `rollout_id` and
+`group_index` and nothing else — `--rollout-seed` and `--seed` do not enter it. So five pods running
+this cell with five seeds see the **same instance sequence** and differ only in initialisation and
+sampling. That is a paired design, not a broken one: instance noise is common across arms, so a
+between-seed spread is a clean read on optimisation variance — but it does NOT sample the
+instance-generator, and no number of seeds will turn it into that.
+
+| pod | `RS` (`--rollout-seed`) | `SD` (`--seed`) |
+|---|---|---|
+| a | 101 | 5001 |
+| b | 202 | 5002 |
+| c | 303 | 5003 |
+| d | 404 | 5004 |
+| e | 505 | 5005 |
 
 **One env, two manifests.** Training and eval are both `mobilegym`, so unlike the desktop RL run
 `ENV_ID` is unambiguous and the env-server needs `--env-ids mobilegym` only. What differs between the
@@ -844,7 +916,168 @@ Re-run this whenever the profile yaml changes. A shaping key added there would b
 sides by the rows, which is the point — but `loop_detect` or `extra_tools` changing is a prompt/tool
 surface change, and this is where it shows up.
 
+**Stage 2 — derive the cell's two manifests from `eval256`.** `fam37n` is not exported; it is a
+deterministic FUNCTION of `eval256` plus `tasks.json`, so a new host reproduces it from the repo
+alone and every seed replicate trains on the same 37 tasks. Do not assemble it by copying rows out
+of whichever manifests happen to be on the box — that is how a MIXED instance policy gets in (see
+the warning above), and the tag column still reads uniform afterwards.
+
+```bash
+W=${W:-/workspaces/cua-lite}
+OUT=${OUT:-$W/devs/exps/train/mobile/data} PINNED=${PINNED:-0} uv run python - <<'PY'
+import collections, hashlib, json, os, re
+
+import pandas as pd
+
+W = os.environ.get("W", "/workspaces/cua-lite")
+DATA = f"{W}/devs/exps/train/mobile/data"
+OUT = os.environ.get("OUT", DATA)
+# PINNED=0 -> fam37n/fam37ne (fresh instance per rollout). PINNED=1 -> fam37/fam37e, the control
+# whose train rows are tagged "eval" so the registry's seed 42 pins ONE instance for the whole run.
+PINNED = os.environ.get("PINNED") == "1"
+
+
+def family(task: str) -> str:
+    app, name = task.split(".", 1)
+    m = re.match(r"([A-Z][a-z0-9]*(?:[0-9]+)?)", name)
+    return app + "." + (m.group(1) if m else name)
+
+
+tj = json.load(open(f"{W}/lite/gym/envs/mobilegym/data/tasks.json"))
+src = pd.read_parquet(f"{DATA}/mobilegym.eval256.shaped.parquet")
+src["_task"] = [r["metadata"]["env_key"].split("@")[-1] for _, r in src.iterrows()]
+assert len(src) == 256, f"source is not the 256-row eval export: {len(src)}"
+
+# L1-L3 only: L4 is 31.2% of the eval split and 38.6% of the step budget for a 4% solve rate.
+by = collections.defaultdict(list)
+for t in src["_task"]:
+    if tj[t]["difficulty"] in ("L1", "L2", "L3"):
+        by[family(t)].append(t)
+
+# deterministic: families by name, members by name; first member trains, its siblings evaluate
+fams = sorted((f, sorted(v)) for f, v in by.items() if len(v) >= 2)
+train_ids = [v[0] for _, v in fams]
+eval_ids = [t for _, v in fams for t in v[1:]]
+assert (len(fams), len(train_ids), len(eval_ids)) == (37, 37, 52), (
+    f"pool changed: {len(fams)} families, {len(train_ids)}/{len(eval_ids)} tasks"
+)
+assert not set(train_ids) & set(eval_ids)
+
+for ids, tag, name in (
+    (train_ids, "eval" if PINNED else "train", "fam37" if PINNED else "fam37n"),
+    (eval_ids, "eval", "fam37e" if PINNED else "fam37ne"),
+):
+    rows = src[src["_task"].isin(ids)].copy()
+    rows["_o"] = [ids.index(t) for t in rows["_task"]]
+    rows = rows.sort_values("_o").drop(columns=["_task", "_o"]).reset_index(drop=True)
+    rows["metadata"] = [dict(m, split=tag) for m in rows["metadata"]]
+    rows.to_parquet(f"{OUT}/mobilegym.{name}.shaped.parquet", index=False)
+
+    # assert the RESOLVED policy, not the tag: env_kwargs seed > row tag > tasks.json seed
+    pol = collections.Counter()
+    for m in rows["metadata"]:
+        kw = m.get("env_kwargs") or {}
+        assert kw.get("reward_shaping") is True, f"{name}: shaping lost in the copy"
+        if "seed" in kw:
+            pol["PINNED(env_kwargs)"] += 1
+        elif m["split"] != "eval":
+            pol["ENGINE(f(rollout_id,group_index))"] += 1
+        elif tj[m["env_key"].split("@")[-1]].get("seed") is not None:
+            pol["PINNED(registry)"] += 1
+        else:
+            pol["RANDOM(per-episode)"] += 1  # breaks the GRPO group baseline -- never ship this
+    sha = hashlib.sha256("\n".join(ids).encode()).hexdigest()[:16]
+    print(f"  {name:8s} rows={len(rows):3d} tag={tag:5s} tasks_sha={sha} policy={dict(pol)}")
+    want = "PINNED(registry)" if tag == "eval" else "ENGINE(f(rollout_id,group_index))"
+    assert list(pol) == [want], f"{name}: MIXED instance policy {dict(pol)}"
+PY
+```
+
+Expected output — one policy per manifest, never two:
+
+    fam37n   rows= 37 tag=train tasks_sha=9a9919bc69347310 policy={'ENGINE(f(rollout_id,group_index))': 37}
+    fam37ne  rows= 52 tag=eval  tasks_sha=54a4681090218909 policy={'PINNED(registry)': 52}
+
+Those two `tasks_sha` values are the cell's identity: they cover the task list and its order, so a
+host that prints different ones is not running this experiment whatever the row counts say.
+
+**This chain was verified end to end, not assumed** (2026-09-22, `tasks.json` sha256 `96acea86…`):
+
+| stage | where | result |
+|---|---|---|
+| Stage 1 re-export of `eval256` | pod at `18c7382` | **byte-for-byte identical**, file sha256 `7fbd2ee5…` |
+| Stage 2 rebuild of `fam37n` / `fam37ne` | pod at `016df2d`, training this cell | **0 differing rows out of 37 and 52** across every column, row order included |
+
+Re-run both stages on a new host and compare the shas before launching; a manifest that arrived by
+`scp` has no provenance. One trap on these pods: a script under `/tmp` gets `/tmp` on `sys.path`,
+NOT the working directory, so `cd /workspaces/cua-lite && python /tmp/build.py` can import a
+DIFFERENT cua-lite checkout that happens to be installed in the environment — same package name,
+older code, no error. Run the recipe with `PYTHONPATH=$W` and print `lite.__file__` when it
+imports `lite` at all.
+
 </details>
+
+#### Greedy hides the gain
+
+**The in-training eval is greedy and it reads flat; the same checkpoints scored at
+`temperature=1.0` read as a rising curve.** Both are the same 52-task `fam37e` manifest and the same
+checkpoints; only the decoder differs.
+
+| rollout | greedy (`EVAL_TEMPERATURE=0`, `EVAL_N=4`) | `t=1`, `--group-size 4` | |
+|---|---:|---:|---:|
+| | `fam37` / `fam37n` | `fam37` | `fam37n` |
+| 0 | .41106 / .35817 | **0.3698 ±0.0033** *(3 passes)* | same checkpoint, same manifest |
+| 4 | +1.33pp / +6.03pp | 0.3575 −1.23pp *(1)* | 0.4085 ±0.0155 **+3.87pp** *(3)* |
+| 9 | +0.25pp / +5.39pp | 0.4198 **+5.00pp** *(1)* | 0.4356 ±0.0132 **+6.58pp** *(3)* |
+| 14 | +1.35pp / — | 0.4432 **+7.34pp** *(1)* | running |
+| 19 | — | running | — |
+
+`r0` is one number for both arms, not two: they start from the same SFT checkpoint and `fam37e` and
+`fam37ne` are byte-identical, so the 3-pass `0.3698` is the shared baseline every `pp` above is
+measured against. It also answers the question that prompted the re-runs — the first pass's `0.3686`
+was not bad luck: three passes span `0.3671–0.3737`.
+
+This is the gap [`EVAL_TEMPERATURE=0`](#rl) flags and does not size: GRPO optimises the
+`rollout_temperature=1.0` distribution, and greedy scores a policy it never trained. Scoring the
+sampled objective is what `--group-size 4` (4 rollouts per task, `lite/infer/rollout.py`, "for GRPO
+variance analysis") is for.
+
+**Sampled eval also needs the samples.** `--group-size 4` is not decoration: two `t=1` passes of the
+same checkpoint on this manifest differ by **0.42–1.39pp**, against **5.29pp** for two greedy
+`EVAL_N=4` measurements of the same SFT checkpoint on the same 52 tasks (`fam37` and `fam37n` r0,
+identical checkpoint, identical manifest, identical seeds — a pure repeat). Do not read a single
+`t=1` pass with `--group-size 1`.
+
+**What is not settled.** `fam37` has one pass per point, so only its `r9`/`r14` clear the noise by a
+margin worth quoting; its `r4` dip is inside the repeat noise and is not evidence of early
+degradation. And do not adopt `r0`'s ±0.0033 as the noise floor — three passes at `r4` and `r9`
+spread ±0.0155 and ±0.0132 on the same protocol, so **±~1.5pp is the working figure** and a tight
+triple is luck, not precision. Both arms still rise well past that: `fam37n` +6.58pp by `r9`,
+`fam37` +7.34pp by `r14`.
+
+```bash
+# --- EVAL HOST --- score a GRPO checkpoint the way GRPO was trained.
+# --prompt-data pins the SAME manifest the arm evaluated on; --splits eval would silently
+# score all 256 tasks and the numbers would not compare to the in-training curve.
+# --sampling-kwargs overrides the profile's pinned temperature: 0.0 (CLI beats yaml).
+uv run python scripts/rollout.py \
+  --model-id Qwen/Qwen3.5-4B --model-path "$CKPT" \
+  --env-id mobilegym --concurrency 16 \
+  --prompt-data "$W/devs/exps/train/mobile/data/mobilegym.fam37e.shaped.parquet" \
+  --env-kwargs '{"reward_shaping": true}' \
+  --group-size 4 --sampling-kwargs '{"temperature": 1.0}' \
+  --config-path "$W/devs/exps/train/mobile/configs/qwen3_5/mobile.use.i1.reasoning.yaml" \
+  --log-root "$LOGS/<slug>"
+```
+
+- **`num_valid` becomes `tasks x group_size`** — 52 x 4 = 208. `solved` counts trajectories, not
+  tasks, and the 4 samples of one task are NOT independent (same task, same registered instance), so
+  the effective n sits between 52 and 208. Do not compute a binomial interval on 208.
+- **Budget the wall clock at `t=1`, not at greedy.** A greedy pass of these 52 tasks takes ~30 min; the
+  same manifest at `t=1 --group-size 4` takes ~60 min on an otherwise-idle pod, and the last 20% of
+  the tasks take half of it — unsolved episodes run to the step cap (L3 = 45) instead of stopping
+  early, and all 4 samples must finish before the task closes. Task count is a misleading progress
+  indicator here; watch step lines.
 
 #### What this cell actually measured
 
@@ -894,9 +1127,15 @@ W=/workspaces/cua-lite
 P=mobile.use.i1.reasoning
 DS=mobilegym_r30
 T=gpt5_5
-RLDS=mobilegym_full                      # full 160 train / 256 eval, no difficulty filter
-CELL=grpo.$P.$DS.$T.$RLDS.from_sft
-CKPT=${CKPT:-$(ls -d "$W/.ckpts/qwen3_5-4b/sft.$P.$DS.$T"/iter_* 2>/dev/null | sort -V | tail -1)}
+RLDS=fam37n                              # 37 train / 52 eval, same families, L1-L3
+RS=101                                   # --rollout-seed  } one seed is not a result; the
+SD=5001                                  # --seed          } a-e table above lists all five
+CELL=grpo.$P.$RLDS.from_sft.rs${RS}s${SD}
+# Start from the SHIPPED SFT weights, not from whatever iter_* this host happens to carry: a fresh
+# machine has none, and `sort -V | tail -1` on a host that has several silently picks another epoch.
+CKPT="$W/.ckpts/pulled/sft.$P.$DS.$T/epoch_2"
+[ -d "$CKPT" ] || uv run hf download "ZHZisZZ/qwen3_5-4b.sft.$P.$DS.$T" \
+  --include 'epoch_2/*' --local-dir "$W/.ckpts/pulled/sft.$P.$DS.$T"
 
 : "${CUA_LITE_ENV_SERVER_URL:?paste export line from env-server shell}"
 : "${CUA_LITE_ENV_SERVER_TOKEN:?paste export line from env-server shell}"
@@ -910,25 +1149,35 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 MBS=1 \
   HF_CKPT="$CKPT" \
   CUA_LITE_MULTIMODAL_LAZY_EXPAND=1 \
   ENV_ID=mobilegym \
-  PROMPT_DATA="$W/devs/exps/train/mobile/data/mobilegym.train160.shaped.parquet" \
-  EVAL_PROMPT_DATA="$W/devs/exps/train/mobile/data/mobilegym.eval256.shaped.parquet" \
-  ENV_CONCURRENCY=128 \
+  PROMPT_DATA="$W/devs/exps/train/mobile/data/mobilegym.fam37n.shaped.parquet" \
+  EVAL_PROMPT_DATA="$W/devs/exps/train/mobile/data/mobilegym.fam37ne.shaped.parquet" \
+  ENV_CONCURRENCY=32 \
+  ROLLOUT_SEED="$RS" SEED="$SD" \
   ROLLOUT_BATCH_SIZE=16 \
   N_SAMPLES_PER_PROMPT=8 \
   NUM_STEPS_PER_ROLLOUT=8 \
   ROLLOUT_MAX_RESPONSE_LEN=2048 \
   ROLLOUT_TEMPERATURE=1.0 \
-  LR=2e-6 \
+  LR=1e-6 \
   CONFIG_PATH="$W/devs/exps/train/mobile/configs/qwen3_5/$P.yaml" \
-  EVAL_TEMPERATURE=0 N_SAMPLES_PER_EVAL_PROMPT=1 \
+  EVAL_TEMPERATURE=1.0 N_SAMPLES_PER_EVAL_PROMPT=4 \
   SKIP_EVAL_BEFORE_TRAIN=0 \
-  SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=5 EVAL_INTERVAL=5 NUM_ROLLOUT=20 \
+  SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=5 EVAL_INTERVAL=5 NUM_ROLLOUT=30 \
   SAVE_HF_DIR="$W/.ckpts/qwen3_5-4b/$CELL/iter_{rollout_id}" \
   SAVE_DIR="/root/checkpoints/qwen3_5-4b/$CELL/megatron" \
   WANDB_GROUP_SUFFIX=".$CELL" \
   bash "$W/scripts/train/run_grpo.sh" < /dev/null
 ```
 
+- **`EVAL_TEMPERATURE=1.0` is the point of this cell, and `run_grpo.sh` does not default to it.**
+  The default is 0 (`run_grpo.sh:264`, `--eval-temperature "${EVAL_TEMPERATURE:-0}"`), which scores a
+  greedy policy GRPO never optimised; its own comment at `:256` already says "set
+  EVAL_TEMPERATURE=1 to score the optimised objective". Assert it from slime's parsed argument
+  table, not from the launcher's echo — the same rule the seed knobs need.
+- **`ROLLOUT_SEED`/`SEED` are NOT in `run_grpo.sh` as committed.** It has no such knob and no generic
+  env passthrough, so without a pod-local patch every run lands on slime's defaults
+  (`--rollout-seed` 42, `--seed` 1234) and a seed sweep silently becomes one run repeated. Patch
+  locally, never commit, and gate the launch on both flags being present.
 - **`CONFIG_PATH` is mandatory, and its failure mode here is SILENT.** Unset, `run_grpo.sh` derives
   `scripts/configs/qwen3_5/compact/${ENV_ID}.yaml` (run_grpo.sh:120) — and for `mobilegym` that file
   EXISTS, and it differs on THREE surfaces: `history_n: 1`, `reward_shaping: true`, and — by
@@ -951,13 +1200,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 MBS=1 \
   (`arguments.py:1732-1737`), so Megatron dies with `KeyError: 'optimizer'`. A desktop campaign hit
   exactly this. The recovery path after a crash is a FRESH run from the last `SAVE_HF_DIR/iter_*`,
   not `RESUME=1`. Set `NO_SAVE_OPTIM=0` instead if you want resumability and can pay the disk.
-- **`HF_CKPT` is mandatory.** It must point at the local
-  `sft.mobile.use.i1.reasoning.mobilegym_r30.gpt5_5/iter_*` HF export; omitting it defaults to
-  `/root/models/$MODEL_ID` (run_grpo.sh:146-147), silently starts from base Qwen3.5-4B, and answers a
-  different question. If the train host has no local `iter_*`, pull the export and point `CKPT` at
-  it: `uv run hf download "ZHZisZZ/qwen3_5-4b.sft.$P.$DS.$T" --include "epoch_2/*" --local-dir
-  "$W/.ckpts/pulled/sft.$P.$DS.$T"`. The pulled layout does NOT match the `iter_*` glob above it, so
-  set the path literally: `CKPT="$W/.ckpts/pulled/sft.$P.$DS.$T/epoch_2"`.
+- **`HF_CKPT` is mandatory.** Omitting it defaults to `/root/models/$MODEL_ID`
+  (`run_grpo.sh:146-147`), silently starts from base Qwen3.5-4B, and answers a different question.
+  The block pulls `epoch_2` of the shipped SFT repo rather than globbing a local `iter_*`, so every
+  replicate starts from the same bytes on any host — the pulled layout is `epoch_2/`, which no
+  `iter_*` glob matches, and the guard below turns a failed download into an exit rather than a
+  silent fall back to base.
 - **Step 0 is the run's own baseline**, paired against the `gpt5_5` + `<think>` / `i1` SFT cell up to
   eval noise. Landing far below that usually means the wrong `P`, `CKPT`, or config was used. The
   step-0 eval runs because `SKIP_EVAL_BEFORE_TRAIN=0`, which is also the shipped default — written
