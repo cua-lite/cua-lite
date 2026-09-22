@@ -883,188 +883,6 @@ not `0`, not `None`, and not an interpolation: a reader who forgets to filter th
 `NameError`, which is the intended failure. Aggregate over the arms that HAVE a point at each
 rollout and say so — the `r20` mean below is over four arms, and the table marks it.
 
-##### Rollout 5: five seeds, all positive
-
-| seed | `r0` | `r5` | delta |
-|---|---:|---:|---:|
-| 101/5001 | .3635 | .4166 | +5.31pp |
-| 202/5002 | .3134 | .4455 | **+13.21pp** |
-| 303/5003 | .3499 | .4260 | +7.61pp |
-| 404/5004 | .3506 | .3842 | +3.36pp |
-| 505/5005 | .3537 | .4171 | +6.34pp |
-
-    mean +7.17pp   sd(delta) 3.72pp   5/5 positive   4/5 over the 3.83pp per-arm floor
-    against the 5-arm-mean floor of 1.71pp this clears by 4.2x;  mean/(sd/sqrt(5)) = 4.31
-
-**This is the first reading in the campaign that the noise floor cannot explain.** Every earlier
-positive was one arm, one pass, and mostly inside 2x its own threshold; this is five independent
-seeds moving the same way on the same 52 tasks, measured against a floor derived from those same
-five arms at `r0` rather than from an assumption. Note the design it rests on: the seeds share the
-instance sequence, so this is a paired comparison of five optimisation runs, NOT five independent
-draws of the task generator — it says GRPO reliably improves this policy on these instances, not
-that the improvement would survive a different instance draw.
-
-Two things it does NOT yet say. The arm-to-arm spread is large (3.36 to 13.21pp, sd 3.72pp), so a
-single seed's number is still nearly meaningless — `404/5004` alone would read as "under the floor"
-and `202/5002` alone as "+13pp". And `r5` is one point on a curve that was flat-then-rising in the
-earlier single-seed runs; whether it holds, keeps climbing, or decays is what `r10` onward decides.
-
-##### Rollout 10: the gain holds, and it has stopped growing
-
-| seed | `r0` | `r5` | `r10` | `r5`->`r10` |
-|---|---:|---:|---:|---:|
-| 101/5001 | .3635 | .4166 | .4026 | -1.40pp |
-| 202/5002 | .3134 | .4455 | .4401 | -0.54pp |
-| 303/5003 | .3499 | .4260 | .4038 | -2.22pp |
-| 404/5004 | .3506 | .3842 | .4299 | **+4.57pp** |
-| 505/5005 | .3537 | .4171 | .4315 | +1.44pp |
-| **mean** | **.3462** | **.4179** | **.4216** | **+0.37pp** |
-
-    r10 vs r0 : +7.54pp   -- 4.4x the 1.71pp five-arm-mean floor, the gain is real and holds
-    r10 vs r5 : +0.37pp   -- under a quarter of that floor, and only 2/5 arms moved up
-
-`r5` and `r10` are the same number, and the per-arm moves between them are not consistent in sign:
-the one arm that rose, `404/5004` at +4.57pp, was the LOWEST at `r5` and the biggest faller was the
-second-highest, which is regression to the mean rather than learning. **Read alone this looks like
-saturation at rollout 5. Rollout 15 shows it is not** — see below; `r10` is a plateau inside a curve
-that is still climbing, and a two-point read would have called the run finished 20 rollouts early.
-
-##### Rollout 20, and the shape of the whole curve
-
-| seed | pod | `r0` | `r5` | `r10` | `r15` | `r20` | `r20`−`r0` |
-|---|---|---:|---:|---:|---:|---:|---:|
-| 101/5001 | `cc9`  | .3635 | .4166 | .4026 | .4405 | .4280 | +6.45pp |
-| 202/5002 | `cc9b` | .3134 | .4455 | .4401 | .4694 | .4577 | **+14.43pp** |
-| 303/5003 | `cc9c` | .3499 | .4260 | .4038 | .4613 | .4528 | +10.29pp |
-| 404/5004 | `cc9d` | .3506 | .3842 | .4299 | .4131 | .4355 | +8.49pp |
-| 505/5005 | `cc9e` | .3537 | .4171 | .4315 | .4340 | .4635 | +10.98pp |
-| **mean** | | .3462 | .4179 | .4216 | .4437 | **.4475** | **+10.13pp** |
-| *sd* | | *.0191* | *.0222* | *.0172* | *.0224* | *.0151* | *2.98pp* |
-
-The five-arm steps are `r0`->`r5` **+7.17pp**, then **+0.37**, **+2.21**, **+0.38pp**. Only the
-first and the `r10`->`r15` step clear the 1.71pp five-arm-mean floor, and `r15`->`r20` does not: two
-arms up, three down by 0.85–1.25pp, and the two that rose (`404/5004` +2.24, `505/5005` +2.95) were
-the two lowest at `r15` — the same regression-to-the-mean signature as `r5`->`r10`.
-
-**Against `r0` the level holds and it is unambiguous.** `r20` is +10.13pp on the mean, every one of
-the five arms clears the 3.83pp per-arm floor individually (+6.45 to +14.43pp), and the arm spread
-is TIGHTER at `r20` than at any earlier point (sd .0151 against .0191 at `r0`) — the seeds are
-converging on a level, not diverging.
-
-**What five points cannot separate is a step from a slow climb.** `r0`->`r5` dwarfs everything after
-it, and the three later steps alternate in sign within about one floor of zero. Both "GRPO finds the
-reachable gain in five rollouts and then holds" and "it keeps climbing at ~0.2pp per rollout under
-noise four times that size" fit these numbers.
-
-**And per the correction above, one flat interval is not saturation.** `r15`->`r20` is exactly as
-weak a piece of evidence as `r5`->`r10` was, and that one was broken by the next point. The
-deciding question — step at `r5` then flat, versus slow climb under noise — needs either more eval
-points per checkpoint (the per-arm floor is 3.83pp; four passes per point would roughly halve it) or
-a pool where the per-rollout gain is larger than the floor. Adding rollouts at this signal-to-noise
-does not answer it.
-
-The train side does not have this problem and says the milder thing: smoothed `rollout/raw_reward`
-rises on all five arms across the whole range (OLS +0.011 to +0.019 per rollout, every arm
-positive), with no flattening at `r10` or `r20`. The policy keeps improving on the 37 training
-templates; what stops being measurable is the transfer to their 52 siblings.
-
-To redraw the figure — run it from a checkout that has the dicts above in scope, or paste them in.
-Verified on a pod at `uv run --with matplotlib python`; it prints the arm counts it actually used, so
-a silently dropped arm is visible rather than folded into the mean:
-
-```python
-import numpy as np, matplotlib; matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
-XS = [0, 5, 10, 15, 20]
-ok = lambda v: isinstance(v, float)          # PENDING cells are skipped, never coerced
-fig, (ax, bx) = plt.subplots(2, 1, figsize=(9, 7.2), height_ratios=[1, 0.85])
-
-# --- eval: the noise floor first, then mean +- SEM over the arms present at each rollout ---
-r0 = np.array([EVAL[s][0] for s in EVAL])
-sem0 = r0.std(ddof=1) / np.sqrt(len(r0))
-ax.axhspan(r0.mean() - 2*sem0, r0.mean() + 2*sem0, color="#3f5d6b", alpha=.10, lw=0)
-ax.axhline(r0.mean(), color="#3f5d6b", lw=1, ls=(0, (2, 4)))
-ax.text(0.3, r0.mean() + 2*sem0, "  noise floor: r0 mean ±2·SEM",
-        va="bottom", fontsize=8, color="#5a6b75")
-
-m, lo, hi = [], [], []
-for x in XS:
-    v = np.array([EVAL[s][x] for s in EVAL if ok(EVAL[s][x])])
-    e = v.std(ddof=1) / np.sqrt(len(v))
-    m.append(v.mean()); lo.append(v.mean() - e); hi.append(v.mean() + e)
-ax.fill_between(XS, lo, hi, color="#9a3b2f", alpha=.13, lw=0)
-for s in EVAL:
-    xs = [x for x in XS if ok(EVAL[s][x])]
-    ax.plot(xs, [EVAL[s][x] for x in xs], lw=1.2, alpha=.8, marker="o", ms=3.5, label=s)
-ax.plot(XS, m, color="#9a3b2f", lw=2.4, marker="o", ms=5, label="mean ± SEM", zorder=5)
-n20 = sum(ok(EVAL[s][20]) for s in EVAL)
-if n20 < len(EVAL):                          # never let a short arm read as a full one
-    ax.annotate(f"r20: {n20} arms", (20, m[-1]), textcoords="offset points",
-                xytext=(-8, -17), ha="right", fontsize=8, color="#5a6b75")
-ax.set_xticks(XS); ax.set_xticklabels([f"r{x}" for x in XS]); ax.set_xlim(-0.6, 20.6)
-ax.set_ylabel("shaped-mean, fam37ne (t=1, 4 samples)")
-ax.set_title("fam37n — five seeds, same cell", loc="left", fontsize=11, weight="semibold")
-ax.legend(fontsize=8, ncol=3, frameon=False, loc="lower right")
-ax.grid(axis="y", color="#e8ebe9"); ax.set_axisbelow(True)
-
-# --- train: mean +- SD over the arms that reached every rollout, plus every run drawn ---
-full = [s for s in TRAIN if all(ok(v) for v in TRAIN[s])]
-n = min(len(TRAIN[s]) for s in full)
-tr = np.array([TRAIN[s][:n] for s in full]); tm, ts = tr.mean(0), tr.std(0, ddof=1)
-bx.fill_between(range(n), tm - ts, tm + ts, color="#9a3b2f", alpha=.13, lw=0)
-for s in TRAIN:
-    v = [x for x in TRAIN[s] if ok(x)]
-    bx.plot(range(len(v)), v, lw=.9, alpha=.45)
-bx.plot(range(n), tm, color="#9a3b2f", lw=2.4)
-k = np.polyfit(np.arange(n), tm, 1)
-bx.plot([0, n-1], np.polyval(k, [0, n-1]), color="#7b858f", lw=1.1, ls=(0, (5, 4)))
-bx.text(n - 1.4, np.polyval(k, n-1) + .02, f"OLS {k[0]:+.4f}/r",
-        ha="right", fontsize=8, color="#5a6b75")
-bx.set_xticks(XS); bx.set_xticklabels([f"r{x}" for x in XS]); bx.set_xlim(-0.6, 20.6)
-bx.set_ylabel("rollout/raw_reward"); bx.set_xlabel("rollout")
-bx.set_title("train — mean ± SD, every run drawn", loc="left", fontsize=10)
-bx.grid(axis="y", color="#e8ebe9"); bx.set_axisbelow(True)
-
-fig.tight_layout(); fig.savefig("fam37n.png", dpi=150)
-print(f"eval_arms_full={sum(all(ok(EVAL[s][x]) for x in XS) for s in EVAL)} "
-      f"train_arms_full={len(full)} train_rollouts={n} OLS={k[0]:+.5f}")
-# -> eval_arms_full=5  train_arms_full=4  train_rollouts=21  OLS=+0.00947
-```
-
-SEM for eval and SD for train on purpose, following the browser campaign: the eval panel asks how
-precisely the mean is known, the train panel asks how wide a single rollout's draw is — the spread
-that buries the trend in any one run. The noise-floor band is the mobile-specific addition and it is
-not decoration: without it the eval panel shows five wandering lines and every wobble looks like a
-result.
-
-##### Rollout 15: the plateau breaks
-
-| seed | `r0` | `r5` | `r10` | `r15` | `r15` vs `r0` |
-|---|---:|---:|---:|---:|---:|
-| 101/5001 | .3635 | .4166 | .4026 | .4405 | +7.70pp |
-| 202/5002 | .3134 | .4455 | .4401 | .4694 | **+15.60pp** |
-| 303/5003 | .3499 | .4260 | .4038 | .4613 | +11.14pp |
-| 404/5004 | .3506 | .3842 | .4299 | .4131 | +6.25pp |
-| 505/5005 | .3537 | .4171 | .4315 | .4340 | +8.03pp |
-| **mean** | **.3462** | **.4179** | **.4216** | **.4437** | **+9.74pp** |
-
-    r15 vs r10 : +2.21pp  -- over the 1.71pp five-arm-mean floor, 4/5 arms up
-    r15 vs r0  : +9.74pp  -- and now ALL FIVE arms individually clear the 3.83pp per-arm floor
-
-**The rollout-10 saturation call was wrong, and the way it was wrong is the lesson.** Two eval
-points 5 rollouts apart looked flat, and the per-arm moves at that gap were sign-inconsistent — both
-of which are exactly what a plateau inside a rising curve looks like when the per-step gain (~0.44pp
-per rollout here) is a quarter of the measurement floor. A flat segment is only evidence of
-saturation if it is longer than the floor divided by the plausible slope; at 1.71pp and ~0.44pp per
-rollout that needs roughly four eval points, not two. Do not call a run finished on a single flat
-interval.
-
-The train-side series says the same thing from the other direction: smoothed `rollout/raw_reward`
-rises on all five arms over this whole range (OLS +0.011 to +0.019 per rollout, every arm positive,
-first-half to second-half +6.8 to +13.0pp), with no flattening at `r10`. When the eval plateau and
-the train trend disagree, the eval plateau is the weaker measurement.
-
 ##### The noise floor, measured directly
 
 Rollout 0 is the same checkpoint on all five arms, scored on the same manifest with the same pinned
@@ -1290,6 +1108,188 @@ older code, no error. Run the recipe with `PYTHONPATH=$W` and print `lite.__file
 imports `lite` at all.
 
 </details>
+
+##### Rollout 5: five seeds, all positive
+
+| seed | `r0` | `r5` | delta |
+|---|---:|---:|---:|
+| 101/5001 | .3635 | .4166 | +5.31pp |
+| 202/5002 | .3134 | .4455 | **+13.21pp** |
+| 303/5003 | .3499 | .4260 | +7.61pp |
+| 404/5004 | .3506 | .3842 | +3.36pp |
+| 505/5005 | .3537 | .4171 | +6.34pp |
+
+    mean +7.17pp   sd(delta) 3.72pp   5/5 positive   4/5 over the 3.83pp per-arm floor
+    against the 5-arm-mean floor of 1.71pp this clears by 4.2x;  mean/(sd/sqrt(5)) = 4.31
+
+**This is the first reading in the campaign that the noise floor cannot explain.** Every earlier
+positive was one arm, one pass, and mostly inside 2x its own threshold; this is five independent
+seeds moving the same way on the same 52 tasks, measured against a floor derived from those same
+five arms at `r0` rather than from an assumption. Note the design it rests on: the seeds share the
+instance sequence, so this is a paired comparison of five optimisation runs, NOT five independent
+draws of the task generator — it says GRPO reliably improves this policy on these instances, not
+that the improvement would survive a different instance draw.
+
+Two things it does NOT yet say. The arm-to-arm spread is large (3.36 to 13.21pp, sd 3.72pp), so a
+single seed's number is still nearly meaningless — `404/5004` alone would read as "under the floor"
+and `202/5002` alone as "+13pp". And `r5` is one point on a curve that was flat-then-rising in the
+earlier single-seed runs; whether it holds, keeps climbing, or decays is what `r10` onward decides.
+
+##### Rollout 10: the gain holds, and a plateau that was misread
+
+| seed | `r0` | `r5` | `r10` | `r5`->`r10` |
+|---|---:|---:|---:|---:|
+| 101/5001 | .3635 | .4166 | .4026 | -1.40pp |
+| 202/5002 | .3134 | .4455 | .4401 | -0.54pp |
+| 303/5003 | .3499 | .4260 | .4038 | -2.22pp |
+| 404/5004 | .3506 | .3842 | .4299 | **+4.57pp** |
+| 505/5005 | .3537 | .4171 | .4315 | +1.44pp |
+| **mean** | **.3462** | **.4179** | **.4216** | **+0.37pp** |
+
+    r10 vs r0 : +7.54pp   -- 4.4x the 1.71pp five-arm-mean floor, the gain is real and holds
+    r10 vs r5 : +0.37pp   -- under a quarter of that floor, and only 2/5 arms moved up
+
+`r5` and `r10` are the same number, and the per-arm moves between them are not consistent in sign:
+the one arm that rose, `404/5004` at +4.57pp, was the LOWEST at `r5` and the biggest faller was the
+second-highest, which is regression to the mean rather than learning. **Read alone this looks like
+saturation at rollout 5. Rollout 15 shows it is not** — see below; `r10` is a plateau inside a curve
+that is still climbing, and a two-point read would have called the run finished 20 rollouts early.
+
+##### Rollout 15: the plateau breaks
+
+| seed | `r0` | `r5` | `r10` | `r15` | `r15` vs `r0` |
+|---|---:|---:|---:|---:|---:|
+| 101/5001 | .3635 | .4166 | .4026 | .4405 | +7.70pp |
+| 202/5002 | .3134 | .4455 | .4401 | .4694 | **+15.60pp** |
+| 303/5003 | .3499 | .4260 | .4038 | .4613 | +11.14pp |
+| 404/5004 | .3506 | .3842 | .4299 | .4131 | +6.25pp |
+| 505/5005 | .3537 | .4171 | .4315 | .4340 | +8.03pp |
+| **mean** | **.3462** | **.4179** | **.4216** | **.4437** | **+9.74pp** |
+
+    r15 vs r10 : +2.21pp  -- over the 1.71pp five-arm-mean floor, 4/5 arms up
+    r15 vs r0  : +9.74pp  -- and now ALL FIVE arms individually clear the 3.83pp per-arm floor
+
+**The rollout-10 saturation call was wrong, and the way it was wrong is the lesson.** Two eval
+points 5 rollouts apart looked flat, and the per-arm moves at that gap were sign-inconsistent — both
+of which are exactly what a plateau inside a rising curve looks like when the per-step gain (~0.44pp
+per rollout here) is a quarter of the measurement floor. A flat segment is only evidence of
+saturation if it is longer than the floor divided by the plausible slope; at 1.71pp and ~0.44pp per
+rollout that needs roughly four eval points, not two. Do not call a run finished on a single flat
+interval.
+
+The train-side series says the same thing from the other direction: smoothed `rollout/raw_reward`
+rises on all five arms over this whole range (OLS +0.011 to +0.019 per rollout, every arm positive,
+first-half to second-half +6.8 to +13.0pp), with no flattening at `r10`. When the eval plateau and
+the train trend disagree, the eval plateau is the weaker measurement.
+
+##### Rollout 20, and the shape of the whole curve
+
+| seed | pod | `r0` | `r5` | `r10` | `r15` | `r20` | `r20`−`r0` |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 101/5001 | `cc9`  | .3635 | .4166 | .4026 | .4405 | .4280 | +6.45pp |
+| 202/5002 | `cc9b` | .3134 | .4455 | .4401 | .4694 | .4577 | **+14.43pp** |
+| 303/5003 | `cc9c` | .3499 | .4260 | .4038 | .4613 | .4528 | +10.29pp |
+| 404/5004 | `cc9d` | .3506 | .3842 | .4299 | .4131 | .4355 | +8.49pp |
+| 505/5005 | `cc9e` | .3537 | .4171 | .4315 | .4340 | .4635 | +10.98pp |
+| **mean** | | .3462 | .4179 | .4216 | .4437 | **.4475** | **+10.13pp** |
+| *sd* | | *.0191* | *.0222* | *.0172* | *.0224* | *.0151* | *2.98pp* |
+
+The five-arm steps are `r0`->`r5` **+7.17pp**, then **+0.37**, **+2.21**, **+0.38pp**. Only the
+first and the `r10`->`r15` step clear the 1.71pp five-arm-mean floor, and `r15`->`r20` does not: two
+arms up, three down by 0.85–1.25pp, and the two that rose (`404/5004` +2.24, `505/5005` +2.95) were
+the two lowest at `r15` — the same regression-to-the-mean signature as `r5`->`r10`.
+
+**Against `r0` the level holds and it is unambiguous.** `r20` is +10.13pp on the mean, every one of
+the five arms clears the 3.83pp per-arm floor individually (+6.45 to +14.43pp), and the arm spread
+is TIGHTER at `r20` than at any earlier point (sd .0151 against .0191 at `r0`) — the seeds are
+converging on a level, not diverging.
+
+**What five points cannot separate is a step from a slow climb.** `r0`->`r5` dwarfs everything after
+it, and the three later steps alternate in sign within about one floor of zero. Both "GRPO finds the
+reachable gain in five rollouts and then holds" and "it keeps climbing at ~0.2pp per rollout under
+noise four times that size" fit these numbers.
+
+**And per the correction above, one flat interval is not saturation.** `r15`->`r20` is exactly as
+weak a piece of evidence as `r5`->`r10` was, and that one was broken by the next point. The
+deciding question — step at `r5` then flat, versus slow climb under noise — needs either more eval
+points per checkpoint (the per-arm floor is 3.83pp; four passes per point would roughly halve it) or
+a pool where the per-rollout gain is larger than the floor. Adding rollouts at this signal-to-noise
+does not answer it.
+
+The train side does not have this problem and says the milder thing: smoothed `rollout/raw_reward`
+rises on all five arms across the whole range (OLS +0.011 to +0.019 per rollout, every arm
+positive), with no flattening at `r10` or `r20`. The policy keeps improving on the 37 training
+templates; what stops being measurable is the transfer to their 52 siblings.
+
+To redraw the figure — run it from a checkout that has the dicts above in scope, or paste them in.
+Verified on a pod at `uv run --with matplotlib python`; it prints the arm counts it actually used, so
+a silently dropped arm is visible rather than folded into the mean:
+
+```python
+import numpy as np, matplotlib; matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+XS = [0, 5, 10, 15, 20]
+ok = lambda v: isinstance(v, float)          # PENDING cells are skipped, never coerced
+fig, (ax, bx) = plt.subplots(2, 1, figsize=(9, 7.2), height_ratios=[1, 0.85])
+
+# --- eval: the noise floor first, then mean +- SEM over the arms present at each rollout ---
+r0 = np.array([EVAL[s][0] for s in EVAL])
+sem0 = r0.std(ddof=1) / np.sqrt(len(r0))
+ax.axhspan(r0.mean() - 2*sem0, r0.mean() + 2*sem0, color="#3f5d6b", alpha=.10, lw=0)
+ax.axhline(r0.mean(), color="#3f5d6b", lw=1, ls=(0, (2, 4)))
+ax.text(0.3, r0.mean() + 2*sem0, "  noise floor: r0 mean ±2·SEM",
+        va="bottom", fontsize=8, color="#5a6b75")
+
+m, lo, hi = [], [], []
+for x in XS:
+    v = np.array([EVAL[s][x] for s in EVAL if ok(EVAL[s][x])])
+    e = v.std(ddof=1) / np.sqrt(len(v))
+    m.append(v.mean()); lo.append(v.mean() - e); hi.append(v.mean() + e)
+ax.fill_between(XS, lo, hi, color="#9a3b2f", alpha=.13, lw=0)
+for s in EVAL:
+    xs = [x for x in XS if ok(EVAL[s][x])]
+    ax.plot(xs, [EVAL[s][x] for x in xs], lw=1.2, alpha=.8, marker="o", ms=3.5, label=s)
+ax.plot(XS, m, color="#9a3b2f", lw=2.4, marker="o", ms=5, label="mean ± SEM", zorder=5)
+n20 = sum(ok(EVAL[s][20]) for s in EVAL)
+if n20 < len(EVAL):                          # never let a short arm read as a full one
+    ax.annotate(f"r20: {n20} arms", (20, m[-1]), textcoords="offset points",
+                xytext=(-8, -17), ha="right", fontsize=8, color="#5a6b75")
+ax.set_xticks(XS); ax.set_xticklabels([f"r{x}" for x in XS]); ax.set_xlim(-0.6, 20.6)
+ax.set_ylabel("shaped-mean, fam37ne (t=1, 4 samples)")
+ax.set_title("fam37n — five seeds, same cell", loc="left", fontsize=11, weight="semibold")
+ax.legend(fontsize=8, ncol=3, frameon=False, loc="lower right")
+ax.grid(axis="y", color="#e8ebe9"); ax.set_axisbelow(True)
+
+# --- train: mean +- SD over the arms that reached every rollout, plus every run drawn ---
+full = [s for s in TRAIN if all(ok(v) for v in TRAIN[s])]
+n = min(len(TRAIN[s]) for s in full)
+tr = np.array([TRAIN[s][:n] for s in full]); tm, ts = tr.mean(0), tr.std(0, ddof=1)
+bx.fill_between(range(n), tm - ts, tm + ts, color="#9a3b2f", alpha=.13, lw=0)
+for s in TRAIN:
+    v = [x for x in TRAIN[s] if ok(x)]
+    bx.plot(range(len(v)), v, lw=.9, alpha=.45)
+bx.plot(range(n), tm, color="#9a3b2f", lw=2.4)
+k = np.polyfit(np.arange(n), tm, 1)
+bx.plot([0, n-1], np.polyval(k, [0, n-1]), color="#7b858f", lw=1.1, ls=(0, (5, 4)))
+bx.text(n - 1.4, np.polyval(k, n-1) + .02, f"OLS {k[0]:+.4f}/r",
+        ha="right", fontsize=8, color="#5a6b75")
+bx.set_xticks(XS); bx.set_xticklabels([f"r{x}" for x in XS]); bx.set_xlim(-0.6, 20.6)
+bx.set_ylabel("rollout/raw_reward"); bx.set_xlabel("rollout")
+bx.set_title("train — mean ± SD, every run drawn", loc="left", fontsize=10)
+bx.grid(axis="y", color="#e8ebe9"); bx.set_axisbelow(True)
+
+fig.tight_layout(); fig.savefig("fam37n.png", dpi=150)
+print(f"eval_arms_full={sum(all(ok(EVAL[s][x]) for x in XS) for s in EVAL)} "
+      f"train_arms_full={len(full)} train_rollouts={n} OLS={k[0]:+.5f}")
+# -> eval_arms_full=5  train_arms_full=4  train_rollouts=21  OLS=+0.00947
+```
+
+SEM for eval and SD for train on purpose, following the browser campaign: the eval panel asks how
+precisely the mean is known, the train panel asks how wide a single rollout's draw is — the spread
+that buries the trend in any one run. The noise-floor band is the mobile-specific addition and it is
+not decoration: without it the eval panel shows five wandering lines and every wobble looks like a
+result.
 
 #### Greedy hides the gain
 
