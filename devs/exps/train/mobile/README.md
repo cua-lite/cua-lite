@@ -847,14 +847,40 @@ the Success Rate from the same data if it is ever wanted.
 
 ```python
 EVAL = {  # "rs/sd" -> {rollout: shaped_mean}   fam37ne, 52 tasks x 4 samples at t=1 (n=208)
-  "101/5001": {0: 0.3635},
-  "202/5002": {0: 0.3134},
-  "303/5003": {0: 0.3499},
-  "404/5004": {0: 0.3506},
-  "505/5005": {0: 0.3537},
+  "101/5001": {0: 0.3635, 5: 0.4166},
+  "202/5002": {0: 0.3134, 5: 0.4455},
+  "303/5003": {0: 0.3499, 5: 0.4260},
+  "404/5004": {0: 0.3506, 5: 0.3842},
+  "505/5005": {0: 0.3537, 5: 0.4171},
 }
 TRAIN = {}  # "rs/sd" -> [rollout/raw_reward], index = rollout   -- no rollout has completed yet
 ```
+
+##### Rollout 5: five seeds, all positive
+
+| seed | `r0` | `r5` | delta |
+|---|---:|---:|---:|
+| 101/5001 | .3635 | .4166 | +5.31pp |
+| 202/5002 | .3134 | .4455 | **+13.21pp** |
+| 303/5003 | .3499 | .4260 | +7.61pp |
+| 404/5004 | .3506 | .3842 | +3.36pp |
+| 505/5005 | .3537 | .4171 | +6.34pp |
+
+    mean +7.17pp   sd(delta) 3.72pp   5/5 positive   4/5 over the 3.83pp per-arm floor
+    against the 5-arm-mean floor of 1.71pp this clears by 4.2x;  mean/(sd/sqrt(5)) = 4.31
+
+**This is the first reading in the campaign that the noise floor cannot explain.** Every earlier
+positive was one arm, one pass, and mostly inside 2x its own threshold; this is five independent
+seeds moving the same way on the same 52 tasks, measured against a floor derived from those same
+five arms at `r0` rather than from an assumption. Note the design it rests on: the seeds share the
+instance sequence, so this is a paired comparison of five optimisation runs, NOT five independent
+draws of the task generator — it says GRPO reliably improves this policy on these instances, not
+that the improvement would survive a different instance draw.
+
+Two things it does NOT yet say. The arm-to-arm spread is large (3.36 to 13.21pp, sd 3.72pp), so a
+single seed's number is still nearly meaningless — `404/5004` alone would read as "under the floor"
+and `202/5002` alone as "+13pp". And `r5` is one point on a curve that was flat-then-rising in the
+earlier single-seed runs; whether it holds, keeps climbing, or decays is what `r10` onward decides.
 
 ##### The noise floor, measured directly
 
