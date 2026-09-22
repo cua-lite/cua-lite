@@ -846,9 +846,38 @@ every episode, which is most of what moves early in a run. `episode_return == 1.
 the Success Rate from the same data if it is ever wanted.
 
 ```python
-EVAL = {}   # "rs/sd" -> {rollout: shaped_mean}   fam37ne, 52 tasks x 4 samples at t=1 (n=208)
-TRAIN = {}  # "rs/sd" -> [rollout/raw_reward], index = rollout
+EVAL = {  # "rs/sd" -> {rollout: shaped_mean}   fam37ne, 52 tasks x 4 samples at t=1 (n=208)
+  "101/5001": {0: 0.3635},
+  "202/5002": {0: 0.3134},
+  "303/5003": {0: 0.3499},
+  "404/5004": {0: 0.3506},
+  "505/5005": {0: 0.3537},
+}
+TRAIN = {}  # "rs/sd" -> [rollout/raw_reward], index = rollout   -- no rollout has completed yet
 ```
+
+##### The noise floor, measured directly
+
+Rollout 0 is the same checkpoint on all five arms, scored on the same manifest with the same pinned
+instances. Nothing differs but the eval sampling, so the spread across those five IS the measurement
+noise — not an estimate of it:
+
+    mean 0.3462   sd 1.91pp   range 5.01pp
+    per-arm threshold   2*sd        = 3.83pp
+    5-arm-mean threshold 2*sd/sqrt(5) = 1.71pp
+
+**Three passes understated this 5.5x.** The same protocol measured by `rollout.py` over three passes
+gave `0.3686 / 0.3737 / 0.3671` — sd 0.35pp — and on that basis a 2pp move looks decisive. It is
+not. Three draws of a distribution this wide land close together often enough that a tight triple is
+evidence of luck, not of precision; use 3.83pp for a single arm and re-read any earlier conclusion
+that leaned on the narrower figure. This also supersedes the sd carried over from the browser
+campaign's noise floor: that number was measured on a different benchmark and a different decoder.
+
+Two cautions on the number itself. `202/5002` sits 3.28pp below the mean and one outlier moves `sd`
+a lot at `n=5`, so the floor is known to about a factor of 1.5 at best. And the five in-training
+evals mean `0.3462` while `rollout.py` on the same checkpoint and manifest reads `0.3698` — a 2.36pp
+offset between two eval paths that are supposed to agree. Until that is explained, compare a reading
+only against a baseline measured the SAME way; do not pool the two.
 
 All five arms run the identical cell — same `fam37n`/`fam37ne` manifests (file sha256 `e239ea71…` /
 `4036901…` on every pod, asserted at launch), same `lr=1e-6`, same `EVAL_TEMPERATURE=1.0` with 4
