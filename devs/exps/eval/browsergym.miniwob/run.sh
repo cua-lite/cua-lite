@@ -14,6 +14,9 @@
 # $EVAL_MODE selects the observation/action mode (config filename), default "default"
 # (screenshot + coord). Set to "text_only" for the text+AXTree bid-mode config.
 #
+# $EVAL_REASONING_EFFORT optionally overrides GPT api_kwargs.reasoning_effort
+# (none|minimal|low|medium|high|xhigh|max). It is valid only for gpt-* models.
+#
 # MiniWoB is stateless (125 tasks, local HTTP server — no shared mutable backend),
 # so this is a single fully-parallel pass, unlike the WA/VWA read/write split.
 # Reset timeouts appear at 32+ concurrent envs (see the browsergym README), so
@@ -35,6 +38,8 @@
 #   # thinking-on variant (default screenshot+coord mode unless EVAL_MODE is set):
 #   EVAL_ENABLE_THINKING=true ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Thinking
 #   EVAL_ENABLE_THINKING=true ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3.8-27B
+#   # GPT reasoning override:
+#   EVAL_REASONING_EFFORT=xhigh ./devs/exps/eval/browsergym.miniwob/run.sh gpt-5.5
 #   # text+bid mode:
 #   EVAL_MODE=text_only ./devs/exps/eval/browsergym.miniwob/run.sh <model-id>
 #
@@ -78,6 +83,17 @@ esac
 if [[ "$ENABLE_THINKING" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -ne 1 ]]; then
   echo "[run.sh] ERROR: EVAL_ENABLE_THINKING=true is only supported for Qwen3-VL Thinking/Qwen3.5/Qwen3.8 local models, got: $MODEL" >&2
   exit 1
+fi
+REASONING_EFFORT="${EVAL_REASONING_EFFORT:-}"
+if [ -n "$REASONING_EFFORT" ]; then
+  case "$REASONING_EFFORT" in
+    none|minimal|low|medium|high|xhigh|max) ;;
+    *) echo "[run.sh] ERROR: EVAL_REASONING_EFFORT must be one of none|minimal|low|medium|high|xhigh|max, got: $REASONING_EFFORT" >&2; exit 1 ;;
+  esac
+  case "$MODEL" in
+    gpt-*) ;;
+    *) echo "[run.sh] ERROR: EVAL_REASONING_EFFORT is only supported for gpt-* models, got: $MODEL" >&2; exit 1 ;;
+  esac
 fi
 BASE_SLUG="${MODEL//\//_}"
 CONFIG_ID="${EVAL_CONFIG_ID:-}"
@@ -186,6 +202,11 @@ if [[ "$ENABLE_THINKING" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -eq 1 ]]; then
     --agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"max_new_tokens": 4096}}'
   )
 fi
+if [ -n "$REASONING_EFFORT" ]; then
+  EXTRA_ROLLOUT_ARGS+=(
+    --api-kwargs "{\"reasoning_effort\":\"$REASONING_EFFORT\"}"
+  )
+fi
 
 mkdir -p "$LOG_ROOT"
 echo "[run.sh] $MODEL"
@@ -196,6 +217,9 @@ fi
 echo "         log_root=$LOG_ROOT"
 echo "         config=$CFG"
 echo "         enable_thinking=$ENABLE_THINKING"
+if [ -n "$REASONING_EFFORT" ]; then
+  echo "         reasoning_effort=$REASONING_EFFORT"
+fi
 if [ "${#EXTRA_ROLLOUT_ARGS[@]}" -gt 0 ]; then
   echo "         extra_args=${EXTRA_ROLLOUT_ARGS[*]}"
 fi
