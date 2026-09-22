@@ -847,11 +847,11 @@ the Success Rate from the same data if it is ever wanted.
 
 ```python
 EVAL = {  # "rs/sd" -> {rollout: shaped_mean}   fam37ne, 52 tasks x 4 samples at t=1 (n=208)
-  "101/5001": {0: 0.3635, 5: 0.4166, 10: 0.4026},
-  "202/5002": {0: 0.3134, 5: 0.4455, 10: 0.4401},
-  "303/5003": {0: 0.3499, 5: 0.4260, 10: 0.4038},
-  "404/5004": {0: 0.3506, 5: 0.3842, 10: 0.4299},
-  "505/5005": {0: 0.3537, 5: 0.4171, 10: 0.4315},
+  "101/5001": {0: 0.3635, 5: 0.4166, 10: 0.4026, 15: 0.4405},
+  "202/5002": {0: 0.3134, 5: 0.4455, 10: 0.4401, 15: 0.4694},
+  "303/5003": {0: 0.3499, 5: 0.4260, 10: 0.4038, 15: 0.4613},
+  "404/5004": {0: 0.3506, 5: 0.3842, 10: 0.4299, 15: 0.4131},
+  "505/5005": {0: 0.3537, 5: 0.4171, 10: 0.4315, 15: 0.4340},
 }
 TRAIN = {}  # "rs/sd" -> [rollout/raw_reward], index = rollout   -- no rollout has completed yet
 ```
@@ -896,17 +896,38 @@ earlier single-seed runs; whether it holds, keeps climbing, or decays is what `r
     r10 vs r0 : +7.54pp   -- 4.4x the 1.71pp five-arm-mean floor, the gain is real and holds
     r10 vs r5 : +0.37pp   -- under a quarter of that floor, and only 2/5 arms moved up
 
-**The improvement is real and it saturates by rollout 5.** Twenty-five of the thirty rollouts in
-this cell buy nothing measurable: `r5` and `r10` are the same number, and the per-arm moves between
-them are not even consistent in sign. Read the one arm that did rise, `404/5004` at +4.57pp,
-together with the fact that it was the LOWEST arm at `r5` (+3.36pp) and the biggest faller was the
-second-highest — that shape is regression to the mean, not late learning.
+`r5` and `r10` are the same number, and the per-arm moves between them are not consistent in sign:
+the one arm that rose, `404/5004` at +4.57pp, was the LOWEST at `r5` and the biggest faller was the
+second-highest, which is regression to the mean rather than learning. **Read alone this looks like
+saturation at rollout 5. Rollout 15 shows it is not** — see below; `r10` is a plateau inside a curve
+that is still climbing, and a two-point read would have called the run finished 20 rollouts early.
 
-This is a result about the configuration, not a failure of it. It says the reachable gain on this
-task pool is ~7.5pp and GRPO finds it in five rollouts at `lr=1e-6`; a longer run is wasted compute
-and the next question is whether a larger step size or a harder pool moves the ceiling, not whether
-more rollouts do. `r15` and `r20` will confirm or break the saturation claim — if the mean is still
-flat there, the 30-rollout budget should be cut to 10 for every future cell.
+##### Rollout 15: the plateau breaks
+
+| seed | `r0` | `r5` | `r10` | `r15` | `r15` vs `r0` |
+|---|---:|---:|---:|---:|---:|
+| 101/5001 | .3635 | .4166 | .4026 | .4405 | +7.70pp |
+| 202/5002 | .3134 | .4455 | .4401 | .4694 | **+15.60pp** |
+| 303/5003 | .3499 | .4260 | .4038 | .4613 | +11.14pp |
+| 404/5004 | .3506 | .3842 | .4299 | .4131 | +6.25pp |
+| 505/5005 | .3537 | .4171 | .4315 | .4340 | +8.03pp |
+| **mean** | **.3462** | **.4179** | **.4216** | **.4437** | **+9.74pp** |
+
+    r15 vs r10 : +2.21pp  -- over the 1.71pp five-arm-mean floor, 4/5 arms up
+    r15 vs r0  : +9.74pp  -- and now ALL FIVE arms individually clear the 3.83pp per-arm floor
+
+**The rollout-10 saturation call was wrong, and the way it was wrong is the lesson.** Two eval
+points 5 rollouts apart looked flat, and the per-arm moves at that gap were sign-inconsistent — both
+of which are exactly what a plateau inside a rising curve looks like when the per-step gain (~0.44pp
+per rollout here) is a quarter of the measurement floor. A flat segment is only evidence of
+saturation if it is longer than the floor divided by the plausible slope; at 1.71pp and ~0.44pp per
+rollout that needs roughly four eval points, not two. Do not call a run finished on a single flat
+interval.
+
+The train-side series says the same thing from the other direction: smoothed `rollout/raw_reward`
+rises on all five arms over this whole range (OLS +0.011 to +0.019 per rollout, every arm positive,
+first-half to second-half +6.8 to +13.0pp), with no flattening at `r10`. When the eval plateau and
+the train trend disagree, the eval plateau is the weaker measurement.
 
 ##### The noise floor, measured directly
 
