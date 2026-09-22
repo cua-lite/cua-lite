@@ -688,8 +688,21 @@ Reading the table:
 
 `mobile.use.i4.reasoning` failed six times on 2026-09-21, every time the same way, and the cell stood
 at `not run`. **It then trained to completion on 2026-09-22 on a different pod, at the same
-`TP_SIZE=2` the failures used** — 62 steps, `iter_30` and `iter_61` both written, zero NCCL events,
-loss 1.06 -> 0.358. The weights are on the Hub and the cell has a number in the table above.
+`TP_SIZE=2` the failures used.** Read off that run's own log rather than its launcher:
+
+    tensor_model_parallel_size = 2      <- slime's parsed table, not the launcher's echo
+    data_parallel_size         = 4      <- the DP group the hang always named
+    Watchdog caught collective   0 hits
+    iter_30, iter_61 both written;  lm loss 1.06 -> 0.358;  SFT EXIT rc=0
+
+The one traceback in that log is a wandb `atexit` `BrokenPipeError` raised AFTER the ray job reported
+success — not a training event. The weights are on the Hub and the cell has a number in the table
+above.
+
+This matters because the same cell has also been written up as *requiring* `TP=8`. It does not: the
+run above is `TP=2` at `DP=4`, the exact configuration that conclusion excludes, on a host that had
+not run it before. `TP=8` does avoid the hang, but so does changing machines, which means the
+parallelism was never shown to be the cause.
 
 So the hang is **host-specific, not configuration-specific**. That is what the exclusion table below
 could not settle: it ruled out every property of the data and the parallelism it could reach, but
@@ -1029,8 +1042,8 @@ checkpoints; only the decoder differs.
 | 0 | .41106 / .35817 | **0.3698 ±0.0033** *(3 passes)* | same checkpoint, same manifest |
 | 4 | +1.33pp / +6.03pp | 0.3575 −1.23pp *(1)* | 0.4085 ±0.0155 **+3.87pp** *(3)* |
 | 9 | +0.25pp / +5.39pp | 0.4198 **+5.00pp** *(1)* | 0.4356 ±0.0132 **+6.58pp** *(3)* |
-| 14 | +1.35pp / — | 0.4432 **+7.34pp** *(1)* | running |
-| 19 | — | running | — |
+| 14 | +1.35pp / +4.84pp | 0.4432 **+7.34pp** *(1)* | running |
+| 19 | +3.65pp / — | running | — |
 
 `r0` is one number for both arms, not two: they start from the same SFT checkpoint and `fam37e` and
 `fam37ne` are byte-identical, so the 3-pass `0.3698` is the shared baseline every `pp` above is
