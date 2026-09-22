@@ -639,7 +639,9 @@ class OSWorldV2Env(LiteBaseEnv, EnvServerResource):
         if stop_reason is not None:
             info[STOP_REASON_INFO_KEY] = stop_reason
         if (terminated or truncated) and base is not None:
-            er = await loop.run_in_executor(_EXECUTOR, _rpc, base, "/evaluate", {}, _EVAL_RPC_TIMEOUT)
+            # Upstream task 064 allows 3,180s for three motion-planning replays.
+            eval_timeout = 3600.0 if self._config.task_id == "064" else _EVAL_RPC_TIMEOUT
+            er = await loop.run_in_executor(_EXECUTOR, _rpc, base, "/evaluate", {}, eval_timeout)
             reward = er.get("reward")
             if er.get("payload") is not None:
                 info["evaluate_payload"] = er["payload"]
@@ -767,6 +769,7 @@ def _load_tasks() -> None:
             # builder output; the two sides cannot drift.
             metadata=OSWorldV2Env._task_metadata(config),
             **({"reset_timeout": 1700.0} if dep.get("volume_size") else {}),
+            **({"step_timeout": 3900.0} if tid == "064" else {}),
         )
 
 

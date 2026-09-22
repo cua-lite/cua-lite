@@ -915,6 +915,25 @@ def test_metadata_exposes_service_dep_flags():
     assert sizes["030"] == 50 and sizes["080"] == 60 and sizes["082"] == 100
     assert sum(size is not None for size in sizes.values()) == 18  # 023 also needs a user simulator
     assert registry.task_kwargs("osworld_2", "082")["reset_timeout"] == 1700.0
+    assert registry.env_make_kwargs("osworld_2")["step_timeout"] > 300.0
+    assert registry.task_kwargs("osworld_2", "064")["step_timeout"] > 3600.0
+
+
+@pytest.mark.asyncio
+async def test_task064_evaluation_uses_upstream_replay_timeout(monkeypatch):
+    env, _ = _make_env(monkeypatch, extra_tools=["terminate"])
+    env._config.task_id = "064"
+    rpc = m._rpc
+    timeouts = []
+
+    def capture(base, path, body=None, timeout=None):
+        if path == "/evaluate":
+            timeouts.append(timeout)
+        return rpc(base, path, body, timeout)
+
+    monkeypatch.setattr(m, "_rpc", capture)
+    await env.step([_tc("terminate", {"status": "success"})])
+    assert timeouts == [3600.0]
 
 
 def test_service_env_only_carries_set_knobs():

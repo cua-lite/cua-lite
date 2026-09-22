@@ -19,7 +19,7 @@ env_var_prefix: OSWORLD_2
 
 # Env-wide make defaults, applied via registry.set_env_make_kwargs.
 make_kwargs:
-  step_timeout: 180.0        # per-step cap; v2 evaluators are as heavy as v1's (+ any website/GitLab round-trips)
+  step_timeout: 600.0        # includes the action and up to 300s of v2 evaluation
   reset_timeout: 960.0       # 300s VM boot + 600s task setup + cleanup/transport margin
   loop_detect_terminal_status: success  # loop detection should evaluate state, not submit OSWorld FAIL
 
