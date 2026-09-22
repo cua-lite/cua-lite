@@ -61,7 +61,6 @@ from lite.agents.extensions.browsergym.protocol import (
 from lite.agents.extensions.teacher.agent import (
     GPTMobileTeacherAgent,
     GPTTeacherAgent,
-    _GPTTeacherMixin,
 )
 from lite.agents.factory import AGENTS, API_AGENTS, LOCAL_AGENTS
 from lite.agents.models import AgentRegistry
