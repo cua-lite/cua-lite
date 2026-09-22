@@ -930,14 +930,14 @@ that is still climbing, and a two-point read would have called the run finished 
 
 ##### Rollout 20, and the shape of the whole curve
 
-| seed | `r0` | `r5` | `r10` | `r15` | `r20` | `r20`−`r0` |
-|---|---:|---:|---:|---:|---:|---:|
-| 101/5001 | .3635 | .4166 | .4026 | .4405 | .4280 | +6.45pp |
-| 202/5002 | .3134 | .4455 | .4401 | .4694 | .4577 | **+14.43pp** |
-| 303/5003 | .3499 | .4260 | .4038 | .4613 | .4528 | +10.29pp |
-| 404/5004 | .3506 | .3842 | .4299 | .4131 | .4355 | +8.49pp |
-| 505/5005 | .3537 | .4171 | .4315 | .4340 | *pending* | — |
-| **mean** | .3462 | .4179 | .4216 | .4437 | .4435 ⁴ | |
+| seed | pod | `r0` | `r5` | `r10` | `r15` | `r20` | `r20`−`r0` |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 101/5001 | `cc9`  | .3635 | .4166 | .4026 | .4405 | .4280 | +6.45pp |
+| 202/5002 | `cc9b` | .3134 | .4455 | .4401 | .4694 | .4577 | **+14.43pp** |
+| 303/5003 | `cc9c` | .3499 | .4260 | .4038 | .4613 | .4528 | +10.29pp |
+| 404/5004 | `cc9d` | .3506 | .3842 | .4299 | .4131 | .4355 | +8.49pp |
+| 505/5005 | `cc9e` | .3537 | .4171 | .4315 | .4340 | *pending* | — |
+| **mean** | | .3462 | .4179 | .4216 | .4437 | .4435 ⁴ | |
 
 ⁴ four arms. On the four arms that have `r20`, the paired means are `r15` .4461 -> `r20` .4435, a
 change of **−0.26pp** against a four-arm-mean floor of 1.91pp — no change. Three arms fell by
@@ -962,25 +962,75 @@ rises on all five arms across the whole range (OLS +0.011 to +0.019 per rollout,
 positive), with no flattening at `r10` or `r20`. The policy keeps improving on the 37 training
 templates; what stops being measurable is the transfer to their 52 siblings.
 
-To reproduce the two panels:
+To redraw the figure — run it from a checkout that has the dicts above in scope, or paste them in.
+Verified on a pod at `uv run --with matplotlib python`; it prints the arm counts it actually used, so
+a silently dropped arm is visible rather than folded into the mean:
 
 ```python
-import numpy as np
-xs = [0, 5, 10, 15, 20]
-ev = {s: [EVAL[s][x] for x in xs if not isinstance(EVAL[s].get(x), str)] for s in EVAL}
-full = [s for s in EVAL if len(ev[s]) == len(xs)]        # arms with every point; r20 drops 505/5005
-rate = np.array([ev[s] for s in full]) * 100
-mean, sem = rate.mean(0), rate.std(0, ddof=1) / np.sqrt(len(rate))    # eval: mean +- SEM
+import numpy as np, matplotlib; matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
-n  = min(len(TRAIN[s]) for s in TRAIN if PENDING not in TRAIN[s])     # rollouts every arm reached
-tr = np.array([TRAIN[s][:n] for s in TRAIN if PENDING not in TRAIN[s]])
-tmean, tsd = tr.mean(0), tr.std(0, ddof=1)                            # train: mean +- SD
+XS = [0, 5, 10, 15, 20]
+ok = lambda v: isinstance(v, float)          # PENDING cells are skipped, never coerced
+fig, (ax, bx) = plt.subplots(2, 1, figsize=(9, 7.2), height_ratios=[1, 0.85])
+
+# --- eval: the noise floor first, then mean +- SEM over the arms present at each rollout ---
+r0 = np.array([EVAL[s][0] for s in EVAL])
+sem0 = r0.std(ddof=1) / np.sqrt(len(r0))
+ax.axhspan(r0.mean() - 2*sem0, r0.mean() + 2*sem0, color="#3f5d6b", alpha=.10, lw=0)
+ax.axhline(r0.mean(), color="#3f5d6b", lw=1, ls=(0, (2, 4)))
+ax.text(0.3, r0.mean() + 2*sem0, "  noise floor: r0 mean ±2·SEM",
+        va="bottom", fontsize=8, color="#5a6b75")
+
+m, lo, hi = [], [], []
+for x in XS:
+    v = np.array([EVAL[s][x] for s in EVAL if ok(EVAL[s][x])])
+    e = v.std(ddof=1) / np.sqrt(len(v))
+    m.append(v.mean()); lo.append(v.mean() - e); hi.append(v.mean() + e)
+ax.fill_between(XS, lo, hi, color="#9a3b2f", alpha=.13, lw=0)
+for s in EVAL:
+    xs = [x for x in XS if ok(EVAL[s][x])]
+    ax.plot(xs, [EVAL[s][x] for x in xs], lw=1.2, alpha=.8, marker="o", ms=3.5, label=s)
+ax.plot(XS, m, color="#9a3b2f", lw=2.4, marker="o", ms=5, label="mean ± SEM", zorder=5)
+n20 = sum(ok(EVAL[s][20]) for s in EVAL)
+if n20 < len(EVAL):                          # never let a short arm read as a full one
+    ax.annotate(f"r20: {n20} arms", (20, m[-1]), textcoords="offset points",
+                xytext=(-8, -17), ha="right", fontsize=8, color="#5a6b75")
+ax.set_xticks(XS); ax.set_xticklabels([f"r{x}" for x in XS]); ax.set_xlim(-0.6, 20.6)
+ax.set_ylabel("shaped-mean, fam37ne (t=1, 4 samples)")
+ax.set_title("fam37n — five seeds, same cell", loc="left", fontsize=11, weight="semibold")
+ax.legend(fontsize=8, ncol=3, frameon=False, loc="lower right")
+ax.grid(axis="y", color="#e8ebe9"); ax.set_axisbelow(True)
+
+# --- train: mean +- SD over the arms that reached every rollout, plus every run drawn ---
+full = [s for s in TRAIN if all(ok(v) for v in TRAIN[s])]
+n = min(len(TRAIN[s]) for s in full)
+tr = np.array([TRAIN[s][:n] for s in full]); tm, ts = tr.mean(0), tr.std(0, ddof=1)
+bx.fill_between(range(n), tm - ts, tm + ts, color="#9a3b2f", alpha=.13, lw=0)
+for s in TRAIN:
+    v = [x for x in TRAIN[s] if ok(x)]
+    bx.plot(range(len(v)), v, lw=.9, alpha=.45)
+bx.plot(range(n), tm, color="#9a3b2f", lw=2.4)
+k = np.polyfit(np.arange(n), tm, 1)
+bx.plot([0, n-1], np.polyval(k, [0, n-1]), color="#7b858f", lw=1.1, ls=(0, (5, 4)))
+bx.text(n - 1.4, np.polyval(k, n-1) + .02, f"OLS {k[0]:+.4f}/r",
+        ha="right", fontsize=8, color="#5a6b75")
+bx.set_xticks(XS); bx.set_xticklabels([f"r{x}" for x in XS]); bx.set_xlim(-0.6, 20.6)
+bx.set_ylabel("rollout/raw_reward"); bx.set_xlabel("rollout")
+bx.set_title("train — mean ± SD, every run drawn", loc="left", fontsize=10)
+bx.grid(axis="y", color="#e8ebe9"); bx.set_axisbelow(True)
+
+fig.tight_layout(); fig.savefig("fam37n.png", dpi=150)
+print(f"eval_arms_full={sum(all(ok(EVAL[s][x]) for x in XS) for s in EVAL)} "
+      f"train_arms_full={len(full)} train_rollouts={n} OLS={k[0]:+.5f}")
+# -> eval_arms_full=4  train_arms_full=4  train_rollouts=21  OLS=+0.00947
 ```
 
 SEM for eval and SD for train on purpose, following the browser campaign: the eval panel asks how
 precisely the mean is known, the train panel asks how wide a single rollout's draw is — the spread
-that buries the trend in any one run. Plot the noise floor as a band around the `r0` mean; it is the
-only thing that makes the eval panel readable.
+that buries the trend in any one run. The noise-floor band is the mobile-specific addition and it is
+not decoration: without it the eval panel shows five wandering lines and every wobble looks like a
+result.
 
 ##### Rollout 15: the plateau breaks
 
