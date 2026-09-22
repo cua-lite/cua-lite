@@ -398,11 +398,11 @@ async def test_action_batch_returns_one_frame_per_executed_action():
 
 
 @pytest.mark.asyncio
-async def test_read_only_actions_earn_a_frame_read_off_the_page():
+async def test_read_only_actions_render_cached_bgym_frame_not_playwright_page():
     """``screenshot``/``cursor_position``/``wait`` reach no backend, so they own
-    no obs -- but they DID execute, and the frame count must never depend on
-    WHAT the actions were. Their frame is read straight off the Playwright page,
-    which is why it needs no ``env.step`` and moves no step counter.
+    no obs -- but they DID execute, and the frame count must never depend on WHAT
+    the actions were. Their frame must still use BrowserGym's obs screenshot
+    space, not Playwright's CSS-pixel ``page.screenshot()`` fallback.
     """
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
@@ -410,12 +410,13 @@ async def test_read_only_actions_earn_a_frame_read_off_the_page():
     env = _make_fake(max_steps=50, cursor=False)
     try:
         await env.reset()
+        env._last_obs["screenshot"] = _png_bytes(498, 321, (255, 0, 0))
         env._execute_bgym_action = AsyncMock()
-        # Only the None-guard reads ``_env`` on this path; the capture itself is
-        # stubbed, since a fake env has no Playwright page to read.
+        # Make the Playwright fallback available but wrong-sized, matching
+        # MiniWoB's CSS viewport; the no-op read path must not use it.
         env._env = SimpleNamespace()
         env._take_screenshot = AsyncMock(
-            side_effect=[_png_bytes(w, w, (0, 0, 255)) for w in (7, 8, 9)]
+            return_value=_png_bytes(332, 214, (0, 0, 255))
         )
 
         result = await env.step(
@@ -435,11 +436,11 @@ async def test_read_only_actions_earn_a_frame_read_off_the_page():
         )
 
         env._execute_bgym_action.assert_not_awaited()
-        assert env._take_screenshot.await_count == 3
+        env._take_screenshot.assert_not_awaited()
         assert [_decode_png_size(png) for png in result.results[0].images] == [
-            (7, 7),
-            (8, 8),
-            (9, 9),
+            (498, 321),
+            (498, 321),
+            (498, 321),
         ]
     finally:
         env._env = None
