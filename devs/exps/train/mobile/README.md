@@ -847,11 +847,11 @@ the Success Rate from the same data if it is ever wanted.
 
 ```python
 EVAL = {  # "rs/sd" -> {rollout: shaped_mean}   fam37ne, 52 tasks x 4 samples at t=1 (n=208)
-  "101/5001": {0: 0.3635, 5: 0.4166},
-  "202/5002": {0: 0.3134, 5: 0.4455},
-  "303/5003": {0: 0.3499, 5: 0.4260},
-  "404/5004": {0: 0.3506, 5: 0.3842},
-  "505/5005": {0: 0.3537, 5: 0.4171},
+  "101/5001": {0: 0.3635, 5: 0.4166, 10: 0.4026},
+  "202/5002": {0: 0.3134, 5: 0.4455, 10: 0.4401},
+  "303/5003": {0: 0.3499, 5: 0.4260, 10: 0.4038},
+  "404/5004": {0: 0.3506, 5: 0.3842, 10: 0.4299},
+  "505/5005": {0: 0.3537, 5: 0.4171, 10: 0.4315},
 }
 TRAIN = {}  # "rs/sd" -> [rollout/raw_reward], index = rollout   -- no rollout has completed yet
 ```
@@ -881,6 +881,32 @@ Two things it does NOT yet say. The arm-to-arm spread is large (3.36 to 13.21pp,
 single seed's number is still nearly meaningless — `404/5004` alone would read as "under the floor"
 and `202/5002` alone as "+13pp". And `r5` is one point on a curve that was flat-then-rising in the
 earlier single-seed runs; whether it holds, keeps climbing, or decays is what `r10` onward decides.
+
+##### Rollout 10: the gain holds, and it has stopped growing
+
+| seed | `r0` | `r5` | `r10` | `r5`->`r10` |
+|---|---:|---:|---:|---:|
+| 101/5001 | .3635 | .4166 | .4026 | -1.40pp |
+| 202/5002 | .3134 | .4455 | .4401 | -0.54pp |
+| 303/5003 | .3499 | .4260 | .4038 | -2.22pp |
+| 404/5004 | .3506 | .3842 | .4299 | **+4.57pp** |
+| 505/5005 | .3537 | .4171 | .4315 | +1.44pp |
+| **mean** | **.3462** | **.4179** | **.4216** | **+0.37pp** |
+
+    r10 vs r0 : +7.54pp   -- 4.4x the 1.71pp five-arm-mean floor, the gain is real and holds
+    r10 vs r5 : +0.37pp   -- under a quarter of that floor, and only 2/5 arms moved up
+
+**The improvement is real and it saturates by rollout 5.** Twenty-five of the thirty rollouts in
+this cell buy nothing measurable: `r5` and `r10` are the same number, and the per-arm moves between
+them are not even consistent in sign. Read the one arm that did rise, `404/5004` at +4.57pp,
+together with the fact that it was the LOWEST arm at `r5` (+3.36pp) and the biggest faller was the
+second-highest — that shape is regression to the mean, not late learning.
+
+This is a result about the configuration, not a failure of it. It says the reachable gain on this
+task pool is ~7.5pp and GRPO finds it in five rollouts at `lr=1e-6`; a longer run is wasted compute
+and the next question is whether a larger step size or a harder pool moves the ceiling, not whether
+more rollouts do. `r15` and `r20` will confirm or break the saturation claim — if the mean is still
+flat there, the 30-rollout budget should be cut to 10 for every future cell.
 
 ##### The noise floor, measured directly
 
