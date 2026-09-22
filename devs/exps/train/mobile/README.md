@@ -835,10 +835,12 @@ instance-generator, and no number of seeds will turn it into that.
 
 #### Five seeds — the record
 
-**Launched 2026-09-22 ~09:25 UTC on five pods; NOTHING below is measured yet.** The dicts are empty
-on purpose — an empty dict cannot be misread as a result, a zero can. At the measured 26.5 min per
-rollout (`iter_4` -> `iter_9` -> `iter_14` on the first `fam37n` arm) 30 rollouts is ~13.5 h, inside
-every pod's remaining lifetime with ~23 h to spare.
+**Launched 2026-09-22 ~09:25 UTC on five pods. This record stops at rollout 20.** The runs go to
+30 — the pods would otherwise idle, so the last ten rollouts cost nothing — but `r25` and `r30` are
+kept as supporting evidence rather than written here: five arms x five eval points is the frame the
+conclusions below are drawn on, and extending it mid-analysis invites reading whichever endpoint
+flatters the story. If a later point contradicts what is written here, that is a finding and it
+gets its own entry; it does not get quietly appended to these dicts.
 
 Scores are RECORDED AS REWARD, not as solved counts. MobileGym's reward is shaped — `1.0` iff
 success, `0.5 x progress` otherwise — so a solved count throws away the partial-progress half of
@@ -846,15 +848,39 @@ every episode, which is most of what moves early in a run. `episode_return == 1.
 the Success Rate from the same data if it is ever wanted.
 
 ```python
-EVAL = {  # "rs/sd" -> {rollout: shaped_mean}   fam37ne, 52 tasks x 4 samples at t=1 (n=208)
-  "101/5001": {0: 0.3635, 5: 0.4166, 10: 0.4026, 15: 0.4405},
-  "202/5002": {0: 0.3134, 5: 0.4455, 10: 0.4401, 15: 0.4694},
-  "303/5003": {0: 0.3499, 5: 0.4260, 10: 0.4038, 15: 0.4613},
-  "404/5004": {0: 0.3506, 5: 0.3842, 10: 0.4299, 15: 0.4131},
-  "505/5005": {0: 0.3537, 5: 0.4171, 10: 0.4315, 15: 0.4340},
+# devs/exps/train/mobile -- fam37n GRPO seed replication.  PENDING = not yet measured; never a number.
+EVAL = {   # "rs/sd" -> {rollout: shaped_mean}   fam37ne, 52 tasks x 4 samples at t=1 (n=208)
+  "101/5001": {0: 0.3635, 5: 0.4166, 10: 0.4026, 15: 0.4405, 20: 0.4280},
+  "202/5002": {0: 0.3134, 5: 0.4455, 10: 0.4401, 15: 0.4694, 20: 0.4577},
+  "303/5003": {0: 0.3499, 5: 0.4260, 10: 0.4038, 15: 0.4613, 20: 0.4528},
+  "404/5004": {0: 0.3506, 5: 0.3842, 10: 0.4299, 15: 0.4131, 20: 0.4355},
+  "505/5005": {0: 0.3537, 5: 0.4171, 10: 0.4315, 15: 0.4340, 20: PENDING},
 }
-TRAIN = {}  # "rs/sd" -> [rollout/raw_reward], index = rollout   -- no rollout has completed yet
+
+TRAIN = {  # "rs/sd" -> [rollout/raw_reward], index = rollout, temperature 1.0, rollouts 0-20
+  "101/5001": [0.396159,0.273438,0.596680,0.257812,0.274740,0.454102,0.482422,0.535807,
+               0.501953,0.453906,0.432943,0.558919,0.504883,0.468750,0.564323,0.539388,
+               0.453776,0.589193,0.504883,0.436849,0.556966],
+  "202/5002": [0.383789,0.328125,0.378906,0.379688,0.544271,0.425781,0.516927,0.379883,
+               0.540039,0.601562,0.482747,0.566016,0.526367,0.388021,0.547201,0.521680,
+               0.456966,0.639323,0.504883,0.419922,0.628906],
+  "303/5003": [0.299609,0.381836,0.310547,0.352539,0.462565,0.430794,0.316406,0.444987,
+               0.451172,0.383789,0.408203,0.496745,0.464453,0.528971,0.559245,0.429362,
+               0.475195,0.522135,0.379557,0.626953,0.540690],
+  "404/5004": [0.340299,0.354492,0.375651,0.403971,0.389323,0.333008,0.544922,0.444661,
+               0.433594,0.563802,0.472396,0.455013,0.609375,0.468750,0.461914,0.510026,
+               0.609375,0.559245,0.354818,0.451497,0.825781],
+  "505/5005": [0.566081,0.348438,0.465820,0.347005,0.402344,0.381836,0.410156,0.499935,
+               0.549154,0.630339,0.495768,0.328125,0.526823,0.647786,0.404427,0.528320,
+               0.721484,0.504557,0.554818] + [PENDING, PENDING],   # r19, r20 still running
+}
 ```
+
+`505/5005` is roughly two rollouts behind the other four (its rollout cycle has run 34-51 min
+against their 23-31), which is why two of its cells read `PENDING`. They are the literal sentinel,
+not `0`, not `None`, and not an interpolation: a reader who forgets to filter them gets a
+`NameError`, which is the intended failure. Aggregate over the arms that HAVE a point at each
+rollout and say so — the `r20` mean below is over four arms, and the table marks it.
 
 ##### Rollout 5: five seeds, all positive
 
@@ -901,6 +927,60 @@ the one arm that rose, `404/5004` at +4.57pp, was the LOWEST at `r5` and the big
 second-highest, which is regression to the mean rather than learning. **Read alone this looks like
 saturation at rollout 5. Rollout 15 shows it is not** — see below; `r10` is a plateau inside a curve
 that is still climbing, and a two-point read would have called the run finished 20 rollouts early.
+
+##### Rollout 20, and the shape of the whole curve
+
+| seed | `r0` | `r5` | `r10` | `r15` | `r20` | `r20`−`r0` |
+|---|---:|---:|---:|---:|---:|---:|
+| 101/5001 | .3635 | .4166 | .4026 | .4405 | .4280 | +6.45pp |
+| 202/5002 | .3134 | .4455 | .4401 | .4694 | .4577 | **+14.43pp** |
+| 303/5003 | .3499 | .4260 | .4038 | .4613 | .4528 | +10.29pp |
+| 404/5004 | .3506 | .3842 | .4299 | .4131 | .4355 | +8.49pp |
+| 505/5005 | .3537 | .4171 | .4315 | .4340 | *pending* | — |
+| **mean** | .3462 | .4179 | .4216 | .4437 | .4435 ⁴ | |
+
+⁴ four arms. On the four arms that have `r20`, the paired means are `r15` .4461 -> `r20` .4435, a
+change of **−0.26pp** against a four-arm-mean floor of 1.91pp — no change. Three arms fell by
+0.85–1.25pp and the fourth, `404/5004`, rose 2.24pp; it was the lowest arm at `r15`, and the biggest
+faller was near the top. That is the same regression-to-the-mean signature as `r5`->`r10`.
+
+**The honest summary of five eval points is a step, then noise.** `r0`->`r5` is +7.17pp and dwarfs
+everything after it; `r5`->`r10` −, `r10`->`r15` +, `r15`->`r20` − are each within about one floor
+of zero and alternate in sign. Against `r0` the level holds — every arm is up, four of five by more
+than 6pp — so the gain is real and durable; what is not established is that anything after rollout 5
+adds to it.
+
+**And per the correction above, one flat interval is not saturation.** `r15`->`r20` is exactly as
+weak a piece of evidence as `r5`->`r10` was, and that one was broken by the next point. The
+deciding question — step at `r5` then flat, versus slow climb under noise — needs either more eval
+points per checkpoint (the per-arm floor is 3.83pp; four passes per point would roughly halve it) or
+a pool where the per-rollout gain is larger than the floor. Adding rollouts at this signal-to-noise
+does not answer it.
+
+The train side does not have this problem and says the milder thing: smoothed `rollout/raw_reward`
+rises on all five arms across the whole range (OLS +0.011 to +0.019 per rollout, every arm
+positive), with no flattening at `r10` or `r20`. The policy keeps improving on the 37 training
+templates; what stops being measurable is the transfer to their 52 siblings.
+
+To reproduce the two panels:
+
+```python
+import numpy as np
+xs = [0, 5, 10, 15, 20]
+ev = {s: [EVAL[s][x] for x in xs if not isinstance(EVAL[s].get(x), str)] for s in EVAL}
+full = [s for s in EVAL if len(ev[s]) == len(xs)]        # arms with every point; r20 drops 505/5005
+rate = np.array([ev[s] for s in full]) * 100
+mean, sem = rate.mean(0), rate.std(0, ddof=1) / np.sqrt(len(rate))    # eval: mean +- SEM
+
+n  = min(len(TRAIN[s]) for s in TRAIN if PENDING not in TRAIN[s])     # rollouts every arm reached
+tr = np.array([TRAIN[s][:n] for s in TRAIN if PENDING not in TRAIN[s]])
+tmean, tsd = tr.mean(0), tr.std(0, ddof=1)                            # train: mean +- SD
+```
+
+SEM for eval and SD for train on purpose, following the browser campaign: the eval panel asks how
+precisely the mean is known, the train panel asks how wide a single rollout's draw is — the spread
+that buries the trend in any one run. Plot the noise floor as a band around the `r0` mean; it is the
+only thing that makes the eval panel readable.
 
 ##### Rollout 15: the plateau breaks
 
