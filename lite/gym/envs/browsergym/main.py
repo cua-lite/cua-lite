@@ -1413,21 +1413,28 @@ class BrowserGymEnv(LiteBaseEnv):
         # page inside its own ``env.step``, so each executed action already owns a
         # distinct frame in the obs it returned -- this loop just stops discarding
         # every frame but the last. ``wait``/``screenshot``/``cursor_position``
-        # never reach the backend and so own no obs; they read the page directly
-        # instead, because the frame count must not depend on WHAT the actions
-        # were. Actions REJECTED before execution still get no frame -- there is
-        # no screen state after an action that never ran.
+        # never reach the backend and so own no obs; they re-render the current
+        # BrowserGym obs cache so their frame has the same screenshot pixel space
+        # as reset/step. Runtime-rejected slots keep the old live-env framing
+        # behavior, but render that same current obs instead of a raw Playwright
+        # page screenshot.
         step_screenshots: list[bytes] = []
 
-        async def record_rejected_frame() -> None:
-            """One frame for a slot that never reached the backend.
+        async def record_current_frame(*, require_live_env: bool = False) -> None:
+            """One frame for a slot that did not advance BrowserGym.
 
             Gated on the SAME policy an executed slot obeys: under
             ``use_screenshot: false`` an executed GUI action produces no frame
             either, so a rejected one must not produce more than its siblings.
             """
-            if self._config.use_screenshot and self._env is not None:
-                step_screenshots.append(await self._take_screenshot())
+            if not self._config.use_screenshot:
+                return
+            if require_live_env and self._env is None:
+                return
+            current_obs = last_obs if last_obs is not None else self._last_obs
+            frame = await self._render_feedback_frame(current_obs)
+            if frame is not None:
+                step_screenshots.append(frame)
 
         async def record_action_frame(obs: dict[str, Any] | None) -> None:
             if obs is not None and self._config.use_screenshot:
@@ -1452,7 +1459,7 @@ class BrowserGymEnv(LiteBaseEnv):
                     "call": "noop",
                     "args": {"name": name, "reason": rejected_reason},
                 })
-                await record_rejected_frame()
+                await record_current_frame(require_live_env=True)
                 continue
 
             if name in _NONCANONICAL_INPUT_TOOL_NAMES:
@@ -1570,14 +1577,11 @@ class BrowserGymEnv(LiteBaseEnv):
                 executed_actions.append({"call": code})
             elif name in ("wait", "screenshot", "cursor_position"):
                 # No bgym code, so no obs -- but these DID execute and owe a
-                # frame. Read the page directly: no ``env.step``, so no step
-                # counter or reward side effect. ``_render_feedback_frame``
-                # already reads the page this way for a turn that executed
-                # nothing. The frame carries no SoM overlay (that is derived
-                # from an obs), which is visible only when ``use_som`` is on
-                # and one of these is the LAST action of a batch.
-                if self._config.use_screenshot and self._env is not None:
-                    step_screenshots.append(await self._take_screenshot())
+                # frame. Render the current BrowserGym obs cache, not
+                # Playwright's native page screenshot: MiniWoB's BrowserGym
+                # screenshot is 498x321 (332x214 at scale 1.5), while
+                # page.screenshot() is 332x214 and breaks absolute-pixel agents.
+                await record_current_frame()
                 if result_call_id:
                     current_result_call_ids.add(result_call_id)
             elif name not in ("wait", "screenshot", "cursor_position"):
