@@ -854,7 +854,7 @@ EVAL = {   # "rs/sd" -> {rollout: shaped_mean}   fam37ne, 52 tasks x 4 samples a
   "202/5002": {0: 0.3134, 5: 0.4455, 10: 0.4401, 15: 0.4694, 20: 0.4577},
   "303/5003": {0: 0.3499, 5: 0.4260, 10: 0.4038, 15: 0.4613, 20: 0.4528},
   "404/5004": {0: 0.3506, 5: 0.3842, 10: 0.4299, 15: 0.4131, 20: 0.4355},
-  "505/5005": {0: 0.3537, 5: 0.4171, 10: 0.4315, 15: 0.4340, 20: PENDING},
+  "505/5005": {0: 0.3537, 5: 0.4171, 10: 0.4315, 15: 0.4340, 20: 0.4635},
 }
 
 TRAIN = {  # "rs/sd" -> [rollout/raw_reward], index = rollout, temperature 1.0, rollouts 0-20
@@ -872,12 +872,13 @@ TRAIN = {  # "rs/sd" -> [rollout/raw_reward], index = rollout, temperature 1.0, 
                0.609375,0.559245,0.354818,0.451497,0.825781],
   "505/5005": [0.566081,0.348438,0.465820,0.347005,0.402344,0.381836,0.410156,0.499935,
                0.549154,0.630339,0.495768,0.328125,0.526823,0.647786,0.404427,0.528320,
-               0.721484,0.504557,0.554818] + [PENDING, PENDING],   # r19, r20 still running
+               0.721484,0.504557,0.554818,0.521484] + [PENDING],   # r20 still generating
 }
 ```
 
-`505/5005` is roughly two rollouts behind the other four (its rollout cycle has run 34-51 min
-against their 23-31), which is why two of its cells read `PENDING`. They are the literal sentinel,
+`505/5005` runs about two rollouts behind the other four (its rollout cycle has been 34-51 min
+against their 23-31). Its eval is now complete; the one remaining `PENDING` is its `r20` train
+reward, which is logged only when that rollout's generation finishes. They are the literal sentinel,
 not `0`, not `None`, and not an interpolation: a reader who forgets to filter them gets a
 `NameError`, which is the intended failure. Aggregate over the arms that HAVE a point at each
 rollout and say so — the `r20` mean below is over four arms, and the table marks it.
@@ -936,19 +937,24 @@ that is still climbing, and a two-point read would have called the run finished 
 | 202/5002 | `cc9b` | .3134 | .4455 | .4401 | .4694 | .4577 | **+14.43pp** |
 | 303/5003 | `cc9c` | .3499 | .4260 | .4038 | .4613 | .4528 | +10.29pp |
 | 404/5004 | `cc9d` | .3506 | .3842 | .4299 | .4131 | .4355 | +8.49pp |
-| 505/5005 | `cc9e` | .3537 | .4171 | .4315 | .4340 | *pending* | — |
-| **mean** | | .3462 | .4179 | .4216 | .4437 | .4435 ⁴ | |
+| 505/5005 | `cc9e` | .3537 | .4171 | .4315 | .4340 | .4635 | +10.98pp |
+| **mean** | | .3462 | .4179 | .4216 | .4437 | **.4475** | **+10.13pp** |
+| *sd* | | *.0191* | *.0222* | *.0172* | *.0224* | *.0151* | *2.98pp* |
 
-⁴ four arms. On the four arms that have `r20`, the paired means are `r15` .4461 -> `r20` .4435, a
-change of **−0.26pp** against a four-arm-mean floor of 1.91pp — no change. Three arms fell by
-0.85–1.25pp and the fourth, `404/5004`, rose 2.24pp; it was the lowest arm at `r15`, and the biggest
-faller was near the top. That is the same regression-to-the-mean signature as `r5`->`r10`.
+The five-arm steps are `r0`->`r5` **+7.17pp**, then **+0.37**, **+2.21**, **+0.38pp**. Only the
+first and the `r10`->`r15` step clear the 1.71pp five-arm-mean floor, and `r15`->`r20` does not: two
+arms up, three down by 0.85–1.25pp, and the two that rose (`404/5004` +2.24, `505/5005` +2.95) were
+the two lowest at `r15` — the same regression-to-the-mean signature as `r5`->`r10`.
 
-**The honest summary of five eval points is a step, then noise.** `r0`->`r5` is +7.17pp and dwarfs
-everything after it; `r5`->`r10` −, `r10`->`r15` +, `r15`->`r20` − are each within about one floor
-of zero and alternate in sign. Against `r0` the level holds — every arm is up, four of five by more
-than 6pp — so the gain is real and durable; what is not established is that anything after rollout 5
-adds to it.
+**Against `r0` the level holds and it is unambiguous.** `r20` is +10.13pp on the mean, every one of
+the five arms clears the 3.83pp per-arm floor individually (+6.45 to +14.43pp), and the arm spread
+is TIGHTER at `r20` than at any earlier point (sd .0151 against .0191 at `r0`) — the seeds are
+converging on a level, not diverging.
+
+**What five points cannot separate is a step from a slow climb.** `r0`->`r5` dwarfs everything after
+it, and the three later steps alternate in sign within about one floor of zero. Both "GRPO finds the
+reachable gain in five rollouts and then holds" and "it keeps climbing at ~0.2pp per rollout under
+noise four times that size" fit these numbers.
 
 **And per the correction above, one flat interval is not saturation.** `r15`->`r20` is exactly as
 weak a piece of evidence as `r5`->`r10` was, and that one was broken by the next point. The
@@ -1023,7 +1029,7 @@ bx.grid(axis="y", color="#e8ebe9"); bx.set_axisbelow(True)
 fig.tight_layout(); fig.savefig("fam37n.png", dpi=150)
 print(f"eval_arms_full={sum(all(ok(EVAL[s][x]) for x in XS) for s in EVAL)} "
       f"train_arms_full={len(full)} train_rollouts={n} OLS={k[0]:+.5f}")
-# -> eval_arms_full=4  train_arms_full=4  train_rollouts=21  OLS=+0.00947
+# -> eval_arms_full=5  train_arms_full=4  train_rollouts=21  OLS=+0.00947
 ```
 
 SEM for eval and SD for train on purpose, following the browser campaign: the eval panel asks how
