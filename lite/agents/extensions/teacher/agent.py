@@ -30,7 +30,7 @@ into per-run via ``agent_id: gpt.teacher`` (the factory's yaml-driven ``agent_id
 override, same mechanism BrowserGym uses for ``qwen3_vl.base``).
 
 Both behaviours are platform-independent prose and message handling, so they live
-once in :class:`_GPTTeacherContract`. Only the system-prompt seam differs: desktop
+once in :class:`_GPTTeacherMixin`. Only the system-prompt seam differs: desktop
 appends the contract in ``_effective_system_prompt``, mobile in
 ``_system_prompt_for_mobile_request`` — its own seam, which resolves ``{w}``/``{h}``
 against the frame actually sent and appends the env's finish guidance, neither of
@@ -127,7 +127,7 @@ def _split_thought_action(text: str) -> tuple[str, str]:
 
 
 @dataclass
-class _GPTTeacherContract:
+class _GPTTeacherMixin:
     """The teacher behaviour itself: the response contract, and the reply relabelling.
 
     Platform-independent — it assembles prose and rewrites message content, and touches
@@ -236,7 +236,7 @@ class _GPTTeacherContract:
 
 @dataclass
 class GPTTeacherAgent(
-    _GPTTeacherContract, GPTDesktopUseAgent, key=r"gpt\.teacher(@(desktop|browser)@use)?"
+    _GPTTeacherMixin, GPTDesktopUseAgent, key=r"gpt\.teacher(@(desktop|browser)@use)?"
 ):
     """Desktop/browser teacher: ``Thought:`` + ``Action:`` per step, distilled as
     ``inline_reasoning`` + ``action_description`` (not the API summary)."""
@@ -246,7 +246,7 @@ class GPTTeacherAgent(
 
 
 @dataclass
-class GPTMobileTeacherAgent(_GPTTeacherContract, GPTMobileUseAgent, key="gpt.teacher@mobile@use"):
+class GPTMobileTeacherAgent(_GPTTeacherMixin, GPTMobileUseAgent, key="gpt.teacher@mobile@use"):
     """Mobile teacher — the desktop leaf's sibling.
 
     Mobile builds its system prompt in ``_system_prompt_for_mobile_request`` rather than

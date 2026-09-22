@@ -61,7 +61,7 @@ from lite.agents.extensions.browsergym.protocol import (
 from lite.agents.extensions.teacher.agent import (
     GPTMobileTeacherAgent,
     GPTTeacherAgent,
-    _GPTTeacherContract,
+    _GPTTeacherMixin,
 )
 from lite.agents.factory import AGENTS, API_AGENTS, LOCAL_AGENTS
 from lite.agents.models import AgentRegistry
@@ -707,7 +707,7 @@ def test_teacher_parse_seam_signature_tracks_the_base(base_cls, teacher_cls) -> 
     passes ``call_id_start=``. A narrower override raises ``TypeError`` on the first
     model reply of every ``gpt.teacher`` run, so pin the keyword set.
 
-    Both platforms are checked because ONE override in ``_GPTTeacherContract`` serves
+    Both platforms are checked because ONE override in ``_GPTTeacherMixin`` serves
     both: the mobile seam exists only so that override applies there too, and a
     signature drift on either side breaks it silently at import time.
     """
@@ -894,7 +894,7 @@ def test_teacher_rows_construct_against_their_real_envs(path: Path) -> None:
         agent_id="gpt.teacher",
         **_agent_kwargs_for_construction(cfg),
     )
-    # Pin the LEAF, not just the mixin. Asserting only ``_GPTTeacherContract`` would
+    # Pin the LEAF, not just the mixin. Asserting only ``_GPTTeacherMixin`` would
     # still pass if the desktop pattern were ever broadened to cover ``@mobile@use``
     # and a mobile env silently got a desktop-based agent -- which would use the
     # desktop action space and coordinate frame on a phone.
