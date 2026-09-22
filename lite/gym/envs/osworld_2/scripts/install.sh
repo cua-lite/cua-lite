@@ -3,7 +3,7 @@
 # `desktop_env` is baked into a DERIVED image (docker build), NOT installed on the host — so
 # osworld_2 needs ZERO host `desktop_env` and coexists with osworld v1 + lite.osworld (v1) in
 # one uv with no conflict. Four things:
-#   image      → docker build docker/Dockerfile → cua-lite/osworld_2:latest
+#   image      → docker build docker/Dockerfile → cua-lite/osworld_2:osworld-v2.1-volume
 #                (FROM happysixd/osworld-docker + Python venv + V2 desktop_env + docker/server.py)
 #   qcow2      → HF-GATED snapshot_download xlangai/v2-image → <env>/.cache/osworld-v2-ubuntu-x86.qcow2 (sha256-verified)
 #   task_class → HF-GATED snapshot_download xlangai/osworld_v2_tasks → <env>/.cache/task_class/task_*.py (108)
@@ -14,8 +14,8 @@
 #   and .../xlangai/osworld_v2_tasks, then `hf auth login` (a token). The two downloads 401 otherwise.
 #
 # The image build needs the OSWorld-V2 source (staged into docker/_vendor/, gitignored). Set
-# OSWORLD_V2_SRC to its location (default: the local reference checkout — no dependency on the
-# pending V2 git tag).
+# OSWORLD_V2_SRC to the pinned source checkout for the first build. Later builds
+# can reuse the staged copy under docker/_vendor/OSWorld-V2.
 #
 # Usage:
 #   uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh          # full install (idempotent; rebuilds if image sources changed)
@@ -30,9 +30,9 @@ ENV_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$ENV_DIR/../../../.." && pwd)"
 CACHE_DIR="$ENV_DIR/.cache"
 TASK_CLASS_DIR="$CACHE_DIR/task_class"
-IMAGE="cua-lite/osworld_2:latest"
+IMAGE="cua-lite/osworld_2:osworld-v2.1-volume"
 DOCKER_DIR="$ENV_DIR/docker"
-OSWORLD_V2_SRC="${OSWORLD_V2_SRC:-$ENV_DIR/_vendor/OSWorld-V2}"
+OSWORLD_V2_SRC="${OSWORLD_V2_SRC:-$DOCKER_DIR/_vendor/OSWorld-V2}"
 export OSWORLD_V2_SRC
 
 # Shared image-build helpers (image_is_fresh / src_label / do_pull / do_push). Freshness is gated
@@ -169,7 +169,7 @@ service_scan() {
     [ -d "$TASK_CLASS_DIR" ] || { echo "[install] no task_class/ to scan; skipping." >&2; return 0; }
     echo "[install] static service scan → _service_deps.json ..." >&2
     python - "$TASK_CLASS_DIR" <<'PY'
-import json, os, re, glob, sys
+import ast, json, os, re, glob, sys
 d = sys.argv[1]; out = {}
 for f in glob.glob(os.path.join(d, "**", "task_*.py"), recursive=True):
     tid = re.search(r"task_(\w+)\.py$", os.path.basename(f)).group(1)
@@ -178,7 +178,17 @@ for f in glob.glob(os.path.join(d, "**", "task_*.py"), recursive=True):
     if re.search(r"controllers\.website|website_host_suffix|get_stateful_website|WEBSITE_HOST_SUFFIX", src): dep["website"] = True
     if re.search(r"controllers\.gitlab|GITLAB_URL|python-gitlab|import gitlab\b", src): dep["gitlab"] = True
     if "user_simulator" in src: dep["user_sim"] = True
-    if "volume_size" in src: dep["volume"] = True
+    if "volume_size" in src:
+        task_class = next((node for node in ast.parse(src).body
+                           if isinstance(node, ast.ClassDef) and node.name == f"Task{tid}"), None)
+        sizes = [node.value.value for node in task_class.body
+                 if isinstance(node, ast.Assign)
+                 and any(isinstance(target, ast.Name) and target.id == "volume_size"
+                         for target in node.targets)
+                 and isinstance(node.value, ast.Constant)] if task_class else []
+        if len(sizes) != 1 or type(sizes[0]) is not int or not 1 <= sizes[0] <= 100:
+            sys.exit(f"[install] unsupported volume_size in {f}; cannot provision this task safely")
+        dep["volume_size"] = sizes[0]
     if re.search(r"MultiPhaseTask|def get_phases\b", src): dep["multi_phase"] = True
     # LLM-judge evaluators (~18 tasks) call desktop_env's model_client at evaluate() → need OPENAI_API_KEY.
     if re.search(r"model_client|generate_text|OSWORLD_EVAL_MODEL", src): dep["llm_judge"] = True
@@ -192,7 +202,7 @@ PY
 # the static service scan the runtime bind-mounts into each container. NO Docker
 # image is touched. Split out so a fresh git worktree (shares the host docker
 # daemon but has its own gitignored .cache/) can be provisioned on its own —
-# without the image stage that rebuilds the SHARED cua-lite/osworld_2:latest a
+# without the image stage that rebuilds the versioned cua-lite/osworld_2 image a
 # co-tenant may be using. install calls this after the image; pull gates the
 # published image first, then provisions. The standalone `provision` verb runs
 # just this. (HF auth prerequisite applies — see header.)

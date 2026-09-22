@@ -1,0 +1,10 @@
+# Qwen3.5 OSWorld-v2.1 base config; thinking is a CLI agent-kwargs override.
+agent_id: "qwen3_5"
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 0.0
+env_id: "osworld_2"
+env_kwargs:
+  max_steps: 200
+  loop_detect: 5
+  extra_tools: ["terminate"]

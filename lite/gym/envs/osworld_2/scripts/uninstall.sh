@@ -15,7 +15,7 @@ ENV_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 QCOW2="$ENV_DIR/.cache/osworld-v2-ubuntu-x86.qcow2"
 TASK_CLASS_DIR="$ENV_DIR/.cache/task_class"
 VENDOR_DIR="$ENV_DIR/docker/_vendor"
-IMAGE="cua-lite/osworld_2:latest"
+IMAGE="cua-lite/osworld_2:osworld-v2.1-volume"
 
 if [ -e "$QCOW2" ]; then rm -f "$QCOW2" && echo "[uninstall] removed $QCOW2" >&2; else echo "[uninstall] qcow2 already absent." >&2; fi
 if [ -d "$TASK_CLASS_DIR" ]; then rm -rf "$TASK_CLASS_DIR" && echo "[uninstall] removed $TASK_CLASS_DIR" >&2; else echo "[uninstall] task_class/ already absent." >&2; fi

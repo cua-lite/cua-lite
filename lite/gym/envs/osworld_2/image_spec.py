@@ -31,7 +31,7 @@ def osworld_v2_rsync_excludes() -> tuple[str, ...]:
 
 def _osworld_v2_source_path() -> Path:
     return Path(
-        os.environ.get("OSWORLD_V2_SRC") or ENV_DIR / "_vendor" / "OSWorld-V2"
+        os.environ.get("OSWORLD_V2_SRC") or ENV_DIR / "docker" / "_vendor" / "OSWorld-V2"
     ).expanduser().resolve()
 
 
@@ -65,9 +65,11 @@ def image_for(env_id: str) -> ContainerImage:
     # logic plus the selected source-tree content identity so a local V2 source
     # edit cannot leave the derived image falsely fresh.
     return ContainerImage(
-        "cua-lite/osworld_2:latest",
+        "cua-lite/osworld_2:osworld-v2.1-volume",
         (
             "lite/gym/envs/osworld_2/docker/Dockerfile",
+            "lite/gym/envs/osworld_2/docker/grow_root_disk.sh",
+            "lite/gym/envs/osworld_2/docker/freecad_python.py",
             "lite/gym/envs/osworld_2/image_spec.py",
             "lite/gym/envs/osworld_2/scripts/install.sh",
         ),

@@ -18,11 +18,13 @@ Run: not directly. Imported by ``lite/gym/envs/osworld_2/main.py``.
 from __future__ import annotations
 
 import logging
+import socket
 import subprocess
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import ClassVar
+from urllib.parse import urlsplit
 
 import requests
 
@@ -35,9 +37,10 @@ from lite.gym.utils.backend.ports import allocate_ports
 
 logger = logging.getLogger(__name__)
 
-_IMAGE_DEFAULT = "cua-lite/osworld_2:latest"
+_IMAGE_DEFAULT = "cua-lite/osworld_2:osworld-v2.1-volume"
 
 _CPORT_API = 6000       # docker/server.py listens here (fixed in-container)
+_TASK_CLASS_PATH = "/opt/osworld-v2/evaluation_examples/task_class"
 # Dedicated host-port band (only the RPC API port is published; VM ports stay in the container).
 # Non-overlapping per lite/gym/utils/backend/ports.py's range map — do NOT use the default 20000-20999
 # (that's the sandbox noVNC band). osworld v1 uses 22000-22999.
@@ -75,12 +78,16 @@ class OSWorldV2Container(LiteContainerBase):
 
     name: str
     api_port: int                 # host port → in-container :6000 (the ONLY mapped port)
+    task_id: str
     image: str = _IMAGE_DEFAULT
     qcow2_path: str = ""
-    task_class_dir: str = ""      # host dir with task_<id>.py → mounted :ro at /task_class
+    task_class_dir: str = ""      # host dir with task_<id>.py → mounted in the upstream source tree
+    asset_dir: str = ""           # official gated assets, mounted at the same absolute path
     ram_size: str = "4G"
     cpu_cores: str = "4"
     disk_size: str = "32G"
+    volume_size: int | None = None
+    website: bool = False
     boot_timeout: float = 300.0
     screen_width: int = 1920
     screen_height: int = 1080
@@ -118,14 +125,15 @@ class OSWorldV2Container(LiteContainerBase):
             sysctls=("net.ipv4.ip_forward=1",),
             group_add=(kvm_gid,) if kvm_gid is not None else (),
             env={
-                "DISK_SIZE": self.disk_size,
+                "DISK_SIZE": f"{self.volume_size}G" if self.volume_size else self.disk_size,
+                **({"OSWORLD_VOLUME_SIZE": str(self.volume_size)} if self.volume_size else {}),
                 "RAM_SIZE": self.ram_size,
                 "CPU_CORES": self.cpu_cores,
                 # eval-server config (read by docker/server.py)
                 "SCREEN_W": str(self.screen_width),
                 "SCREEN_H": str(self.screen_height),
                 "CLIENT_PASSWORD": self.client_password,
-                "TASK_CLASS_DIR": "/task_class",
+                "TASK_CLASS_DIR": _TASK_CLASS_PATH,
                 "SERVER_PORT": str(_CPORT_API),
                 # Avoid qemu-docker falling back to usermode networking (guest
                 # unreachable at 20.20.20.21, no port forwarding) when host inotify
@@ -138,7 +146,8 @@ class OSWorldV2Container(LiteContainerBase):
             },
             volumes=(
                 f"{self.qcow2_path}:/System.qcow2:ro",
-                f"{self.task_class_dir}:/task_class:ro",
+                f"{self.task_class_dir}/task_{self.task_id}.py:{_TASK_CLASS_PATH}/task_{self.task_id}.py:ro",
+                *((f"{self.asset_dir}:{self.asset_dir}:ro",) if self.asset_dir else ()),
                 # bind-mount the checked-in server.py over the baked copy
                 # (hot edits, no rebuild)
                 f"{_server_py_path()}:/usr/local/bin/server.py:ro",
@@ -151,6 +160,18 @@ class OSWorldV2Container(LiteContainerBase):
         )
         self._launch_server()
         self._wait_ready()
+        if self.website:
+            site = urlsplit(f"http://{self.service_env.get('WEBSITE_HOST_SUFFIX', '')}")
+            if site.port and site.port != 80:
+                # The site may generate port-80 links even when served on a custom port.
+                # The configured nip.io subdomains all resolve to this address.
+                address = socket.gethostbyname(site.hostname or "")
+                subprocess.run(
+                    ["docker", "exec", self.name, "iptables", "-t", "nat", "-I", "OUTPUT",
+                     "-p", "tcp", "-d", address, "--dport", "80", "-j", "DNAT",
+                     "--to-destination", f"{address}:{site.port}"],
+                    check=True, capture_output=True, timeout=30,
+                )
 
     def _exclude_api_dnat(self) -> None:
         """The qemu-docker base image DNATs ALL container ports (except its own VNC) to the
@@ -217,10 +238,14 @@ class OSWorldV2ContainerFactory:
 
     qcow2_path: str
     task_class_dir: str
+    task_id: str
+    asset_dir: str = ""
     image: str = _IMAGE_DEFAULT
     ram_size: str = "4G"
     cpu_cores: str = "4"
     disk_size: str = "32G"
+    volume_size: int | None = None
+    website: bool = False
     boot_timeout: float = 300.0
     screen_width: int = 1920
     screen_height: int = 1080
@@ -230,7 +255,6 @@ class OSWorldV2ContainerFactory:
     session_id: str | None = None
     token_hash: str | None = None
     server_port: int | None = None
-    task_id: str | None = None
 
     def _make_name(self, suffix: str) -> str:
         identity = EnvIdentity(
@@ -253,9 +277,11 @@ class OSWorldV2ContainerFactory:
         except Exception:
             pass  # best-effort pre-reap (name is uuid-unique); never leak the reserved port on a daemon stall
         return OSWorldV2Container(
-            name=name, api_port=api_port, image=self.image,
-            qcow2_path=self.qcow2_path, task_class_dir=self.task_class_dir,
+            name=name, api_port=api_port, task_id=self.task_id, image=self.image,
+            qcow2_path=self.qcow2_path, task_class_dir=self.task_class_dir, asset_dir=self.asset_dir,
             ram_size=self.ram_size, cpu_cores=self.cpu_cores, disk_size=self.disk_size,
+            volume_size=self.volume_size,
+            website=self.website,
             boot_timeout=self.boot_timeout, screen_width=self.screen_width,
             screen_height=self.screen_height, client_password=self.client_password,
             service_env=self.service_env,

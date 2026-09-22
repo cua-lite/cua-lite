@@ -2,24 +2,25 @@
 
 `--env-id` `osworld_2`
 
-CUA-Lite wrapper for the official [OSWorld 2.0](https://github.com/xlang-ai/OSWorld) benchmark (release `osworld-v2-2026.06.24`). 108 capability-graded desktop tasks (ids `001`–`108`, eval-only), via `gym.make("osworld_2@<id>")` with `LiteDesktopActionSpace`. Each trajectory runs on a locally-managed VM-in-Docker container (the derived `cua-lite/osworld_2` image, `FROM happysixd/osworld-docker`; QEMU/KVM booting the gated **v2** `osworld-v2-ubuntu-x86.qcow2`) scored by OSWorld's **native evaluators** (strict upstream reproduction).
+CUA-Lite wrapper for [OSWorld-v2.1](https://github.com/xlang-ai/OSWorld-V2/releases/tag/osworld-v2.1). Its 108 capability-graded desktop tasks (`001`–`108`) run via `gym.make("osworld_2@<id>")` in VM-in-Docker, scored by the unmodified upstream evaluators. The matching code, tasks, gated assets, website, and VM image are pinned in the [official release manifest](https://github.com/xlang-ai/OSWorld-V2/blob/osworld-v2.1/benchmark_releases/osworld-v2.1.json).
 
 OSWorld-V2 uses the same VM-in-Docker runtime shape as [`osworld`](/lite/gym/envs/osworld/README.md) v1. Its tasks come from gated Hugging Face task classes and may return structured evaluator scores. See [docs/envs.md](/docs/envs.md) for the env contract.
 
 > **Eval-in-container.** The OSWorld-V2 runtime is baked into the derived Docker image, so the host only needs the CUA-Lite package plus Docker/KVM. `install.sh` builds the image and provisions the required V2 assets.
 
+Tasks 103/104 use FreeCAD 0.19 inside the trusted evaluator container; their guest applications are installed by the unmodified task setup.
+
 ## Setup
 
 > **KVM required** — `/dev/kvm` must be rw-accessible (usually via the `kvm` group); `/dev/net/tun` too.
 >
-> **Hugging Face auth required** — accept the gates on [`xlangai/v2-image`](https://huggingface.co/datasets/xlangai/v2-image) and [`xlangai/osworld_v2_tasks`](https://huggingface.co/datasets/xlangai/osworld_v2_tasks), then `hf auth login`. The qcow2 + task-class downloads 401 otherwise.
+> **Hugging Face auth required** — accept the gates on [`xlangai/v2-image`](https://huggingface.co/datasets/xlangai/v2-image), [`xlangai/osworld_v2_tasks`](https://huggingface.co/datasets/xlangai/osworld_v2_tasks), and [`xlangai/osworld_v2_assets_gated`](https://huggingface.co/datasets/xlangai/osworld_v2_assets_gated), then `hf auth login`.
 >
-> **Local OSWorld-V2 source required for image build/pull freshness** — set `OSWORLD_V2_SRC` to a checked-out official V2 source tree, or place it at `lite/gym/envs/osworld_2/_vendor/OSWorld-V2`. The image freshness label includes that source tree's content digest; without the same source identity, `install.sh pull` intentionally rejects published images instead of trusting an unverified binary.
+> **Local OSWorld-V2 source required for the first image build** — set `OSWORLD_V2_SRC` to the official `osworld-v2.1` checkout. The build stages it under `lite/gym/envs/osworld_2/docker/_vendor/OSWorld-V2` for later freshness checks.
 
 ```bash
 # Choose one install path:
-# Source path: build cua-lite/osworld_2:latest, download the gated ~14 GiB archive,
-# verify/extract the ~25.5 GiB qcow2, then stage task classes and a static service scan.
+# Source path: build cua-lite/osworld_2:osworld-v2.1-volume, provision the matching VM and task classes.
 uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh
 
 # Or, published-image path: adopt a matching GHCR image, then provision gated V2 assets.
@@ -31,7 +32,7 @@ uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh
 # uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh rebuild   # force-rebuild the image after an image-time source edit
 ```
 
-**Env-server mode (recommended)** — launch [`scripts/serve_env.py`](/scripts/serve_env.py); clients only set `CUA_LITE_ENV_SERVER_URL`.
+Download the matching gated assets using upstream's `scripts/tools/download_osworld_v2_assets.py --benchmark-release osworld-v2.1`, then set `OSWORLD_FILE_BASE_URL` to their absolute directory before launching the env server. CUA-Lite mounts that directory read-only inside each VM container. Self-host `Task-Web/OSWorld-web@osworld-v2.1` and set `website_host_suffix` in `OSWORLD_2_CONFIG` for website tasks. **Env-server mode (recommended)** uses [`scripts/serve_env.py`](/scripts/serve_env.py); clients set `CUA_LITE_ENV_SERVER_URL`.
 
 **Direct mode** — `gym.make` brings the container up itself:
 
@@ -77,12 +78,12 @@ reach the service:
 | knob | when unset | when set |
 |---|---|---|
 | `user_sim_model` | the 7 `human_in_the_loop` tasks are excluded | HITL tasks included (needs a user-sim LLM wired) |
-| `website_host_suffix` | website tasks excluded | included (default `"web.hku.icu"`, official OSWorld-web) → ~31 website tasks scored |
+| `website_host_suffix` | website tasks excluded | included when the matching v2.1 site is self-hosted |
 | `gitlab_url` + `gitlab_private_token` | gitlab-backed tasks excluded | included |
 
-**LLM-judge evaluators.** ~18 tasks call an LLM at `evaluate()` (desktop_env `model_client`), so they need a host **`OPENAI_API_KEY`** (+ optional `OPENAI_BASE_URL`), auto-threaded into each container. Without the key they'd 500/mis-score, so they're **excluded** (`exclude_reason: "llm_judge"`) unless it's set. The judge model is the `eval_model` knob (**default `"gpt-4.1"`**, like webgym — gpt-4o's deployment 429s at high concurrency).
+**LLM-judge evaluators.** ~18 tasks call an LLM at `evaluate()` (desktop_env `model_client`), so they need a host **`OPENAI_API_KEY`** (+ optional `OPENAI_BASE_URL`), auto-threaded into each container. Without the key they'd 500/mis-score, so they're **excluded** (`exclude_reason: "llm_judge"`) unless it's set. The default judge model follows upstream (`gpt-4o`); `eval_model` can override it for a separate experiment.
 
-**Stateful-website tasks** (39 tagged via `others['website']==True`; ~31 net scored when enabled) need the companion website service. With the default hosted suffix, tasks are isolated per session and can be rolled out concurrently.
+**Stateful-website tasks** need the matching self-hosted companion website service. Set the website suffix explicitly so these tasks are included.
 
 ## Available Tasks
 
@@ -91,7 +92,7 @@ import lite.gym as gym
 print(len(gym.registry.task_ids("osworld_2")))   # 108
 ```
 
-108 tasks across **10 overlapping capabilities** (not app-domains): `conflict_disambiguation`, `cross_source_reasoning`, `dynamic_environment`, `human_in_the_loop`, `implicit_state_inference`, `multi_item_state_tracking`, `multimodal_editing`, `streaming_interaction`, `tutorial_following`, `visual_spatial_precision`. Metadata identity lives in `env.metadata.others["task_id"]` / `env.metadata.others["env_id"]`; `env.metadata.others` also carries `capabilities` (a task is usually in several), the static service-dependency flags (`website`/`gitlab`/`volume`/`multi_phase`/`user_sim`/`llm_judge`, for filtering — e.g. `--filter "lambda m: m.others.get('website')"`), and `exclude_reason` on service-gated tasks. The **scored count is environment-dependent** — `108 − (whichever services are unprovisioned)` — not a fixed number like v1's 325. With the default `website_host_suffix` **and a host `OPENAI_API_KEY`** → **82 scored** (without the key the ~18 `llm_judge` tasks also drop → **67**). `google_auth`/`blocked` from v1 are dropped (V2 needs no Google accounts; the v1 uuid blocklist is unrelated to the v2 `001–108` id space).
+108 tasks across **10 overlapping capabilities** (not app-domains): `conflict_disambiguation`, `cross_source_reasoning`, `dynamic_environment`, `human_in_the_loop`, `implicit_state_inference`, `multi_item_state_tracking`, `multimodal_editing`, `streaming_interaction`, `tutorial_following`, `visual_spatial_precision`. Metadata identity lives in `env.metadata.others["task_id"]` / `env.metadata.others["env_id"]`; `env.metadata.others` also carries `capabilities` (a task is usually in several), the static service-dependency flags (`website`/`gitlab`/`multi_phase`/`user_sim`/`llm_judge`), the requested `volume_size` in GiB where present, and `exclude_reason` on service-gated tasks. The **scored count is environment-dependent** — `108 − (whichever services are unprovisioned)` — not a fixed number like v1's 325. Use the matching v2.1 website and judge credentials when reporting the available scored tasks. `google_auth`/`blocked` from v1 are dropped (V2 needs no Google accounts; the v1 uuid blocklist is unrelated to the v2 `001–108` id space).
 
 ## Evaluation
 

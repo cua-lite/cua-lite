@@ -20,7 +20,7 @@ over it (edits take effect without a rebuild) and launches it via `docker exec -
 VM's :5000 answers. Listens on a fixed in-container port (mapped to a dynamic host port).
 
 Config via env (set at `docker run`): SCREEN_W/SCREEN_H (1920/1080), CLIENT_PASSWORD
-(osworld-public-evaluation), TASK_CLASS_DIR (/task_class), CACHE_DIR (/root/.cache),
+(osworld-public-evaluation), TASK_CLASS_DIR (/opt/osworld-v2/evaluation_examples/task_class), CACHE_DIR (/root/.cache),
 SERVER_PORT (6000). No cua-lite imports — pure desktop_env + FastAPI.
 """
 from __future__ import annotations
@@ -30,6 +30,7 @@ import importlib.util
 import io
 import json
 import os
+import shlex
 import sys
 import threading
 import traceback
@@ -43,7 +44,7 @@ from pydantic import BaseModel
 _SCREEN_W = int(os.environ.get("SCREEN_W", "1920"))
 _SCREEN_H = int(os.environ.get("SCREEN_H", "1080"))
 _CLIENT_PASSWORD = os.environ.get("CLIENT_PASSWORD", "osworld-public-evaluation")
-_TASK_CLASS_DIR = os.environ.get("TASK_CLASS_DIR", "/task_class")
+_TASK_CLASS_DIR = os.environ.get("TASK_CLASS_DIR", "/opt/osworld-v2/evaluation_examples/task_class")
 _CACHE_DIR = os.environ.get("CACHE_DIR", "/root/.cache")
 _SERVER_PORT = int(os.environ.get("SERVER_PORT", "6000"))
 _VM_HOST = os.environ.get("VM_HOST", "20.20.20.21")  # qemu-docker guest IP (DNAT target); NOT localhost
@@ -97,8 +98,7 @@ def _load_task_from_file(task_path: str) -> Any:
 def _attached_desktop_env():
     """Build a DesktopEnv that ATTACHES to this container's guest VM (:5000) instead of spawning
     one — a pure controller/setup/evaluator façade so reset/step/evaluate run upstream-verbatim
-    (the provider is never created; per-task volume expansion is deferred, so volume_size is None
-    and _finalize_volume is a guarded no-op)."""
+    (the provider is never created; /reset expands the guest volume before task setup)."""
     from desktop_env.desktop_env import DesktopEnv
     from desktop_env.controllers.python import PythonController
     from desktop_env.controllers.setup import SetupController
@@ -108,8 +108,8 @@ def _attached_desktop_env():
             # Replicate DesktopEnv.__init__ MINUS create_vm_manager_and_provider + _prepare_volume
             # — the docker provider connects to docker.sock eagerly (absent inside this container)
             # and _prepare_volume is provider-based. We never use the provider (attach + no-op close).
-            # volume_size deferred to None (container runs the default DISK_SIZE; the 18 volume tasks
-            # are best-effort). Pinned dist → stable mirror. NOT a monkeypatch — a clean override.
+            # Volume tasks expand in /reset once the attached guest is ready.
+            # Pinned dist → stable mirror. NOT a monkeypatch — a clean override.
             self.region = None
             self.provider_name = "docker"
             self.enable_proxy = False
@@ -159,10 +159,7 @@ def _attached_desktop_env():
             pass
 
         def _finalize_volume(self):
-            # Defense-in-depth: _start_emulator calls this on every reset; upstream touches
-            # provider.finalize_volume when volume_size is set — but provider is None here. volume_size
-            # is deferred to None (volume tasks excluded) so it's already a no-op; make it explicit so a
-            # future volume_size can't turn it into an AttributeError.
+            # /reset performs expansion once, before task setup; there is no provider here.
             pass
 
         def close(self):  # cua-lite reaps the container
@@ -218,13 +215,38 @@ def reset(body: ResetBody) -> dict:
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail=f"task class not found: {path}")
         task = _load_task_from_file(path)
+        if "freecad" in task.get("related_apps", []):
+            from desktop_env.controllers.setup import SetupController
+            # On the released VM, packagekitd can hold apt's lock just after boot.
+            # Let the unmodified task's apt-get install start when that lock is free.
+            SetupController(vm_ip=_VM_HOST, client_password=_CLIENT_PASSWORD).execute(
+                command=("set -eu; command -v fuser >/dev/null; "
+                         f"while printf '%s\\n' {shlex.quote(_CLIENT_PASSWORD)} | sudo -S -p '' fuser -s "
+                         "/var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend 2>/dev/null; "
+                         "do sleep 2; done"),
+                shell=True, timeout=180, check=True,
+            )
         if _env is not None:
             try:
                 _env.close()
             except Exception:
                 pass
         _env = _attached_desktop_env()
+        volume_size = task.get("volume_size")
+        if volume_size is not None:
+            if volume_size != int(os.environ.get("OSWORLD_VOLUME_SIZE", "0")):
+                raise RuntimeError(f"task volume_size={volume_size} does not match VM disk")
+            from desktop_env.providers.volume import expand_guest_volume
+            expand_guest_volume(
+                os_type=_env.os_type, controller=_env.controller,
+                setup_controller=_env.setup_controller, client_password=_CLIENT_PASSWORD,
+                expected_size_gb=volume_size,
+            )
         _env.reset(task_config=task)
+        # Upstream FreeCAD setup does not check the install command's exit code.
+        # Reject a reset that completed without the app instead of scoring an unusable VM.
+        if "freecad" in task.get("related_apps", []):
+            _env.setup_controller.execute(["which", "freecad"], timeout=10, check=True)
         raw = _env.controller.get_screenshot()
         return {
             "instruction": task.get("instruction", ""),
