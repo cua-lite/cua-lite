@@ -833,6 +833,29 @@ instance-generator, and no number of seeds will turn it into that.
 | d | 404 | 5004 |
 | e | 505 | 5005 |
 
+#### Five seeds — the record
+
+**Launched 2026-09-22 ~09:25 UTC on five pods; NOTHING below is measured yet.** The dicts are empty
+on purpose — an empty dict cannot be misread as a result, a zero can. At the measured 26.5 min per
+rollout (`iter_4` -> `iter_9` -> `iter_14` on the first `fam37n` arm) 30 rollouts is ~13.5 h, inside
+every pod's remaining lifetime with ~23 h to spare.
+
+Scores are RECORDED AS REWARD, not as solved counts. MobileGym's reward is shaped — `1.0` iff
+success, `0.5 x progress` otherwise — so a solved count throws away the partial-progress half of
+every episode, which is most of what moves early in a run. `episode_return == 1.0` still recovers
+the Success Rate from the same data if it is ever wanted.
+
+```python
+EVAL = {}   # "rs/sd" -> {rollout: shaped_mean}   fam37ne, 52 tasks x 4 samples at t=1 (n=208)
+TRAIN = {}  # "rs/sd" -> [rollout/raw_reward], index = rollout
+```
+
+All five arms run the identical cell — same `fam37n`/`fam37ne` manifests (file sha256 `e239ea71…` /
+`4036901…` on every pod, asserted at launch), same `lr=1e-6`, same `EVAL_TEMPERATURE=1.0` with 4
+samples, 30 rollouts — and differ ONLY in `--rollout-seed` / `--seed`. Per the paragraph above they
+also share the instance sequence, so the spread across these five is optimisation variance and
+nothing else.
+
 **One env, two manifests.** Training and eval are both `mobilegym`, so unlike the desktop RL run
 `ENV_ID` is unambiguous and the env-server needs `--env-ids mobilegym` only. What differs between the
 two sides is the reward, and that lives in the manifests.
@@ -1172,6 +1195,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 MBS=1 \
   ROLLOUT_MAX_RESPONSE_LEN=2048 \
   ROLLOUT_TEMPERATURE=1.0 \
   LR=1e-6 \
+  KL_LOSS_COEF=0.00 REF_LOAD="" \
+  DISTRIBUTED_TIMEOUT_MINUTES=60 \
   CONFIG_PATH="$W/devs/exps/train/mobile/configs/qwen3_5/$P.yaml" \
   EVAL_TEMPERATURE=1.0 N_SAMPLES_PER_EVAL_PROMPT=4 \
   SKIP_EVAL_BEFORE_TRAIN=0 \
@@ -1182,6 +1207,15 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 MBS=1 \
   bash "$W/scripts/train/run_grpo.sh" < /dev/null
 ```
 
+- **`KL_LOSS_COEF=0.00` means there is no KL term at all**, and `REF_LOAD=""` follows from it — no
+  reference model is loaded, so the policy is free to move away from the SFT initialisation without
+  a penalty. That is a property of this experiment, not an omission: with 37 training tasks and 30
+  rollouts the risk being managed is too little movement, not too much. Any run that adds KL is a
+  different cell and needs its own row.
+- **`DISTRIBUTED_TIMEOUT_MINUTES=60` widens NCCL's watchdog from its 10-minute default.** A rollout
+  here takes ~26 minutes and the slowest rank can sit well past 600 s inside one collective; at the
+  default that reads as `Watchdog caught collective operation timeout` and kills the run, which is
+  how a healthy-but-slow arm gets mistaken for a distributed bug.
 - **`EVAL_TEMPERATURE=1.0` is the point of this cell, and `run_grpo.sh` does not default to it.**
   The default is 0 (`run_grpo.sh:264`, `--eval-temperature "${EVAL_TEMPERATURE:-0}"`), which scores a
   greedy policy GRPO never optimised; its own comment at `:256` already says "set
