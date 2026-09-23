@@ -802,30 +802,38 @@ negative, 22.7% positive), contamination level and pool provenance were each che
 orders the outcomes. Treat a single run's number as uninformative until the repeat spread below
 has been measured.
 
-**Result: the gain is task-level contamination, and the A/B shows it.** Two runs, identical base
-checkpoint, config, hyperparameters, step count and eval; the only difference is 64 `perturb` tasks
-added to the pool. Read against a baseline measured four independent times on this eval set
-(0.3594 / 0.3386 / 0.3399 / 0.3399, sd 1.11pp, so 2 sigma is 2.2pp):
+**Result: the corpus decides, and task-level contamination HURTS.** Four runs, same SFT
+checkpoint, same eval protocol. Two on `lite.scalecua rl` (115-task eval, 2 sigma = 2.2pp from a
+baseline measured four times) and two on `lite.osworld train` (47-task impress eval, 2 sigma =
+3.7pp from five baseline measurements):
 
-| arm | pool | delta at 16 steps |
+| training corpus | pool | delta |
 |---|---|---:|
-| A | `scalecua_rl` 214 — environment-level only | 0.3399 -> 0.3438  **+0.39pp** (flat) |
-| B | A + `perturb` 64, covering 46 of the 115 eval tasks | 0.3399 -> 0.3860  **+4.61pp** (4.2 sigma) |
+| `lite.scalecua rl` | 214, environment-level only | +0.39pp (flat) |
+| `lite.scalecua rl` | 214 + 64 `perturb` | +4.61pp |
+| `lite.osworld train.synth` | 287, **zero** eval provenance | **+11.58pp** at 40 steps |
+| `lite.osworld train` | 287 synth + 108 `perturb` | +4.80pp at 40 steps |
 
-Arm A vs arm B differ by 4.22pp, t = 2.9. Both arms' in-training `rollout/raw_reward` rose, so the
-training curve does not separate them: A ran 0.548 / 0.637 / 0.473 / 0.600 and B 0.498 / 0.531 /
-0.551 / 0.610. Only the eval does.
+Read the two pairs together, because either one alone is misleading. On the `scalecua_rl` pool,
+which produces nothing by itself, adding `perturb` is the only thing that moves the number at all
+(+4.22pp). On the `synth` pool, which produces +11.58pp by itself, adding the same kind of rows
+COSTS 6.78pp — they take 27% of the rollout budget and `utils/tasks.py` already records SFT on
+their successes measuring -6.77pp at 8 updates and -14.49pp at 26. The same additive is a gain in
+a useless pool and a loss in a good one, so "did the pool contain eval-derived rows" does not sort
+these runs.
 
-That single variable also explains every earlier run in the table above. Pools carrying
-eval-instruction analogues went +4.71 / +7.45 (impress rewrite pool), +6.52 / +7.61 (calc pool,
-27 of 141 rows `perturb`) and +4.61 (arm B) — three for three. Pools without them went +0.39
-(arm A), -2.24 (impress full), -0.25 (10-domain 1000-task), +0.82 at t=0.43 (4-domain) and one
-collapse to 0.0000 — nought for five.
+What does sort them is the corpus. `train.synth` is authored template tasks in the SAME env
+registry as the eval split — same starting documents, same verifier family, and (verified) zero
+base-task overlap and zero identical instructions with any eval task. `lite.scalecua rl` is a
+different registry whose rows were labelled environment-level; on this evidence that label
+overstates how close they are. The clean in-domain corpus is what produces a gain.
 
-**So the finding is not "GRPO does not work on desktop". It is narrower and checkable:** at this
-scale the eval gain comes from task-level eval-derived rows in the training pool. Environment-level
-sharing — `lite.scalecua rl`, same starting screens with new goals and new verifiers — produces
-nothing on its own. Any desktop RL number here has to say which of the two its pool contained.
+**So the claim this section supports is: desktop GRPO does move the eval number, and the training
+corpus is the variable that decides whether it does.** A clean in-domain pool gave +11.58pp at 40
+steps against a 3.7pp threshold. Eval-derived rows are not the source of that gain and dilute it.
+
+Both `lite.osworld` arms are n=1 at 40 steps of a 200-step run, with further readings at 80 / 120 /
+160 / 200; treat the size as provisional and the ordering as the finding.
 
 **Contamination.** The training pool is `scalecua_rl`, which `utils/tasks.py` labels
 **environment-level** (same starting screens, new goals and verifiers). 99 of the 115 eval tasks
