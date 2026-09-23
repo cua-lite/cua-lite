@@ -964,11 +964,29 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
 
 - **The env-server must serve both envs** (`--env-ids lite.scalecua lite.osworld`): training rows
   carry `lite.scalecua@...`, eval rows carry `lite.osworld@...`, and the engine resolves per row.
-- **`ENV_ID=lite.osworld` even though training is `lite.scalecua`.** `ENV_ID` never picks the env;
-  it selects the W&B group, which env preflight probes and reaps, and the **eval dataset label**.
-  Pointing it at the eval env is what makes the curve read `eval/lite.osworld_eval`, matching every
-  earlier run in the table. `lite.scalecua` there would label an `lite.osworld` eval
-  `lite.scalecua_eval`.
+- **`ENV_ID=lite.osworld` even though training is `lite.scalecua`, and this contradicts the
+  overfit section above on purpose.** That one says to set `ENV_ID=lite.scalecua` for a transfer
+  run; it is buying preflight coverage of the training env and paying for it with an eval curve
+  keyed `lite.scalecua_eval` (its own blockquote flags the confusion). This section makes the
+  opposite trade: the seven runs in the table above are all keyed `eval/lite.osworld_eval`, and a
+  result that cannot be grepped alongside them is worth less than the preflight.
+
+  **Neither setting covers both envs, so probe the other one by hand.** `ENV_ID` picks the W&B
+  group, the eval dataset label, and the two env-scoped preflight steps — `GET /envs/${ENV_ID}`
+  (availability) and `DELETE /instances?session_id=&env_id=${ENV_ID}` (prior-session leftovers).
+  `GET /host_status` is env-independent and still covers the server. With `lite.osworld` set, the
+  env that serves all 1024 TRAINING trajectories is neither probed nor drained, and a missing or
+  dirty `lite.scalecua` surfaces at the first training rollout instead of before Ray starts.
+  Run this first — `SESSION_ID` is the value preflight prints on its own cleanup line:
+
+  ```bash
+  curl -sf -H "Authorization: Bearer $CUA_LITE_ENV_SERVER_TOKEN" \
+    "$CUA_LITE_ENV_SERVER_URL/envs/lite.scalecua" | grep -q '"available"[[:space:]]*:[[:space:]]*true' \
+    && echo "lite.scalecua available" || { echo "lite.scalecua NOT available -- fix before launching"; }
+  curl -sf -X DELETE -G -H "Authorization: Bearer $CUA_LITE_ENV_SERVER_TOKEN" \
+    --data-urlencode "session_id=${SESSION_ID:?}" --data-urlencode "env_id=lite.scalecua" \
+    "$CUA_LITE_ENV_SERVER_URL/instances"
+  ```
 - **`NUM_ROLLOUT=4` is 4 rollouts = 16 optimizer steps = 1024 trajectories, with 3 evals** (step 0,
   8, 16 — `EVAL_INTERVAL=2` plus the step-0 pass). 16 is where both positive pilots were read, and
   there is no evidence more helps: the 4-domain run peaked at 24 steps (+3.97pp) and fell back by 48
