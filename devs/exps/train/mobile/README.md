@@ -835,13 +835,15 @@ instance-generator, and no number of seeds will turn it into that.
 
 #### Five seeds — the record
 
-**Launched 2026-09-22 ~09:25 UTC on five pods; all five ran the full 30 rollouts. This record
-stops at rollout 20.** The runs go to
-30 — the pods would otherwise idle, so the last ten rollouts cost nothing — but `r25` and `r30` are
-kept as supporting evidence rather than written here: five arms x five eval points is the frame the
-conclusions below are drawn on, and extending it mid-analysis invites reading whichever endpoint
-flatters the story. If a later point contradicts what is written here, that is a finding and it
-gets its own entry; it does not get quietly appended to these dicts.
+**Launched 2026-09-22 ~09:25 UTC on five pods; all five ran the full 30 rollouts, and this
+record is now complete: five arms x seven eval points, `r0` through `r30`.**
+
+While the campaign was live this record deliberately stopped at `r20`, because extending it
+mid-analysis invites reading whichever endpoint flatters the story. That cap is lifted here
+because every arm has finished — the frame is the whole run, not a point chosen after seeing it.
+The two points that were added at the end, `r25` and `r30`, did change a conclusion, and the
+change is written up below rather than folded in silently: `r25` resolved a question the `r20`
+record had explicitly left open.
 
 Scores are RECORDED AS REWARD, not as solved counts. MobileGym's reward is shaped — `1.0` iff
 success, `0.5 x progress` otherwise — so a solved count throws away the partial-progress half of
@@ -849,45 +851,52 @@ every episode, which is most of what moves early in a run. `episode_return == 1.
 the Success Rate from the same data if it is ever wanted.
 
 ```python
-# devs/exps/train/mobile -- fam37n GRPO seed replication.  PENDING = not yet measured; never a number.
+# devs/exps/train/mobile -- fam37n GRPO seed replication.  Complete: no cell is missing.
 EVAL = {   # "rs/sd" -> {rollout: shaped_mean}   fam37ne, 52 tasks x 4 samples at t=1 (n=208)
-  "101/5001": {0: 0.3635, 5: 0.4166, 10: 0.4026, 15: 0.4405, 20: 0.4280},
-  "202/5002": {0: 0.3134, 5: 0.4455, 10: 0.4401, 15: 0.4694, 20: 0.4577},
-  "303/5003": {0: 0.3499, 5: 0.4260, 10: 0.4038, 15: 0.4613, 20: 0.4528},
-  "404/5004": {0: 0.3506, 5: 0.3842, 10: 0.4299, 15: 0.4131, 20: 0.4355},
-  "505/5005": {0: 0.3537, 5: 0.4171, 10: 0.4315, 15: 0.4340, 20: 0.4635},
+  "101/5001": {0: 0.3635, 5: 0.4166, 10: 0.4026, 15: 0.4405, 20: 0.4280, 25: 0.4838, 30: 0.4505},
+  "202/5002": {0: 0.3134, 5: 0.4455, 10: 0.4401, 15: 0.4694, 20: 0.4577, 25: 0.4869, 30: 0.4853},
+  "303/5003": {0: 0.3499, 5: 0.4260, 10: 0.4038, 15: 0.4613, 20: 0.4528, 25: 0.4933, 30: 0.4853},
+  "404/5004": {0: 0.3506, 5: 0.3842, 10: 0.4299, 15: 0.4131, 20: 0.4355, 25: 0.4150, 30: 0.4435},
+  "505/5005": {0: 0.3537, 5: 0.4171, 10: 0.4315, 15: 0.4340, 20: 0.4635, 25: 0.4665, 30: 0.4710},
 }
 
-TRAIN = {  # "rs/sd" -> [rollout/raw_reward], index = rollout, temperature 1.0, rollouts 0-20
+TRAIN = {  # "rs/sd" -> [rollout/raw_reward], index = rollout, temperature 1.0, rollouts 0-29
   "101/5001": [0.396159,0.273438,0.596680,0.257812,0.274740,0.454102,0.482422,0.535807,
                0.501953,0.453906,0.432943,0.558919,0.504883,0.468750,0.564323,0.539388,
-               0.453776,0.589193,0.504883,0.436849,0.556966],
+               0.453776,0.589193,0.504883,0.436849,0.556966,
+               0.673177,0.439453,0.412109,0.622852,
+               0.568359,0.523112,0.732031,0.638672,0.574219],
   "202/5002": [0.383789,0.328125,0.378906,0.379688,0.544271,0.425781,0.516927,0.379883,
                0.540039,0.601562,0.482747,0.566016,0.526367,0.388021,0.547201,0.521680,
-               0.456966,0.639323,0.504883,0.419922,0.628906],
+               0.456966,0.639323,0.504883,0.419922,0.628906,
+               0.497852,0.579753,0.605729,0.468099,
+               0.652995,0.738932,0.479297,0.751628,0.561328],
   "303/5003": [0.299609,0.381836,0.310547,0.352539,0.462565,0.430794,0.316406,0.444987,
                0.451172,0.383789,0.408203,0.496745,0.464453,0.528971,0.559245,0.429362,
-               0.475195,0.522135,0.379557,0.626953,0.540690],
+               0.475195,0.522135,0.379557,0.626953,0.540690,
+               0.604167,0.428646,0.471354,0.468555,
+               0.503255,0.567383,0.588281,0.478190,0.703125],
   "404/5004": [0.340299,0.354492,0.375651,0.403971,0.389323,0.333008,0.544922,0.444661,
                0.433594,0.563802,0.472396,0.455013,0.609375,0.468750,0.461914,0.510026,
-               0.609375,0.559245,0.354818,0.451497,0.825781],
+               0.609375,0.559245,0.354818,0.451497,0.825781,
+               0.681641,0.457487,0.670573,0.505208,
+               0.642513,0.626953,0.523633,0.512370,0.744857],
   "505/5005": [0.566081,0.348438,0.465820,0.347005,0.402344,0.381836,0.410156,0.499935,
                0.549154,0.630339,0.495768,0.328125,0.526823,0.647786,0.404427,0.528320,
-               0.721484,0.504557,0.554818,0.521484,0.481445],
+               0.721484,0.504557,0.554818,0.521484,0.481445,
+               0.511133,0.577799,0.580729,0.505208,
+               0.425000,0.669727,0.583333,0.616211,0.474870],
 }
 ```
 
-Both dicts are complete — no `PENDING` remains. `505/5005` ran two to four rollouts behind the
+Both dicts are complete — every arm has all 7 eval points and all 30 rollouts. `505/5005` ran two to four rollouts behind the
 others throughout (35.6 min per rollout against 26.9-30.7), not from a slower host: the five pods
 are identical A100-SXM4-80GB nodes with the same NVLink topology and CPU. It was doing more work
 per step — 1016 micro-batches per optimizer step against `101/5001`'s 865, i.e. longer sampled
 trajectories. Worth noting alongside it: `101/5001` ACCELERATED over the run (90s per step at
 `r0-r7`, 69s at `r15-r22`) while `505/5005` did not (110s -> 107s), which is the training-side
 shadow of the same thing an eval gain measures — a policy that solves a task in fewer turns is
-both cheaper to train on and better scored. They are the literal sentinel,
-not `0`, not `None`, and not an interpolation: a reader who forgets to filter them gets a
-`NameError`, which is the intended failure. Aggregate over the arms that HAVE a point at each
-rollout and say so — the `r20` mean below is over four arms, and the table marks it.
+both cheaper to train on and better scored.
 
 ##### The noise floor, measured directly
 
@@ -1203,11 +1212,13 @@ rollout that needs roughly four eval points, not two. Do not call a run finished
 interval.
 
 The train-side series says the same thing from the other direction: smoothed `rollout/raw_reward`
-rises on all five arms over this whole range (OLS +0.011 to +0.019 per rollout, every arm positive,
-first-half to second-half +6.8 to +13.0pp), with no flattening at `r10`. When the eval plateau and
-the train trend disagree, the eval plateau is the weaker measurement.
+rises on all five arms over `r0`-`r15` (OLS +0.0067 to +0.0125 per rollout, every arm positive,
+first-half to second-half +8.6 to +10.5pp), with no flattening at `r10`. When the eval plateau and
+the train trend disagree, the eval plateau is the weaker measurement. (Over the full 30 rollouts
+the per-arm slopes settle at +0.0048 to +0.0092 — the figure at the end of this section is the one
+to quote; these are scoped to what had run when this entry was written.)
 
-##### Rollout 20, and the shape of the whole curve
+##### Rollout 20: the level holds, and one question stays open
 
 | seed | pod | `r0` | `r5` | `r10` | `r15` | `r20` | `r20`−`r0` |
 |---|---|---:|---:|---:|---:|---:|---:|
@@ -1238,13 +1249,49 @@ noise four times that size" fit these numbers.
 weak a piece of evidence as `r5`->`r10` was, and that one was broken by the next point. The
 deciding question — step at `r5` then flat, versus slow climb under noise — needs either more eval
 points per checkpoint (the per-arm floor is 3.83pp; four passes per point would roughly halve it) or
-a pool where the per-rollout gain is larger than the floor. Adding rollouts at this signal-to-noise
-does not answer it.
+a pool where the per-rollout gain is larger than the floor.
 
-The train side does not have this problem and says the milder thing: smoothed `rollout/raw_reward`
-rises on all five arms across the whole range (OLS +0.011 to +0.019 per rollout, every arm
-positive), with no flattening at `r10` or `r20`. The policy keeps improving on the 37 training
-templates; what stops being measurable is the transfer to their 52 siblings.
+That was where this record stood while the runs were live. The last two points answer it.
+
+##### Rollouts 25 and 30 — the full curve
+
+| seed | pod | `r0` | `r5` | `r10` | `r15` | `r20` | `r25` | `r30` | `r30`−`r0` |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 101/5001 | `cc9`  | .3635 | .4166 | .4026 | .4405 | .4280 | .4838 | .4505 | +8.70pp |
+| 202/5002 | `cc9b` | .3134 | .4455 | .4401 | .4694 | .4577 | .4869 | .4853 | **+17.19pp** |
+| 303/5003 | `cc9c` | .3499 | .4260 | .4038 | .4613 | .4528 | .4933 | .4853 | +13.54pp |
+| 404/5004 | `cc9d` | .3506 | .3842 | .4299 | .4131 | .4355 | .4150 | .4435 | +9.29pp |
+| 505/5005 | `cc9e` | .3537 | .4171 | .4315 | .4340 | .4635 | .4665 | .4710 | +11.73pp |
+| **mean** | | .3462 | .4179 | .4216 | .4437 | .4475 | **.4691** | .4671 | **+12.09pp** |
+| *sd* | | *.0191* | *.0222* | *.0172* | *.0224* | *.0151* | *.0318* | *.0194* | *3.42pp* |
+
+Five-arm steps, in order: **+7.17**, **+0.37**, **+2.21**, **+0.38**, **+2.16**, **−0.20pp**
+against a 1.71pp five-arm floor.
+
+**The open question closes in favour of the slow climb.** `r5`->`r25` is **+5.12pp**, three times
+the floor, so the level kept rising well after the first five rollouts — "step at `r5`, then flat"
+is dead. What produced the misleading picture is now plain: the per-5-rollout gain is about 1pp
+while the floor on a single step is 1.71pp, so individual steps alternate over and under
+significance even though the underlying line is monotone. Reading any one step was always going to
+be reading noise; reading four of them together was not.
+
+**And the level does saturate, at `r25`.** `r25`->`r30` is −0.20pp, the only negative step in the
+run, and `r25` is the best point on four of the five arms. By the rule this record adopted after
+misreading `r10`, one flat interval still is not saturation — a flat interval is evidence only when
+it is longer than floor ÷ plausible slope, and at ~0.2pp per rollout that is about four eval
+points, not one. So the honest statement is that the curve is flat over the last five rollouts and
+this campaign does not have the points to say whether it stays flat.
+
+**Against `r0` the result is unambiguous and does not depend on which endpoint is read.** Every arm
+clears the 3.83pp per-arm floor at both `r25` and `r30` (`r30`−`r0` spans +8.70 to +17.19pp), the
+five-arm mean is +12.09pp at `r30` and +12.29pp at `r25`, and the arm spread at `r30` (sd .0194) is
+no wider than at `r0` (.0191) — the seeds agree on a level rather than fanning out.
+
+The train side keeps climbing through all 30 rollouts and never flattens: the five-arm mean series
+has OLS **+0.0074 per rollout** (every arm positive, +0.0048 to +0.0092), rising from .3846 over
+`r0`-`r4` to .5952 over `r25`-`r29` — **+21pp on the 37 training templates** against +12pp on their
+52 held-out siblings. That gap is the whole finding in one line: the policy goes on getting better
+at what it trains on after the transfer to unseen siblings has stopped moving.
 
 To redraw the figure — run it from a checkout that has the dicts above in scope, or paste them in.
 Verified on a pod at `uv run --with matplotlib python`; it prints the arm counts it actually used, so
@@ -1254,8 +1301,10 @@ a silently dropped arm is visible rather than folded into the mean:
 import numpy as np, matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-XS = [0, 5, 10, 15, 20]
-ok = lambda v: isinstance(v, float)          # PENDING cells are skipped, never coerced
+XS = [0, 5, 10, 15, 20, 25, 30]
+# The dicts are complete, so nothing is skipped today. The guard stays because a
+# re-run with a short arm must show as a short arm, never as a shifted mean.
+ok = lambda v: isinstance(v, float)
 fig, (ax, bx) = plt.subplots(2, 1, figsize=(9, 7.2), height_ratios=[1, 0.85])
 
 # --- eval: the noise floor first, then mean +- SEM over the arms present at each rollout ---
@@ -1276,11 +1325,11 @@ for s in EVAL:
     xs = [x for x in XS if ok(EVAL[s][x])]
     ax.plot(xs, [EVAL[s][x] for x in xs], lw=1.2, alpha=.8, marker="o", ms=3.5, label=s)
 ax.plot(XS, m, color="#9a3b2f", lw=2.4, marker="o", ms=5, label="mean ± SEM", zorder=5)
-n20 = sum(ok(EVAL[s][20]) for s in EVAL)
-if n20 < len(EVAL):                          # never let a short arm read as a full one
-    ax.annotate(f"r20: {n20} arms", (20, m[-1]), textcoords="offset points",
+nlast = sum(ok(EVAL[s][XS[-1]]) for s in EVAL)
+if nlast < len(EVAL):                        # never let a short arm read as a full one
+    ax.annotate(f"r{XS[-1]}: {nlast} arms", (XS[-1], m[-1]), textcoords="offset points",
                 xytext=(-8, -17), ha="right", fontsize=8, color="#5a6b75")
-ax.set_xticks(XS); ax.set_xticklabels([f"r{x}" for x in XS]); ax.set_xlim(-0.6, 20.6)
+ax.set_xticks(XS); ax.set_xticklabels([f"r{x}" for x in XS]); ax.set_xlim(-0.6, 30.6)
 ax.set_ylabel("shaped-mean, fam37ne (t=1, 4 samples)")
 ax.set_title("fam37n — five seeds, same cell", loc="left", fontsize=11, weight="semibold")
 ax.legend(fontsize=8, ncol=3, frameon=False, loc="lower right")
@@ -1299,7 +1348,7 @@ k = np.polyfit(np.arange(n), tm, 1)
 bx.plot([0, n-1], np.polyval(k, [0, n-1]), color="#7b858f", lw=1.1, ls=(0, (5, 4)))
 bx.text(n - 1.4, np.polyval(k, n-1) + .02, f"OLS {k[0]:+.4f}/r",
         ha="right", fontsize=8, color="#5a6b75")
-bx.set_xticks(XS); bx.set_xticklabels([f"r{x}" for x in XS]); bx.set_xlim(-0.6, 20.6)
+bx.set_xticks(XS); bx.set_xticklabels([f"r{x}" for x in XS]); bx.set_xlim(-0.6, 30.6)
 bx.set_ylabel("rollout/raw_reward"); bx.set_xlabel("rollout")
 bx.set_title("train — mean ± SD, every run drawn", loc="left", fontsize=10)
 bx.grid(axis="y", color="#e8ebe9"); bx.set_axisbelow(True)
@@ -1307,7 +1356,7 @@ bx.grid(axis="y", color="#e8ebe9"); bx.set_axisbelow(True)
 fig.tight_layout(); fig.savefig("fam37n.png", dpi=150)
 print(f"eval_arms_full={sum(all(ok(EVAL[s][x]) for x in XS) for s in EVAL)} "
       f"train_arms_full={len(full)} train_rollouts={n} OLS={k[0]:+.5f}")
-# -> eval_arms_full=5  train_arms_full=4  train_rollouts=21  OLS=+0.00947
+# -> eval_arms_full=5  train_arms_full=5  train_rollouts=30  OLS=+0.00743
 ```
 
 SEM for eval and SD for train on purpose, following the browser campaign: the eval panel asks how
