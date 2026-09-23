@@ -255,6 +255,40 @@ def test_freecad_reset_rejects_missing_guest_app(monkeypatch, tmp_path):
     assert checks == [(["which", "freecad"], {"timeout": 10, "check": True})] * 2
 
 
+def test_video_reset_requires_renderer_dependencies(monkeypatch, tmp_path):
+    import importlib.util
+
+    path = Path(c.__file__).parent / "docker" / "server.py"
+    spec = importlib.util.spec_from_file_location("osworld2_video_reset", path)
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)
+    monkeypatch.setattr(server, "_TASK_CLASS_DIR", str(tmp_path))
+    (tmp_path / "task_056.py").touch()
+    monkeypatch.setattr(server, "_load_task_from_file", lambda _: {"instruction": "video"})
+    events = []
+
+    def install(**kwargs):
+        assert all(package in kwargs["command"].split() for package in ("melt", "frei0r-plugins", "xvfb", "xauth"))
+        assert kwargs["check"]
+        events.append("install")
+        if len(events) == 1:
+            raise RuntimeError("package installation failed")
+
+    env = SimpleNamespace(
+        setup_controller=SimpleNamespace(execute=install),
+        controller=SimpleNamespace(get_screenshot=lambda: b"image"),
+        reset=lambda **kwargs: events.append("task setup"),
+        close=lambda: None,
+    )
+    monkeypatch.setattr(server, "_attached_desktop_env", lambda: env)
+    monkeypatch.setattr(server, "_encode_screenshot", lambda _: "image")
+    with pytest.raises(RuntimeError, match="package installation failed"):
+        server.reset(server.ResetBody(task_id="056"))
+    assert events == ["install"]
+    assert server.reset(server.ResetBody(task_id="056"))["instruction"] == "video"
+    assert events == ["install", "install", "task setup"]
+
+
 def test_freecad_scorer_runs_on_four_cpus_with_bounded_allocator(monkeypatch):
     import os
     import runpy

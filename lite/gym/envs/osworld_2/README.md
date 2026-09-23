@@ -105,7 +105,7 @@ reach the service:
 
 **Coverage limits.** Matching upstream files do not imply that every interaction protocol is implemented. The current wrapper does not support the seven simulated-user conversation tasks or the multi-phase task. GitLab tasks require the GitLab URL/token; website tasks require the stack above. Check `exclude_reason` and record the selected task IDs/count when reporting a run. Task 029's known setup timeout is also documented in the official v2.1 release; do not patch it silently.
 
-**Task 056 rendering.** The pinned official VM bundles Shotcut as an AppImage but lacks `melt` at the system/Snap paths searched by the upstream evaluator. Submissions that reach video rendering can therefore fail with `Task056 replay infrastructure failed`, including on the unmodified official image.
+**Task 056 rendering.** Reset installs `melt`, `frei0r-plugins`, `xvfb`, and `xauth` before task setup. The pinned official VM bundles Shotcut as an AppImage but lacks the command-line renderer searched by the upstream evaluator. Installation failures abort reset; the task and scoring code remain unchanged.
 
 ## Available Tasks
 

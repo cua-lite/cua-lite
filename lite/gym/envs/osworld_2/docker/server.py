@@ -230,6 +230,15 @@ def reset(body: ResetBody) -> dict:
             except Exception:
                 pass
         _env = _attached_desktop_env()
+        if body.task_id == "056":
+            # The official VM's Shotcut AppImage does not install the CLI renderer.
+            _env.setup_controller.execute(
+                command=(f"printf '%s\\n' {shlex.quote(_CLIENT_PASSWORD)} | sudo -S -p '' "
+                         "env DEBIAN_FRONTEND=noninteractive sh -c "
+                         "'apt-get -qq update && apt-get -o DPkg::Lock::Timeout=180 "
+                         "install -y --no-install-recommends melt frei0r-plugins xvfb xauth > /dev/null'"),
+                shell=True, timeout=300, check=True,
+            )
         volume_size = task.get("volume_size")
         if volume_size is not None:
             if volume_size != int(os.environ.get("OSWORLD_VOLUME_SIZE", "0")):
