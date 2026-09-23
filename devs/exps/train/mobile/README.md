@@ -835,7 +835,8 @@ instance-generator, and no number of seeds will turn it into that.
 
 #### Five seeds — the record
 
-**Launched 2026-09-22 ~09:25 UTC on five pods. This record stops at rollout 20.** The runs go to
+**Launched 2026-09-22 ~09:25 UTC on five pods; all five ran the full 30 rollouts. This record
+stops at rollout 20.** The runs go to
 30 — the pods would otherwise idle, so the last ten rollouts cost nothing — but `r25` and `r30` are
 kept as supporting evidence rather than written here: five arms x five eval points is the frame the
 conclusions below are drawn on, and extending it mid-analysis invites reading whichever endpoint
@@ -872,13 +873,18 @@ TRAIN = {  # "rs/sd" -> [rollout/raw_reward], index = rollout, temperature 1.0, 
                0.609375,0.559245,0.354818,0.451497,0.825781],
   "505/5005": [0.566081,0.348438,0.465820,0.347005,0.402344,0.381836,0.410156,0.499935,
                0.549154,0.630339,0.495768,0.328125,0.526823,0.647786,0.404427,0.528320,
-               0.721484,0.504557,0.554818,0.521484] + [PENDING],   # r20 still generating
+               0.721484,0.504557,0.554818,0.521484,0.481445],
 }
 ```
 
-`505/5005` runs about two rollouts behind the other four (its rollout cycle has been 34-51 min
-against their 23-31). Its eval is now complete; the one remaining `PENDING` is its `r20` train
-reward, which is logged only when that rollout's generation finishes. They are the literal sentinel,
+Both dicts are complete — no `PENDING` remains. `505/5005` ran two to four rollouts behind the
+others throughout (35.6 min per rollout against 26.9-30.7), not from a slower host: the five pods
+are identical A100-SXM4-80GB nodes with the same NVLink topology and CPU. It was doing more work
+per step — 1016 micro-batches per optimizer step against `101/5001`'s 865, i.e. longer sampled
+trajectories. Worth noting alongside it: `101/5001` ACCELERATED over the run (90s per step at
+`r0-r7`, 69s at `r15-r22`) while `505/5005` did not (110s -> 107s), which is the training-side
+shadow of the same thing an eval gain measures — a policy that solves a task in fewer turns is
+both cheaper to train on and better scored. They are the literal sentinel,
 not `0`, not `None`, and not an interpolation: a reader who forgets to filter them gets a
 `NameError`, which is the intended failure. Aggregate over the arms that HAVE a point at each
 rollout and say so — the `r20` mean below is over four arms, and the table marks it.
