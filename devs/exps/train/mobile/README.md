@@ -935,21 +935,13 @@ two sides is the reward, and that lives in the manifests.
 #                   them; the mean additionally resolves partial progress, which the binomial
 #                   stderr of the bare SR (2.8pp at n=256) cannot. Leaving it to the config
 #                   would default to false and silently cost that resolution.
-# No --filter on either side: the full 160 / 256 splits, no L1+L2 subset.
+# No --filter: the full 256-row eval split, no L1+L2 subset.
+# Only the EVAL split is exported. The 160-row train split was the manifest of a superseded
+# arm; nothing in this file consumes it any more, so it is not committed and not rebuilt.
 DATA=devs/exps/train/mobile/data
-TRAIN="$DATA/mobilegym.train160.shaped.parquet"
 EVAL="$DATA/mobilegym.eval256.shaped.parquet"
 CFG=devs/exps/train/mobile/configs/qwen3_5/mobile.use.i1.reasoning.yaml
 mkdir -p "$DATA"
-
-if [ -e "$TRAIN" ]; then
-  echo "keep existing fixed train manifest: $TRAIN"
-else
-  env -u CUA_LITE_ENV_SERVER_URL -u CUA_LITE_ENV_SERVER_TOKEN \
-    uv run python -m lite.train.export.export_tasks --env-id mobilegym --split train \
-      --env-kwargs '{"reward_shaping": true}' \
-      -o "$TRAIN"
-fi
 
 if [ -e "$EVAL" ]; then
   echo "keep existing fixed eval manifest: $EVAL"
@@ -967,7 +959,7 @@ and this reproduces that merge exactly (same two functions the engine calls) for
 manifests.
 
 ```bash
-uv run python - "$CFG" "$TRAIN" true "$EVAL" true <<'PY'
+uv run python - "$CFG" "$EVAL" true <<'PY'
 import sys
 
 import pandas as pd
@@ -999,9 +991,8 @@ for path, want in zip(sys.argv[2::2], sys.argv[3::2]):
 PY
 ```
 
-Expected output — 160 train rows and 256 eval rows all merging to `True`, zero bad rows on both:
+Expected output — all 256 eval rows merging to `True`, zero bad rows:
 
-    devs/exps/train/mobile/data/mobilegym.train160.shaped.parquet:  rows=160 reward_shaping=True  bad_rows=0
     devs/exps/train/mobile/data/mobilegym.eval256.shaped.parquet:   rows=256 reward_shaping=True  bad_rows=0
 
 Re-run this whenever the profile yaml changes. A shaping key added there would be overridden on both
@@ -1092,6 +1083,34 @@ Expected output — one policy per manifest, never two:
 
 Those two `tasks_sha` values are the cell's identity: they cover the task list and its order, so a
 host that prints different ones is not running this experiment whatever the row counts say.
+
+**The four manifests the arms read are committed, and the recipe checks itself against them.**
+`devs/exps/train/mobile/data/` holds exactly what a documented run consumes, following the browser
+campaign's convention:
+
+| file | rows | role | sha256 |
+|---|---:|---|---|
+| `mobilegym.fam37n.shaped.parquet` | 37 | train, the five-seed cell | `e239ea71…` |
+| `mobilegym.fam37.shaped.parquet` | 37 | train, the pinned-instance control | `54972b44…` |
+| `mobilegym.fam37ne.shaped.parquet` | 52 | eval, **shared by both arms** | `40369012…` |
+| `mobilegym.eval256.shaped.parquet` | 256 | Stage-2 input | `7fbd2ee5…` |
+
+The two arms share the eval manifest byte-for-byte — the eval side does not depend on the train
+side's tag — which is exactly why their curves are comparable. An earlier `fam37e` was a second
+name for those same bytes and is gone. Append this to Stage 2 to make the recipe verify itself
+rather than just run:
+
+```python
+import hashlib
+for name in ("fam37n", "fam37ne", "fam37"):
+    p = f"{DATA}/mobilegym.{name}.shaped.parquet"
+    print(name, hashlib.sha256(open(p, "rb").read()).hexdigest()[:16])
+# -> fam37n e239ea71f7c73697 / fam37ne 4036901241a09035 / fam37 54972b44650e3a39
+```
+
+A different sha means the derivation moved under you — `tasks.json` changed, or `eval256` was
+re-exported from a different commit. Regenerating a file is not reproduction unless there is
+something to compare the result against; these three lines are that something.
 
 **This chain was verified end to end, not assumed** (2026-09-22, `tasks.json` sha256 `96acea86…`):
 
@@ -1337,7 +1356,7 @@ triple is luck, not precision. Both arms still rise well past that: `fam37n` +6.
 uv run python scripts/rollout.py \
   --model-id Qwen/Qwen3.5-4B --model-path "$CKPT" \
   --env-id mobilegym --concurrency 16 \
-  --prompt-data "$W/devs/exps/train/mobile/data/mobilegym.fam37e.shaped.parquet" \
+  --prompt-data "$W/devs/exps/train/mobile/data/mobilegym.fam37ne.shaped.parquet" \
   --env-kwargs '{"reward_shaping": true}' \
   --group-size 4 --sampling-kwargs '{"temperature": 1.0}' \
   --config-path "$W/devs/exps/train/mobile/configs/qwen3_5/mobile.use.i1.reasoning.yaml" \
