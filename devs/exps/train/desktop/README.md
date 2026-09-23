@@ -802,6 +802,31 @@ negative, 22.7% positive), contamination level and pool provenance were each che
 orders the outcomes. Treat a single run's number as uninformative until the repeat spread below
 has been measured.
 
+**Result: the gain is task-level contamination, and the A/B shows it.** Two runs, identical base
+checkpoint, config, hyperparameters, step count and eval; the only difference is 64 `perturb` tasks
+added to the pool. Read against a baseline measured four independent times on this eval set
+(0.3594 / 0.3386 / 0.3399 / 0.3399, sd 1.11pp, so 2 sigma is 2.2pp):
+
+| arm | pool | delta at 16 steps |
+|---|---|---:|
+| A | `scalecua_rl` 214 — environment-level only | 0.3399 -> 0.3438  **+0.39pp** (flat) |
+| B | A + `perturb` 64, covering 46 of the 115 eval tasks | 0.3399 -> 0.3860  **+4.61pp** (4.2 sigma) |
+
+Arm A vs arm B differ by 4.22pp, t = 2.9. Both arms' in-training `rollout/raw_reward` rose, so the
+training curve does not separate them: A ran 0.548 / 0.637 / 0.473 / 0.600 and B 0.498 / 0.531 /
+0.551 / 0.610. Only the eval does.
+
+That single variable also explains every earlier run in the table above. Pools carrying
+eval-instruction analogues went +4.71 / +7.45 (impress rewrite pool), +6.52 / +7.61 (calc pool,
+27 of 141 rows `perturb`) and +4.61 (arm B) — three for three. Pools without them went +0.39
+(arm A), -2.24 (impress full), -0.25 (10-domain 1000-task), +0.82 at t=0.43 (4-domain) and one
+collapse to 0.0000 — nought for five.
+
+**So the finding is not "GRPO does not work on desktop". It is narrower and checkable:** at this
+scale the eval gain comes from task-level eval-derived rows in the training pool. Environment-level
+sharing — `lite.scalecua rl`, same starting screens with new goals and new verifiers — produces
+nothing on its own. Any desktop RL number here has to say which of the two its pool contained.
+
 **Contamination.** The training pool is `scalecua_rl`, which `utils/tasks.py` labels
 **environment-level** (same starting screens, new goals and verifiers). 99 of the 115 eval tasks
 have a same-setup task in the pool. `perturb` is excluded: it is **task-level** (rewrites of the
@@ -823,9 +848,10 @@ stochastic, so the committed sidecar is the pinned artifact, not the recipe.
 DATA=devs/exps/train/desktop/data
 TRAIN="$DATA/grpo.scalecua_rl.libreoffice.g4.n214.usable.parquet"
 EVAL="$DATA/osworld.eval115.libreoffice.parquet"
+ARMB="$DATA/grpo.libreoffice.armB.scalecua214_perturb64.parquet"
 
-if [ -e "$TRAIN" ] && [ -e "$EVAL" ]; then
-  echo "keep existing fixed manifests: $TRAIN $EVAL"
+if [ -e "$TRAIN" ] && [ -e "$EVAL" ] && [ -e "$ARMB" ]; then
+  echo "keep existing fixed manifests: $TRAIN $EVAL $ARMB"
 else
   uv run python - "$DATA" <<'PY'
 import sys
@@ -834,7 +860,7 @@ sys.path.insert(0, "devs/exps/train/desktop")
 import pandas as pd
 
 from lite.utils.parquet import write_records_to_parquet
-from utils.tasks import SCA, _read_jsonl, domain_of, eval_rows, pool_of
+from utils.tasks import OSW, SCA, _read_jsonl, domain_of, eval_rows, pool_of
 
 D = sys.argv[1]
 LO = {"libreoffice_calc", "libreoffice_impress", "libreoffice_writer"}
@@ -855,7 +881,16 @@ write_records_to_parquet([row("lite.scalecua", t, "rl") for t in train],
                          f"{D}/grpo.scalecua_rl.libreoffice.g4.n{len(train)}.usable.parquet")
 write_records_to_parquet([row("lite.osworld", t, "eval") for t in ev],
                          f"{D}/osworld.eval{len(ev)}.libreoffice.parquet")
-print(f"wrote {len(train)} train tasks and {len(ev)} eval tasks")
+# Arm B adds the task-level-contaminated rows back and changes nothing else. It exists to be
+# compared against the pool above; never report a number trained on it without that label.
+pt = {r["task_id"]: r for r in _read_jsonl(OSW / "train.perturb.jsonl")}
+pb = sorted(t for t, b in bucket.items()
+            if b in USABLE and pool_of(t) == "perturb"
+            and pt.get(t) is not None and domain_of(pt[t]) in LO)
+write_records_to_parquet([row("lite.scalecua", t, "rl") for t in train]
+                         + [row("lite.osworld", t, "train.perturb") for t in pb],
+                         f"{D}/grpo.libreoffice.armB.scalecua{len(train)}_perturb{len(pb)}.parquet")
+print(f"wrote {len(train)} train, {len(ev)} eval, arm-B pool {len(train) + len(pb)}")
 PY
 fi
 
