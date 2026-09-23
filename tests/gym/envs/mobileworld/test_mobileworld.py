@@ -10,6 +10,9 @@ Run:
 
 from __future__ import annotations
 
+import shlex
+from pathlib import Path
+
 import pytest
 
 import lite.gym as gym
@@ -18,7 +21,9 @@ from lite.core.messages.final import make_no_tool_call_final_actions
 from lite.core.tools import make_tool_call
 from lite.core.tools.calls import tool_call_arguments, tool_call_name
 from lite.core.tools.schemas import tool_schema_name, tool_schema_parameters
+from lite.core.utils.filters import parse_filter
 from lite.gym.envs.mobileworld.main import _TASKS, MobileWorldEnv
+from lite.infer.rollout import collect_tasks
 
 
 def _tool_schema(env: MobileWorldEnv, name: str) -> dict:
@@ -51,6 +56,35 @@ def test_task_registration_counts():
     assert not any(
         "agent-mcp" in _TASKS[t]["tags"] for t in ids["eval"]
     )
+
+
+def test_interaction_tasks_have_exclude_reason_in_registered_and_live_metadata():
+    ids = gym.registry.task_ids("mobileworld", split="eval")
+    excluded = []
+    for task_id in ids:
+        expected = "ask_user" if "agent-user-interaction" in _TASKS[task_id]["tags"] else None
+        registered = gym.registry.task_metadata("mobileworld", task_id)
+        live = MobileWorldEnv(task_id=task_id, extra_tools=["ask_user"]).metadata
+        assert registered.others.get("exclude_reason") == expected
+        assert live.others.get("exclude_reason") == expected
+        if expected:
+            excluded.append(task_id)
+    assert len(ids) == 161
+    assert len(excluded) == 44
+
+
+def test_eval_runner_filter_selects_all_gui_only_tasks():
+    runner = Path(__file__).resolve().parents[4] / "devs/exps/eval/mobileworld/run.sh"
+    command = runner.read_text().split("exec uv run python scripts/rollout.py", 1)[1]
+    args = shlex.split(command.replace("\\\n", ""))
+    keep = parse_filter(args[args.index("--filter") + 1])
+    _, selected = collect_tasks("mobileworld", splits=["eval"], filter_fn=keep)
+    expected = {
+        task_id for task_id, task in _TASKS.items()
+        if not {"agent-mcp", "agent-user-interaction"}.intersection(task["tags"])
+    }
+    assert set(selected) == expected
+    assert len(selected) == 117
 
 
 def test_services_ensure_uses_dependency_preflight(monkeypatch):

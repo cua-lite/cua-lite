@@ -41,14 +41,12 @@
 #   - /dev/kvm rw-accessible (kvm group or setfacl).
 #   - cua-lite/mobileworld docker image built via
 #       uv run --no-sync bash lite/gym/envs/mobileworld/scripts/install.sh
-#   - OPENAI_API_KEY exported before containers spawn; set OPENAI_BASE_URL only
-#     for a custom endpoint. The 44 agent-user-interaction tasks drive a
-#     simulated-user LLM (server_kwargs.user_agent_model) through it; without
-#     it those tasks fail while the 117 GUI-only tasks still run.
+#   - The default GUI-only task set needs no simulated-user LLM credentials.
 #
 # Env shape (see lite/gym/envs/mobileworld/README.md):
-#   - eval split = 161 deterministic tasks (201 upstream − 40 agent-mcp) across
-#     20 apps; reward is the real state-based score from /task/eval (truncated
+#   - eval split = 161 registered tasks (201 upstream − 40 agent-mcp); the
+#     exclude_reason filter skips 44 ask_user tasks, leaving 117 GUI-only tasks
+#     across 20 apps. Reward is the real state-based score from /task/eval (truncated
 #     episodes still get their real score — upstream parity, not automatic 0).
 #   - Each task runs in a privileged Docker-in-Docker box (nested dockerd +
 #     rooted emulator + app backends) — the heaviest per-create env in the
@@ -120,18 +118,6 @@ if [ -n "$DIRTY" ]; then
   exit 1
 fi
 
-# Pre-flight: the simulated-user LLM key for the 44 agent-user-interaction
-# tasks. Non-fatal — GUI-only tasks (117) don't need it — but a full-suite
-# campaign without it will leave the ask_user tasks failing until a mop-up
-# round with the key exported. This wrapper can only inspect the invoking shell;
-# in env-server mode the key that matters is the env-server/container-spawn
-# process environment.
-if [ -z "${OPENAI_API_KEY:-}" ]; then
-  echo "[run.sh] WARNING: OPENAI_API_KEY unset — the 44 agent-user-interaction (ask_user) tasks will fail." >&2
-  echo "  export OPENAI_API_KEY on the env-server host before it spawns containers; set OPENAI_BASE_URL only for a custom endpoint." >&2
-  sleep 5
-fi
-
 # Resolve $COMMIT_DIR. Prefer reusing the latest existing campaign dir whose
 # commit's pipeline state matches HEAD's (so doc-only commits between campaigns
 # don't fragment paths). Fall through to a fresh HEAD-keyed dir otherwise.
@@ -197,6 +183,7 @@ echo "         config=$CFG"
 HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   --model-id "$MODEL" \
   --env-id mobileworld --splits eval \
+  --filter "lambda m: not m.others.get('exclude_reason')" \
   --concurrency "$CONCURRENCY" \
   --env-kwargs '{"step_timeout": 240}' \
   --config-path "$CFG" \

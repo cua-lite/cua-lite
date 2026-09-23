@@ -1,6 +1,6 @@
 # UI-TARS-7B-DPO rollout eval on MobileWorld
-# 161 tasks (201 upstream − 40 agent-mcp) across 20 apps in DinD boxes,
-# evaluated by real device / backend state.
+# 161 registered tasks; the eval runner filters 44 ask_user tasks, leaving
+# 117 GUI-only tasks evaluated by real device / backend state.
 #
 # Related configs (sync env_kwargs / sampling when changing):
 #   - scripts/configs/ui_tars_15_v1/default/mobileworld.yaml  (UI-TARS-1.5-7B)
@@ -10,9 +10,8 @@
 # (UI-TARS/README_deploy.md: temperature=0.0, top_p=None, max_tokens=400) so
 # ui_tars vs ui_tars_15_v1 runs are comparable on the same benchmark.
 #
-# NOTE: the 46 agent-user-interaction tasks need the ``ask_user`` extra
-# tool, which UI-TARS's fixed action grammar cannot express — expect those
-# tasks to score 0; GUI-only tasks are unaffected.
+# Interaction tasks carry exclude_reason="ask_user". Direct rollout calls
+# should pass --filter "lambda m: not m.others.get('exclude_reason')".
 
 agent_id: "ui_tars"
 agent_kwargs:

@@ -1,6 +1,6 @@
 # Step-GUI (GELab-Zero) rollout eval on MobileWorld
-# 161 tasks (201 upstream − 40 agent-mcp) across 20 apps in DinD boxes,
-# evaluated by real device / backend state.
+# 161 registered tasks; the eval runner filters 44 ask_user tasks, leaving
+# 117 GUI-only tasks evaluated by real device / backend state.
 #
 # Sampling per upstream main gui model_config (temperature=0.1, top_p=0.95)
 # — same as the androidworld sibling config. Step-GUI uses a rolling summary
@@ -9,9 +9,8 @@
 # Related configs (sync env_kwargs when changing):
 #   - scripts/configs/step_gui/default/androidworld.yaml  (mobile sibling)
 #
-# NOTE: the 46 agent-user-interaction tasks need the ``ask_user`` extra
-# tool, which Step-GUI's fixed action grammar cannot express — expect those
-# tasks to score 0; GUI-only tasks are unaffected.
+# Interaction tasks carry exclude_reason="ask_user". Direct rollout calls
+# should pass --filter "lambda m: not m.others.get('exclude_reason')".
 
 agent_id: "step_gui"
 agent_kwargs:
