@@ -768,3 +768,218 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
   than whatever is last.
 - Compare against the `gpt5_5` + `<think>` / `highr.i1` SFT cell, not the base row: this run is
   RL-from-SFT, not RL-from-base.
+
+#### LibreOffice family transfer
+
+A second RL experiment, separate from the overfit run above: train on **Lite.ScaleCUA `rl`**
+tasks from the three LibreOffice applications, score on the **`lite.osworld` eval** tasks of those
+same three. It exists because seven earlier single-domain runs disagreed with each other, and the
+unit "one domain" turned out to be too small to read.
+
+**Why the application family and not one domain.** Picking `libreoffice_calc` or
+`libreoffice_impress` after the fact is selection: eight domains splitting a null result guarantee
+one reads positive. LibreOffice is an a-priori unit — one office suite, shared UI idioms, shared
+save/verify semantics — and it covers **115 of the 328** scored eval tasks, so the denominator is
+fixed before any number is looked at.
+
+**What the earlier runs measured.** All at `LR=3e-6`, `RBS=32`, `nspr=8`, 4 steps per rollout,
+from the same `gpt5_5` + `<think>` / `highr.i1` SFT checkpoint. The delta is against each run's
+own step-0 eval:
+
+| training pool | pool size | eval | step | delta |
+|---|---:|---|---:|---:|
+| impress, full | 116 | impress 47, n=8 | 16 | **−2.24pp** |
+| impress, eval-instruction rewrites | 50 | impress 47, n=8 | 16 | **+4.71pp** |
+| impress, same, continued | 50 | impress 47, n=8 | 36 | **+7.45pp** |
+| calc, eval-instruction rewrites | — | calc 46, n=8 | 20 / 40 | **+1.63pp** / +1.63pp |
+| calc, calibrated | 141 | calc 46, n=4 | 16 | **+6.52pp** |
+| 4 domains mixed | — | 124, n=8 | 24 / 48 | **+3.97pp** / +1.97pp |
+| 10 domains, 1000 tasks | 1000 | 328, n=4 | 12 | **−0.25pp** |
+
+Mean of the four single-domain runs is +2.66pp with a spread of 3.8pp, i.e. **t ≈ 1.4 — not
+significant**. No factor separates them: pool size, per-rollout pool coverage (64% positive, 27.6%
+negative, 22.7% positive), contamination level and pool provenance were each checked and none
+orders the outcomes. Treat a single run's number as uninformative until the repeat spread below
+has been measured.
+
+**Contamination.** The training pool is `scalecua_rl`, which `utils/tasks.py` labels
+**environment-level** (same starting screens, new goals and verifiers). 99 of the 115 eval tasks
+have a same-setup task in the pool. `perturb` is excluded: it is **task-level** (rewrites of the
+eval instructions), and the same file records SFT on its successes measuring −6.77pp at 8 updates
+and −14.49pp at 26. `synth` is excluded because no run that produced a gain used it.
+
+<details>
+<summary>Data</summary>
+
+Both manifests are pure functions of tracked files, so two builds on two clusters are
+byte-identical — verified. The train pool reads the **committed calibration sidecar**
+(`*.calibration.parquet`, one `bucket` per task from a `g=4` pass), not a rollout log, so
+rebuilding it needs no GPU. Regenerating that sidecar from scratch is the `build-candidates` →
+`scripts/rollout.py` → `calibrate` path in [`TASKS.md`](/devs/exps/train/desktop/TASKS.md); it is
+stochastic, so the committed sidecar is the pinned artifact, not the recipe.
+
+```bash
+# --- ONE-TIME DATA BUILD; skip generation for any file that already exists ---
+DATA=devs/exps/train/desktop/data
+TRAIN="$DATA/grpo.scalecua_rl.libreoffice.g4.n214.usable.parquet"
+EVAL="$DATA/osworld.eval115.libreoffice.parquet"
+
+if [ -e "$TRAIN" ] && [ -e "$EVAL" ]; then
+  echo "keep existing fixed manifests: $TRAIN $EVAL"
+else
+  uv run python - "$DATA" <<'PY'
+import sys
+sys.path.insert(0, "devs/exps/train/desktop")
+
+import pandas as pd
+
+from lite.utils.parquet import write_records_to_parquet
+from utils.tasks import SCA, _read_jsonl, domain_of, eval_rows, pool_of
+
+D = sys.argv[1]
+LO = {"libreoffice_calc", "libreoffice_impress", "libreoffice_writer"}
+# The only two buckets that carry a gradient; the rest give identically-zero advantage.
+USABLE = {"mixed_success", "all_fail_with_reward_variance"}
+row = lambda env, t, split: {"problem": f"Complete the task: {t}",
+                             "metadata": {"env_key": f"{env}@{t}", "split": split}}
+
+cal = pd.read_parquet(f"{D}/desktop.combined3.calibrated.g4.sample2110.seed42.calibration.parquet")
+bucket = dict(zip(cal["task_id"], cal["bucket"]))
+rl = {r["task_id"]: r for r in _read_jsonl(SCA / "rl.jsonl")}
+# sorted() is load-bearing: it is what makes two independent builds byte-identical.
+train = sorted(t for t, b in bucket.items()
+               if b in USABLE and pool_of(t) == "scalecua_rl"
+               and rl.get(t) is not None and domain_of(rl[t]) in LO)
+ev = sorted(r["task_id"] for r in eval_rows(scored_only=True) if domain_of(r) in LO)
+write_records_to_parquet([row("lite.scalecua", t, "rl") for t in train],
+                         f"{D}/grpo.scalecua_rl.libreoffice.g4.n{len(train)}.usable.parquet")
+write_records_to_parquet([row("lite.osworld", t, "eval") for t in ev],
+                         f"{D}/osworld.eval{len(ev)}.libreoffice.parquet")
+print(f"wrote {len(train)} train tasks and {len(ev)} eval tasks")
+PY
+fi
+
+uv run python - "$TRAIN" "$EVAL" <<'PY'
+import hashlib
+import sys
+
+import pandas as pd
+
+import lite.gym as gym
+from lite.data.staging import coerce_meta
+
+LO = {"libreoffice_calc", "libreoffice_impress", "libreoffice_writer"}
+keys = lambda p: [coerce_meta(r["metadata"])["env_key"] for _, r in pd.read_parquet(p).iterrows()]
+train_keys, eval_keys = keys(sys.argv[1]), keys(sys.argv[2])
+
+assert len(train_keys) == 214 and len(eval_keys) == 115
+assert all(k.startswith("lite.scalecua@") for k in train_keys)
+assert all(k.startswith("lite.osworld@") for k in eval_keys)
+# No task-level-contaminated corpus in the training pool.
+assert all(k.split("@", 1)[1].startswith("scalecua_") for k in train_keys)
+for env, ks in (("lite.scalecua", train_keys), ("lite.osworld", eval_keys)):
+    for k in ks:
+        others = gym.registry.task_metadata(env, k.split("@", 1)[1]).others
+        assert others.get("domain") in LO, k
+        assert not others.get("exclude_reason"), k
+sha = lambda ks: hashlib.sha256("\n".join(ks).encode()).hexdigest()
+print("LibreOffice RL data ok: 214 Lite.ScaleCUA train tasks (calc 93 / impress 55 / writer 66), "
+      "115 OSWorld eval tasks (calc 46 / impress 47 / writer 22), "
+      f"train_sha256={sha(train_keys)} eval_sha256={sha(eval_keys)}")
+PY
+```
+
+The committed manifests are pinned at
+
+    train  214 tasks, 3 domains, calc 93 / impress 55 / writer 66
+           env_key_sha256 5a076dfccde4808c16849bac9a4495709b3344c10bdf6942f9c9ae1bdbcdbef1
+    eval   115 tasks, 3 domains, calc 46 / impress 47 / writer 22
+           env_key_sha256 08bd93883004b4e747fbf04eeda73d47708b572bbde4c5c1c26144069ddfc66a
+
+</details>
+
+**Measure the eval's own spread before reading any delta.** This campaign has already published
+one apparent +8.6pp that came back as +0.48pp under re-measurement, and the three noise figures on
+record disagree in the wrong direction (128 tasks at n=1 gave sd 5.5pp; 47 tasks at n=4 gave a
+±0.77pp half-range; 47 tasks at n=8, i.e. MORE trajectories, gave two draws 1.8pp apart). None of
+them is this eval set. Score the step-0 checkpoint on the 115 twice, independently, before running
+anything — 2 x ~44 min, and it is the threshold every later number is read against:
+
+```bash
+W=/workspaces/cua-lite
+P=desktop.use.highr.i1.reasoning
+CKPT=$W/.ckpts/pulled/sft.highr.i1.reasoning.gpt5_5/epoch_2
+for R in p1 p2; do
+  uv run python scripts/rollout.py \
+    --model-id Qwen/Qwen3.5-4B --model-path "$CKPT" \
+    --env-id lite.osworld \
+    --prompt-data "$W/devs/exps/train/desktop/data/osworld.eval115.libreoffice.parquet" \
+    --group-size 4 --group-shared-seed false \
+    --sampling-kwargs '{"temperature": 1.0}' \
+    --concurrency 24 --max-attempts 1 --save-video false --save-gif false \
+    --config-path "$W/devs/exps/train/desktop/configs/qwen3_5/$P.yaml" \
+    --log-root "$W/.logs/rollout/Qwen_Qwen3.5-4B/lite.osworld/lo115.base.$R"
+done
+```
+
+Only `temperature` is overridden: the config yaml pins it to `0.0` for greedy rollout, and this
+measurement has to match the sampled eval it is the noise floor for. Everything else stays at
+`DEFAULT_SAMPLING_KWARGS` (`top_p` 1.0, `max_new_tokens` 2048) — `extract_sampling_kwargs`
+merges default < yaml < CLI rather than replacing, so omitting a key keeps the default.
+
+```bash
+# --- Slime container ---
+# Train on LibreOffice Lite.ScaleCUA rl tasks, score on the LibreOffice lite.osworld eval tasks.
+# Every knob below is what the four single-domain pilots ran; only the two manifests change, so a
+# result here is comparable to that table rather than a new point in a new space.
+W=/workspaces/cua-lite
+P=desktop.use.highr.i1.reasoning
+CELL=grpo.$P.libreoffice.n214.from_sft
+CKPT=$W/.ckpts/pulled/sft.highr.i1.reasoning.gpt5_5/epoch_2
+
+: "${CUA_LITE_ENV_SERVER_URL:?paste export line from env-server shell}"
+: "${CUA_LITE_ENV_SERVER_TOKEN:?paste export line from env-server shell}"
+[ -d "$CKPT" ] || { echo "MISSING CKPT=$CKPT"; exit 1; }
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
+  MODEL_ID=Qwen/Qwen3.5-4B \
+  HF_CKPT="$CKPT" \
+  CUA_LITE_MULTIMODAL_LAZY_EXPAND=1 \
+  ENV_ID=lite.osworld \
+  PROMPT_DATA="$W/devs/exps/train/desktop/data/grpo.scalecua_rl.libreoffice.g4.n214.usable.parquet" \
+  EVAL_PROMPT_DATA="$W/devs/exps/train/desktop/data/osworld.eval115.libreoffice.parquet" \
+  CONFIG_PATH="$W/devs/exps/train/desktop/configs/qwen3_5/$P.yaml" \
+  ENV_CONCURRENCY=24 \
+  ROLLOUT_BATCH_SIZE=32 N_SAMPLES_PER_PROMPT=8 NUM_STEPS_PER_ROLLOUT=4 \
+  ROLLOUT_TEMPERATURE=1.0 ROLLOUT_MAX_RESPONSE_LEN=2048 \
+  LR=3e-6 \
+  EVAL_TEMPERATURE=1 N_SAMPLES_PER_EVAL_PROMPT=4 \
+  EVAL_INTERVAL=2 SKIP_EVAL_BEFORE_TRAIN=0 \
+  SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=2 NUM_ROLLOUT=4 \
+  SAVE_HF_DIR="$W/.ckpts/qwen3_5-4b/$CELL/iter_{rollout_id}" \
+  SAVE_DIR="/root/checkpoints/qwen3_5-4b/$CELL/megatron" \
+  WANDB_GROUP_SUFFIX=".$CELL" \
+  bash "$W/scripts/train/run_grpo.sh"
+```
+
+- **The env-server must serve both envs** (`--env-ids lite.scalecua lite.osworld`): training rows
+  carry `lite.scalecua@...`, eval rows carry `lite.osworld@...`, and the engine resolves per row.
+- **`ENV_ID=lite.osworld` even though training is `lite.scalecua`.** `ENV_ID` never picks the env;
+  it selects the W&B group, which env preflight probes and reaps, and the **eval dataset label**.
+  Pointing it at the eval env is what makes the curve read `eval/lite.osworld_eval`, matching every
+  earlier run in the table. `lite.scalecua` there would label an `lite.osworld` eval
+  `lite.scalecua_eval`.
+- **`NUM_ROLLOUT=4` is 4 rollouts = 16 optimizer steps = 1024 trajectories, with 3 evals** (step 0,
+  8, 16 — `EVAL_INTERVAL=2` plus the step-0 pass). 16 is where both positive pilots were read, and
+  there is no evidence more helps: the 4-domain run peaked at 24 steps (+3.97pp) and fell back by 48
+  (+1.97pp), and the calc rewrite pool was flat from 20 to 40. Budget ~5.2h: 4 x (20 min sampling +
+  25 min training) + 3 x 44 min eval, measured on the calc pilot and rescaled for `ENV_CONCURRENCY=24`
+  and a 460-trajectory eval.
+- **Run it more than once.** The four pilots spread 3.8pp, but all four used DIFFERENT pools, so
+  that number mixes recipe effect with run noise and bounds neither. No two runs in this campaign
+  have ever shared a pool AND a config, so the repeat spread of a fixed recipe is unmeasured. Until
+  it is, a single run's delta cannot be reported as an effect.
+- **`CUA_LITE_NORM_BY_TURNS` is deliberately unset.** It switches the per-trajectory loss
+  denominator from masked tokens to turn count; the impress pilots set it and the calc pilot did
+  not, and the calc pilot is the one that moved furthest. One fewer knob between this run and the
+  pilots it is read against.
