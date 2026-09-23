@@ -101,9 +101,11 @@ reach the service:
 | `website_host_suffix` | website tasks excluded | included when the matching v2.1 site is self-hosted |
 | `gitlab_url` + `gitlab_private_token` | gitlab-backed tasks excluded | included |
 
-**LLM-judge evaluators.** ~18 tasks call an LLM at `evaluate()` (desktop_env `model_client`), so they need a host **`OPENAI_API_KEY`** (+ optional `OPENAI_BASE_URL`), auto-threaded into each container. Without the key they'd 500/mis-score, so they're **excluded** (`exclude_reason: "llm_judge"`) unless it's set. The default judge model follows upstream (`gpt-4o`); `eval_model` can override it for a separate experiment.
+**LLM-judge evaluators.** ~18 tasks call an LLM at `evaluate()` (desktop_env `model_client`), so they need a host **`OPENAI_API_KEY`** (+ optional `OPENAI_BASE_URL`), auto-threaded into each container. Without the key they'd 500/mis-score, so they're **excluded** (`exclude_reason: "llm_judge"`) unless it's set. With `eval_model: null`, each task keeps its upstream judge model (for example, task 075 requests `gpt-5.4`); `eval_model` can override it for a separate experiment.
 
 **Coverage limits.** Matching upstream files do not imply that every interaction protocol is implemented. The current wrapper does not support the seven simulated-user conversation tasks or the multi-phase task. GitLab tasks require the GitLab URL/token; website tasks require the stack above. Check `exclude_reason` and record the selected task IDs/count when reporting a run. Task 029's known setup timeout is also documented in the official v2.1 release; do not patch it silently.
+
+**Task 056 rendering.** The pinned official VM bundles Shotcut as an AppImage but lacks `melt` at the system/Snap paths searched by the upstream evaluator. Submissions that reach video rendering can therefore fail with `Task056 replay infrastructure failed`, including on the unmodified official image.
 
 ## Available Tasks
 

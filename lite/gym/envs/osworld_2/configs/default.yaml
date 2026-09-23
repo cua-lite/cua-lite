@@ -47,4 +47,4 @@ server_kwargs:               # per-deployment container/infra config (deploy-tim
   gitlab_url: null           # when null, gitlab tasks are excluded
   gitlab_private_token: null
   user_sim_model: null       # when null, human_in_the_loop tasks are excluded (step loop doesn't drive the sim)
-  eval_model: null           # upstream default gpt-4o for LLM-judge tasks; requires OPENAI_API_KEY
+  eval_model: null           # preserve each task's upstream judge model; requires OPENAI_API_KEY
