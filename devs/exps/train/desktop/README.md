@@ -902,8 +902,23 @@ The committed manifests are pinned at
 one apparent +8.6pp that came back as +0.48pp under re-measurement, and the three noise figures on
 record disagree in the wrong direction (128 tasks at n=1 gave sd 5.5pp; 47 tasks at n=4 gave a
 ±0.77pp half-range; 47 tasks at n=8, i.e. MORE trajectories, gave two draws 1.8pp apart). None of
-them is this eval set. Score the step-0 checkpoint on the 115 twice, independently, before running
-anything — 2 x ~44 min, and it is the threshold every later number is read against:
+them is this eval set. Score the step-0 checkpoint on the 115 twice, independently, before running anything. **Measured
+on this eval set** (same SFT checkpoint, `n=4`, two draws):
+
+    p1  0.3594 (stderr 0.0223)      p2  0.3386 (stderr 0.0220)      whole-set difference  -2.08pp
+    paired over 115 tasks: mean -2.17pp, sd 26.61pp, sem 2.48pp  ->  threshold ~5pp at n=4
+    57.4% of tasks score identically across the two draws; all of the spread is the other 42.6%
+    per domain: calc +1.35pp, impress -1.60pp, writer -10.28pp (22 tasks cannot be read alone)
+
+That killed the `n=4` design outright: the four pilots average +2.66pp per domain, which spread
+over the family is about +4.5pp — **below its own 5pp threshold**. The run block below therefore
+uses `N_SAMPLES_PER_EVAL_PROMPT=8`, which halves the per-task rate variance (sd 26.61 -> ~18.8pp,
+sem -> ~1.75pp, threshold ~3.5pp), and `EVAL_INTERVAL=4` to keep the cost down by dropping the
+step-8 reading — the one point where every pilot still showed nothing. Budget moves from 5.2h to
+6.6h: 4 x (20 min sampling + 25 min training) + 2 x ~108 min eval.
+
+Re-measure this if the eval set, the checkpoint, or `ENV_CONCURRENCY` changes; the number is a
+property of all three, not of the task count. The command:
 
 ```bash
 W=/workspaces/cua-lite
@@ -953,8 +968,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
   ROLLOUT_BATCH_SIZE=32 N_SAMPLES_PER_PROMPT=8 NUM_STEPS_PER_ROLLOUT=4 \
   ROLLOUT_TEMPERATURE=1.0 ROLLOUT_MAX_RESPONSE_LEN=2048 \
   LR=3e-6 \
-  EVAL_TEMPERATURE=1 N_SAMPLES_PER_EVAL_PROMPT=4 \
-  EVAL_INTERVAL=2 SKIP_EVAL_BEFORE_TRAIN=0 \
+  EVAL_TEMPERATURE=1 N_SAMPLES_PER_EVAL_PROMPT=8 \
+  EVAL_INTERVAL=4 SKIP_EVAL_BEFORE_TRAIN=0 \
   SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=2 NUM_ROLLOUT=4 \
   SAVE_HF_DIR="$W/.ckpts/qwen3_5-4b/$CELL/iter_{rollout_id}" \
   SAVE_DIR="/root/checkpoints/qwen3_5-4b/$CELL/megatron" \
@@ -990,9 +1005,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
 - **`NUM_ROLLOUT=4` is 4 rollouts = 16 optimizer steps = 1024 trajectories, with 3 evals** (step 0,
   8, 16 — `EVAL_INTERVAL=2` plus the step-0 pass). 16 is where both positive pilots were read, and
   there is no evidence more helps: the 4-domain run peaked at 24 steps (+3.97pp) and fell back by 48
-  (+1.97pp), and the calc rewrite pool was flat from 20 to 40. Budget ~5.2h: 4 x (20 min sampling +
-  25 min training) + 3 x 44 min eval, measured on the calc pilot and rescaled for `ENV_CONCURRENCY=24`
-  and a 460-trajectory eval.
+  (+1.97pp), and the calc rewrite pool was flat from 20 to 40. With `EVAL_INTERVAL=4` that is two
+  evals, at step 0 and step 16.
 - **Run it more than once.** The four pilots spread 3.8pp, but all four used DIFFERENT pools, so
   that number mixes recipe effect with run noise and bounds neither. No two runs in this campaign
   have ever shared a pool AND a config, so the repeat spread of a fixed recipe is unmeasured. Until
