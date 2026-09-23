@@ -1,0 +1,26 @@
+# Claude rollout eval on webvoyager
+# 643 multi-step web navigation tasks across 15 WebHarbor self-hosted mirrors.
+#
+# Related configs (sync env_kwargs when changing):
+#   - scripts/configs/qwen3_vl/default/webharbor.webvoyager/default.yaml
+#   - scripts/configs/qwen3_5/default/webharbor.webvoyager/default.yaml
+#   - SoM mode currently has Qwen configs only.
+
+agent_id: "claude"
+agent_kwargs:
+  api_kwargs:
+    effort: "medium"
+    max_tokens: 4096
+    prompt_caching: false
+
+env_id: "webharbor.webvoyager"
+env_kwargs:
+  include_page_context_text: false
+  # ``goto`` is intentionally NOT exposed: WebVoyager is a fully offline
+  # WebHarbor mirror served only at 127.0.0.1:4000x, with no domain→mirror
+  # resolver rules, so a URL ``goto`` escapes to the live internet and breaks
+  # the reproducible eval. All 643 tasks are single-site and start on the
+  # correct mirror, so in-page UI + ``back`` suffice. ``back`` is history-only
+  # (no URL), so it stays on the mirror. WebVoyager's Selenium backend is
+  # single-tab here; OpenWebRL-style tab tools are not wired.
+  extra_tools: ["back", "response"]
