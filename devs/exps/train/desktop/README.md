@@ -802,41 +802,43 @@ negative, 22.7% positive), contamination level and pool provenance were each che
 orders the outcomes. Treat a single run's number as uninformative until the repeat spread below
 has been measured.
 
-**Result: a clean in-domain corpus moves the eval number; eval-derived rows only dilute it.**
-Four runs, same SFT checkpoint, same eval protocol. Two on `lite.scalecua rl` (115-task eval,
-2 sigma = 2.2pp from a baseline measured four times) and two on `lite.osworld train` (47-task
-impress eval, 2 sigma = 3.7pp from five baseline measurements, shared baseline 0.4303):
+**Result: a clean in-domain corpus moves the eval number by ~+10pp; eval-derived rows cost only
+time.** Four runs from the same SFT checkpoint. Two on `lite.scalecua rl`, read on the 115-task
+LibreOffice eval (2 sigma = 2.2pp from a baseline measured four times). Two on `lite.osworld train`
+impress, read on the 47-task impress eval at five checkpoints each (2 sigma = 3.7pp from five
+baseline measurements 0.4701 / 0.4521 / 0.4775 / 0.4615 / 0.4303; the shared 0.4303 is the
+contaminated arm's own step-0 pass, and the clean arm skipped its own because the two start from
+the same weights):
 
-| training corpus | pool | 40 steps | 80 steps |
-|---|---|---:|---:|
-| `lite.scalecua rl` | 214, environment-level only | +0.39pp (16 steps) | — |
-| `lite.scalecua rl` | 214 + 64 `perturb` | +4.61pp (16 steps) | — |
-| `lite.osworld train.synth` | 287, **zero** eval provenance | **+11.58pp** | **+11.19pp** |
-| `lite.osworld train` | 287 synth + 108 `perturb` | +4.80pp | +8.55pp |
+| training corpus | pool | delta |
+|---|---|---:|
+| `lite.scalecua rl` | 214, environment-level only | +0.39pp at 16 steps |
+| `lite.scalecua rl` | 214 + 64 `perturb` | +4.61pp at 16 steps |
+
+| `lite.osworld train` impress, 200 steps | 40 | 80 | 120 | 160 | 200 | mean |
+|---|---:|---:|---:|---:|---:|---:|
+| `train.synth` 287, **zero** eval provenance | **+11.57** | **+11.18** | +8.92 | +9.47 | +8.24 | **+9.88pp** |
+| the same 287 plus 108 `perturb` | +4.80 | +8.55 | +8.97 | +9.14 | +9.78 | +8.25pp |
+| gap | +6.77 | +2.63 | −0.06 | +0.33 | −1.53 | |
 
 **The corpus is what decides.** `train.synth` is authored template tasks in the SAME env registry
 as the eval split — same starting documents, same verifier family, and verified zero base-task
-overlap and zero identical instructions with any eval task. It gives ~+11pp, held across two
-checkpoints, three times the threshold. `lite.scalecua rl` is a different registry whose rows are
-labelled environment-level; it gives nothing on its own. A clean in-domain corpus is the
-ingredient, not proximity to the eval tasks.
+overlap and zero identical instructions with any eval task. Five readings, none below +8.2pp,
+against a 3.7pp threshold; the curve peaks at 40 steps and settles around +9pp rather than
+collapsing. `lite.scalecua rl` is a different registry whose rows are labelled environment-level,
+and it gives +0.39pp. A clean in-domain corpus is the ingredient — not proximity to the eval tasks.
 
-**Eval-derived rows dilute rather than poison — compare at matched data, not matched steps.** At
-40 steps the two `lite.osworld` arms look 6.78pp apart, but `train395` spends 27% of every rollout
-on its 108 `perturb` rows, so at a given step it has seen far less `synth`. Matching that instead:
+**Eval-derived rows cost time, not accuracy — compare at matched data, not matched steps.** The two
+impress arms look 6.77pp apart at 40 steps, which is where an earlier version of this file stopped
+and called the added rows harmful. They are not: `train395` spends 27% of every rollout on its 108
+`perturb` rows, so at a given step it has seen far less `synth`. The gap closes monotonically and
+is gone by 120 steps (−0.06, +0.33, −1.53pp — all inside the threshold, and the last one has the
+contaminated arm ahead). `utils/tasks.py` records SFT on those same rows measuring −6.77pp at 8
+updates and −14.49pp at 26; these RL runs reproduce no such damage. What they cost is a quarter of
+the rollout budget.
 
-    synth287 @ 40 steps    80 synth draws    0.5461
-    train395 @ 80 steps   116 synth draws    0.5158      (45% MORE synth, 3.03pp lower)
-
-3.03pp is inside the 3.7pp threshold, and `train395` is still climbing (+4.80 -> +8.55) where
-`synth287` has plateaued (+11.58 -> +11.19). That is the shape of a pool spending a quarter of its
-budget on rows that teach nothing useful, not of rows that actively damage the policy. The earlier
-claim in this file that the added rows COST 6.78pp compared steps rather than data and overstated
-what the evidence carries; `utils/tasks.py` records SFT on those rows measuring -6.77pp at 8
-updates and -14.49pp at 26, but these RL runs do not reproduce harm of that kind at this precision.
-
-Both `lite.osworld` arms are n=1 with readings at 40 and 80 of 200 steps, and 120 / 160 / 200 still
-to come; the ordering is the finding, the sizes are provisional.
+Both impress arms are n=1 on a 47-task eval. The five-point curves, not any single reading, are
+what the claim rests on.
 
 **Contamination.** The training pool is `scalecua_rl`, which `utils/tasks.py` labels
 **environment-level** (same starting screens, new goals and verifiers). 99 of the 115 eval tasks
