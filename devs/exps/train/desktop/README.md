@@ -1257,3 +1257,266 @@ CUDA_VISIBLE_DEVICES=$GPUS NUM_TRAIN_GPUS=$NGPU TP_SIZE=4 \
   is where the value has to be read back from, multiplied by `NUM_ENGINES`.
 - **No `SAVE_HF_DIR`.** The three runs saved Megatron checkpoints only; add it back if a
   downstream eval needs HF weights, and expect the extra wall clock at every `SAVE_INTERVAL`.
+
+#### All three LibreOffice domains, three seeds
+
+The three runs above are each **n=1**, and two of them argued with each other for two commits
+before the curves settled it. This one fixes a recipe and varies only the seed — **three arms,
+three seeds, one pool** — so the repeat spread of a fixed recipe is measured instead of assumed,
+and adds `libreoffice_writer` to make the unit the whole application family. In flight; numbers
+below are through optimizer step 112 of 200.
+
+Two knobs differ from the block above, both to buy resolution on the seed question:
+
+- **All three domains, `train.synth` only: 814 tasks** (impress 287 / calc 278 / writer 249).
+  The corpus, not the contamination label, is what decides whether the eval number moves —
+  `train.synth` produced every gain in this section — so the clean pool is the one worth
+  replicating.
+- **Eval is the family's full eval split, 117 tasks** (impress 47 / calc 47 / writer 23) at
+  `N_SAMPLES_PER_EVAL_PROMPT=4`, `EVAL_TEMPERATURE=1` — 468 trajectories per point, and
+  `EVAL_INTERVAL=2` so a reading lands every 16 steps rather than every 40. Denser because the
+  per-arm point-to-point swing turns out to be ~6pp and a 40-step grid cannot tell a dip from a
+  trend. It costs: 13 x 468 eval episodes against 3200 training ones, **65% of all episodes**.
+
+**The eval's own spread, measured on this 117-task set.** Five arms scored the same
+`sft.highr.i1.reasoning.gpt5_5/epoch_2` checkpoint as their step-0 pass, on five different pods:
+**.3164 .3453 .3229 .3253 .3262** — mean .3272, **sd 1.08pp**, so **2 sigma = 2.2pp** for a single
+arm and **1.25pp** for the three-arm mean. (The impress-47 threshold quoted above is 3.7pp from
+five passes; 117 tasks at n=4 is the tighter measurement, as the task count predicts.)
+
+That bounds the *measurement*. It does not bound the *run*: once training starts the three arms
+diverge for real, and at step 32 they were 8.6pp apart (+5.08 / −3.56 / +4.38). Nothing below is
+read one arm at a time.
+
+**Eval** — `eval/lite.osworld_eval`, 117 tasks, T=1, 4 draws per task. Step = rollout x 8,
+`EVAL_INTERVAL=2`, so the grid is every 16 steps from 0 to 192 (rollout 24, the last of 25).
+Values are **pp against each arm's own step-0**; `—` is a reading the run has not reached yet.
+
+| step | 501/7001 | 502/7002 | 503/7003 | **synth mean** | 601/7011 | 602/7012 | **mixed mean** |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 *(absolute)* | .3164 | .3453 | .3229 | **.3282** | .3262 | .3253 | **.3258** |
+| 16 | −1.81 | −1.05 | +3.25 | **+0.13** | −3.42 | −0.89 | **−2.16** |
+| 32 | +5.08 | −3.56 | +4.38 | **+1.98** | −0.80 | +2.54 | **+0.87** |
+| 48 | +1.97 | +2.87 | +3.60 | **+2.81** | +3.92 | +2.72 | **+3.32** |
+| 64 | +2.96 | +1.35 | +7.33 | **+3.88** | +3.65 | +3.22 | **+3.44** |
+| 80 | +1.86 | +3.08 | +6.06 | **+3.67** | +4.22 | +2.68 | **+3.45** |
+| 96 | +7.20 | +1.29 | +5.05 | **+4.51** | +3.68 | −2.35 | **+0.67** |
+| 112 | +8.95 | +2.21 | +7.37 | **+6.18** | — | +1.53 | — |
+| 128 | — | — | — | — | — | — | — |
+| 144 | — | — | — | — | — | — | — |
+| 160 | — | — | — | — | — | — | — |
+| 176 | — | — | — | — | — | — | — |
+| 192 | — | — | — | — | — | — | — |
+| **best so far** | **+8.95** | **+3.08** | **+7.37** | **+6.18** | **+4.22** | **+3.22** | **+3.45** |
+
+Absolute values behind the deltas, for the arms' own records:
+
+    501/7001  .3164 .2983 .3672 .3361 .3460 .3350 .3884 .4059
+    502/7002  .3453 .3348 .3097 .3740 .3588 .3761 .3582 .3674
+    503/7003  .3229 .3554 .3667 .3589 .3962 .3835 .3734 .3966
+    601/7011  .3262 .2920 .3182 .3654 .3627 .3684 .3630
+    602/7012  .3253 .3164 .3507 .3525 .3575 .3521 .3018
+
+The mean is monotone from 16 to 112 except for the step-80 reading, and all three arms were
+positive at every reading from 48 on. Individual arms are not: 502 ran −3.56 at step 32 and
++2.87 sixteen steps later, and 501 went +1.86 → +7.20 in one interval. **Do not quote a single
+arm's point.**
+
+This also re-reads the early-flat pattern the two-domain run hit. Its 40- and 80-step readings were
++1.55 and +0.10 before +10.73 at 120; these three average +0.13 at step 16 and +1.98 at 32 before
++6.18 at 112. Same shape, and it is now four runs plus three seeds saying the first two points of a
+200-step curve do not predict it.
+
+**Train** — `rollout/raw_reward`, one value per rollout from rollout 0, T=1. At
+`ROLLOUT_BATCH_SIZE=16` over 814 tasks no prompt repeats inside 50 rollouts and the run is 25, so
+this is a rolling held-out score on the training distribution, not a convergence curve.
+
+It rises, and the rise is the cleaner of the two signals. Ordinary least squares on the fourteen
+rollouts, no smoothing: slope **+1.96 / +0.51 / +2.31 pp per rollout** (t = 3.79 / 0.96 / 5.10),
+**+1.59pp per rollout pooled** (t = 5.23), residual sd 7.5pp per arm. The t-statistics assume
+independent residuals and the model state drifts, so treat them as optimistic; the load-bearing
+evidence is that **three different `rollout_seed` values draw three different prompt orders and
+produce the same slope**, which a lucky easy-tasks-last ordering cannot do. Over fourteen rollouts
+that is **~+22pp on the training distribution against +6.18pp on the eval** — the generalization
+gap, and the same arm (502) is the weakest on both.
+
+```python
+# devs/exps/train/desktop -- GRPO seed replication, libreoffice.synth814 / libreoffice.eval117
+EVAL = {  # optimizer step -> mean reward, 117 tasks x 4 draws, T=1
+  "501/7001": {0:.3164, 16:.2983, 32:.3672, 48:.3361, 64:.3460, 80:.3350, 96:.3884, 112:.4059},
+  "502/7002": {0:.3453, 16:.3348, 32:.3097, 48:.3740, 64:.3588, 80:.3761, 96:.3582, 112:.3674},
+  "503/7003": {0:.3229, 16:.3554, 32:.3667, 48:.3589, 64:.3962, 80:.3835, 96:.3734, 112:.3966},
+}
+
+TRAIN = {  # rollout/raw_reward, index = rollout
+  "501/7001": [0.3281,0.2656,0.2812,0.1641,0.4297,0.5000,0.3359,0.4531,
+               0.3750,0.3547,0.3984,0.4766,0.5469,0.5625],
+  "502/7002": [0.3047,0.2812,0.5312,0.3984,0.4688,0.4609,0.3047,0.3906,
+               0.4430,0.4062,0.4859,0.3203,0.3750,0.5234],
+  "503/7003": [0.3359,0.3984,0.3047,0.2969,0.3750,0.4453,0.3516,0.3906,
+               0.5547,0.4219,0.4609,0.6172,0.6797,0.5547],
+}
+```
+
+**Two further arms run `synth + perturb`** — the same 814 plus 257 rewrites (impress 108 /
+calc 106 / writer 43), 1071 tasks, seeds 601/7011 and 602/7012. Through step 96 they are
+indistinguishable from the clean arms: mixed +3.32 / +3.44 / +3.45 / +0.67 at steps 48/64/80/96
+against synth's +2.81 / +3.88 / +3.67 / +4.51. That is the same verdict the impress A/B reached
+from the other direction — its 6.77pp gap at 40 steps closed monotonically and was gone by 120 —
+except these
+arms never show the early gap at all, which is what a 3x larger pool diluted across three domains
+predicts. **Do not read it as equality**: n=2, and at step 96 the two mixed arms sat at +3.68 and
+−2.35.
+
+- **`ROLLOUT_SEED` / `SEED` need a pod-local `run_grpo.sh` patch.** The committed launcher has no
+  seed knob, so without it all three arms land on slime's defaults and the "three seeds" are one
+  seed three times — the same trap the browser campaign documents. Verify against slime's own
+  printed argument table, never the launcher's echo.
+- **A pooled eval hides which domain moved.** One `--eval-prompt-data` pair yields one curve;
+  slime accepts repeated `name path` pairs but `run_grpo.sh` hardcodes a single pair. The
+  per-domain split is recoverable offline from the `SAVE_INTERVAL=2` checkpoints rather than by
+  patching the launcher.
+- **The family eval dilutes a single-domain effect, on purpose.** A real +6pp confined to impress
+  reads as `6 x 47/117 = +2.4pp` here while the noise floor only improves by `sqrt(117/47) = 1.6x`.
+  This design is more sensitive to an effect shared across the three applications and *less*
+  sensitive to any one domain's — the trade taken after seven single-domain runs failed to agree.
+- **Five arms on five hosts, one recipe each.** No two arms share a pod, so a host-level confound
+  cannot move a whole condition — the complement of the impress A/B's design, which put both arms
+  on one host to hold the host fixed.
+
+```bash
+# --- Slime container; one arm. The three clean arms differ only in the two seeds. ---
+W=/workspaces/cua-lite
+P=desktop.use.highr.i1.reasoning
+CKPT=$W/.ckpts/pulled/sft.highr.i1.reasoning.gpt5_5/epoch_2
+DATA=$W/devs/exps/train/desktop/data
+CELL=grpo.libreoffice.synth814.rs501s7001
+# The two mixed arms are the same block with libreoffice.train1071 and seeds 601/7011, 602/7012.
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
+  MODEL_ID=Qwen/Qwen3.5-4B HF_CKPT="$CKPT" \
+  CUA_LITE_MULTIMODAL_LAZY_EXPAND=1 ENV_ID=lite.osworld \
+  PROMPT_DATA="$DATA/libreoffice.synth814.parquet" \
+  EVAL_PROMPT_DATA="$DATA/libreoffice.eval117.parquet" \
+  CONFIG_PATH="$W/devs/exps/train/desktop/configs/qwen3_5/$P.yaml" \
+  ENV_CONCURRENCY=24 \
+  ROLLOUT_BATCH_SIZE=16 N_SAMPLES_PER_PROMPT=8 NUM_STEPS_PER_ROLLOUT=8 \
+  ROLLOUT_TEMPERATURE=1.0 ROLLOUT_MAX_RESPONSE_LEN=2048 \
+  ROLLOUT_SEED=501 SEED=7001 LR=1e-6 \
+  EVAL_TEMPERATURE=1 N_SAMPLES_PER_EVAL_PROMPT=4 \
+  EVAL_INTERVAL=2 SKIP_EVAL_BEFORE_TRAIN=0 \
+  SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=2 NUM_ROLLOUT=25 \
+  SAVE_HF_DIR="$W/.ckpts/qwen3_5-4b/$CELL/iter_{rollout_id}" \
+  SAVE_DIR="/root/checkpoints/qwen3_5-4b/$CELL/megatron" \
+  WANDB_GROUP_SUFFIX=".$CELL" \
+  bash "$W/scripts/train/run_grpo.sh"
+```
+
+<details>
+<summary>Data</summary>
+
+The three manifests are committed and rebuildable. They are **not** built by the `sorted()` block
+above: these runs consumed per-domain `export_tasks` output concatenated impress -> calc ->
+writer, and that row order decides which 16 prompts each rollout draws, so reproducing the runs
+means reproducing the order. The build below was verified to regenerate all three files
+byte-identically.
+
+```bash
+# --- ONE-TIME DATA BUILD; skip generation if the files already exist ---
+DATA=devs/exps/train/desktop/data
+MISSING=0
+for m in libreoffice.synth814 libreoffice.train1071 libreoffice.eval117; do
+  [ -e "$DATA/$m.parquet" ] || MISSING=1
+done
+if [ "$MISSING" = 0 ]; then
+  echo "keep existing fixed manifests"
+else
+  TMP=$(mktemp -d)
+  for dom in impress calc writer; do
+    for split in train.synth train.perturb eval; do
+      uv run python -m lite.train.export.export_tasks \
+        --env-id lite.osworld --split "$split" \
+        --filter "lambda m: m.others.get('domain') == 'libreoffice_$dom'" \
+        -o "$TMP/$dom.$split.parquet"
+    done
+  done
+  uv run python - "$DATA" "$TMP" <<'BUILD'
+import sys
+
+import pandas as pd
+
+from lite.data.staging import coerce_meta
+from lite.utils.parquet import write_records_to_parquet
+
+D, T = sys.argv[1], sys.argv[2]
+DOMS = ("impress", "calc", "writer")   # concat order is load-bearing, see above
+
+
+def rows(path, force=None):
+    out = []
+    for _, r in pd.read_parquet(path).iterrows():
+        m = dict(coerce_meta(r["metadata"]))
+        # Every training row is tagged "train". main.py registers each train.synth /
+        # train.perturb task under BOTH its own split name and "train", so the tag is an
+        # alias rather than a second task -- but it is the tag these five runs consumed.
+        if force:
+            m["split"] = force
+        out.append({"problem": r["problem"], "metadata": m})
+    return out
+
+
+syn = [x for d in DOMS for x in rows(f"{T}/{d}.train.synth.parquet", force="train")]
+per = [x for d in DOMS for x in rows(f"{T}/{d}.train.perturb.parquet", force="train")]
+ev = [x for d in DOMS for x in rows(f"{T}/{d}.eval.parquet")]
+write_records_to_parquet(syn, f"{D}/libreoffice.synth{len(syn)}.parquet")
+write_records_to_parquet(syn + per, f"{D}/libreoffice.train{len(syn) + len(per)}.parquet")
+write_records_to_parquet(ev, f"{D}/libreoffice.eval{len(ev)}.parquet")
+print(f"synth {len(syn)}, train {len(syn) + len(per)}, eval {len(ev)}")
+BUILD
+fi
+
+uv run python - "$DATA" <<'CHECK'
+import hashlib
+import sys
+
+import pandas as pd
+
+from lite.data.staging import coerce_meta
+
+D = sys.argv[1]
+EXPECT = {  # (rows, sha256 over "env_key<TAB>split<TAB>problem" per row, in file order)
+    "libreoffice.synth814":
+        (814, "aec9e1581d9a2768e827bfceb877f46d6a29680f0842e85eda25bc9781032162"),
+    "libreoffice.train1071":
+        (1071, "8c682209ba1cccb8550cfc17609945d9ec1ced7f9e461eeeab01a5eb6517ac66"),
+    "libreoffice.eval117":
+        (117, "903fc60adefdbd7055eb77ea5b0fb7747df424b772caa966dc520cf2fe105ecd"),
+}
+for stem, (n, want) in EXPECT.items():
+    df = pd.read_parquet(f"{D}/{stem}.parquet")
+    lines = []
+    for _, r in df.iterrows():
+        m = coerce_meta(r["metadata"])
+        lines.append("\t".join((m["env_key"], m["split"], r["problem"])))
+    got = hashlib.sha256("\n".join(lines).encode()).hexdigest()
+    assert len(df) == n and got == want, f"{stem}: {len(df)} rows, sha {got}"
+    print(f"{stem} ok: {n} rows, content_sha256={got}")
+CHECK
+```
+
+Composition, and the one deviation that has to travel with every number in this section:
+
+    libreoffice.synth814    287 impress + 278 calc + 249 writer synth
+    libreoffice.train1071   the same 814 + 257 perturb (108 / 106 / 43), task-level rewrites
+    libreoffice.eval117     47 impress + 47 calc + 23 writer
+
+**`eval117` is not the scored eval split.** `utils.tasks.eval_rows(scored_only=True)` returns
+**115** for these three domains; the two extra rows here are
+`osworld_libreoffice_calc_2bd59342` and `osworld_libreoffice_writer_bb8ccc78`, both
+`exclude_reason='infeasible'`. They are scorable — `report_infeasible(reason)` is a terminal tool
+the OSWorld checker grades — but the rest of this file excludes them, so **these deltas are not
+directly comparable to the `impress_calc.eval93` numbers above**. Re-score the 115 subset offline
+from the `SAVE_INTERVAL=2` checkpoints before putting the two sections in one table; worst case the
+two rows are worth `2/117 = 1.7pp`.
+
+</details>
