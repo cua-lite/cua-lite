@@ -1331,32 +1331,51 @@ This also re-reads the early-flat pattern the two-domain run hit. Its 40- and 80
 `ROLLOUT_BATCH_SIZE=16` over 814 tasks no prompt repeats inside 50 rollouts and the run is 25, so
 this is a rolling held-out score on the training distribution, not a convergence curve.
 
-It rises, and the rise is the cleaner of the two signals. Ordinary least squares on the fourteen
-rollouts, no smoothing: slope **+1.96 / +0.51 / +2.31 pp per rollout** (t = 3.79 / 0.96 / 5.10),
-**+1.59pp per rollout pooled** (t = 5.23), residual sd 7.5pp per arm. The t-statistics assume
+It rises, and the rise is the cleaner of the two signals. Ordinary least squares on the sixteen
+rollouts, no smoothing: slope **+2.02 / +0.87 / +1.83 pp per rollout** (t = 5.04 / 1.84 / 4.59),
+**+1.58pp per rollout pooled** (t = 5.95), residual sd 7.4-8.7pp per arm. The t-statistics assume
 independent residuals and the model state drifts, so treat them as optimistic; the load-bearing
 evidence is that **three different `rollout_seed` values draw three different prompt orders and
-produce the same slope**, which a lucky easy-tasks-last ordering cannot do. Over fourteen rollouts
-that is **~+22pp on the training distribution against +6.18pp on the eval** — the generalization
-gap, and the same arm (502) is the weakest on both.
+produce the same slope**, which a lucky easy-tasks-last ordering cannot do. Over sixteen rollouts
+that is **~+24pp on the training distribution against +6.18pp on the eval** — the generalization
+gap — and the same arm (502) is the weakest on both.
+
+The two mixed arms do not show it: **−0.20 and +1.61 pp per rollout**, pooled **+0.70** (t = 1.32),
+not separable from flat over fourteen rollouts. Do not read that as the perturb rows suppressing
+learning. `raw_reward` is measured on whatever the pool contains, so the two conditions are scored
+on **different task populations** — 1071 rows including 257 eval-instruction rewrites against 814
+synth rows — and the mixed arms' residual sd is larger (10.4pp on 601) exactly as a pool mixing two
+difficulty populations predicts. The synth and mixed train curves are each internally comparable
+and not comparable to each other; only the shared 117-task eval is.
 
 ```python
 # devs/exps/train/desktop -- GRPO seed replication, libreoffice.synth814 / libreoffice.eval117
+# Live through rollout 16 of 25 (synth arms) and 14 of 25 (mixed arms).
+POOL = {"501/7001": "synth814", "502/7002": "synth814", "503/7003": "synth814",
+        "601/7011": "train1071", "602/7012": "train1071"}
+
 EVAL = {  # optimizer step -> mean reward, 117 tasks x 4 draws, T=1
   "501/7001": {0:.3164, 16:.2983, 32:.3672, 48:.3361, 64:.3460, 80:.3350, 96:.3884, 112:.4059},
   "502/7002": {0:.3453, 16:.3348, 32:.3097, 48:.3740, 64:.3588, 80:.3761, 96:.3582, 112:.3674},
   "503/7003": {0:.3229, 16:.3554, 32:.3667, 48:.3589, 64:.3962, 80:.3835, 96:.3734, 112:.3966},
+  "601/7011": {0:.3262, 16:.2920, 32:.3182, 48:.3654, 64:.3627, 80:.3684, 96:.3630},
+  "602/7012": {0:.3253, 16:.3164, 32:.3507, 48:.3525, 64:.3575, 80:.3521, 96:.3018, 112:.3406},
 }
 
 TRAIN = {  # rollout/raw_reward, index = rollout
   "501/7001": [0.3281,0.2656,0.2812,0.1641,0.4297,0.5000,0.3359,0.4531,
-               0.3750,0.3547,0.3984,0.4766,0.5469,0.5625],
+               0.3750,0.3547,0.3984,0.4766,0.5469,0.5625,0.5938,0.5391],
   "502/7002": [0.3047,0.2812,0.5312,0.3984,0.4688,0.4609,0.3047,0.3906,
-               0.4430,0.4062,0.4859,0.3203,0.3750,0.5234],
+               0.4430,0.4062,0.4859,0.3203,0.3750,0.5234,0.6406,0.4453],
   "503/7003": [0.3359,0.3984,0.3047,0.2969,0.3750,0.4453,0.3516,0.3906,
-               0.5547,0.4219,0.4609,0.6172,0.6797,0.5547],
+               0.5547,0.4219,0.4609,0.6172,0.6797,0.5547,0.5625,0.4688],
+  "601/7011": [0.3750,0.3281,0.4219,0.3281,0.4295,0.3438,0.6562,0.4062,
+               0.3125,0.4453,0.3438,0.4453,0.1859,0.4219],
+  "602/7012": [0.3694,0.2812,0.3125,0.2969,0.4062,0.3672,0.5469,0.3828,
+               0.3594,0.4844,0.4922,0.5781,0.4219,0.5078],
 }
 ```
+
 
 **Two further arms run `synth + perturb`** — the same 814 plus 257 rewrites (impress 108 /
 calc 106 / writer 43), 1071 tasks, seeds 601/7011 and 602/7012. Through step 96 they are
