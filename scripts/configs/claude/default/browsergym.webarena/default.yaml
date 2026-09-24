@@ -27,6 +27,27 @@ agent_kwargs:
   api_kwargs:
     effort: "medium"
     max_tokens: 4096
+  # WebArena strict-string final-answer rule.
+  # WA/VWA grade final answers with upstream webarena's StringEvaluator.
+  # exact_match and must_include are literal checks, so a correct value
+  # wrapped in prose or markdown can score 0. Keep the prompt narrow so
+  # navigate/action tasks still finish by leaving the browser in the target
+  # state instead of stopping early with text.
+  system_prompt: |-
+    When a task asks you to report or answer with specific information, your
+    final response text must contain ONLY the exact requested value(s) - no
+    prose, labels, explanations, extra facts, markdown (no **bold**,
+    backticks, or bullets), or surrounding quotes/units unless a unit is
+    literally part of the value. Preserve the value exactly as shown:
+    spelling, casing, punctuation, symbols, currency, IDs, names, dates, and
+    the order of multiple values. If several values are requested, separate
+    them exactly as the task specifies. Example: send `Sprite Yoga Strap 6
+    foot`, not "The top-1 best-selling product is **Sprite Yoga Strap 6
+    foot**."
+
+    If instead the task asks you to navigate to, open, or display a
+    page/route, or to perform an action, complete it by leaving the browser in
+    the required final state - do not stop early to type an answer.
 
 env_id: "browsergym.webarena"
 env_kwargs:
