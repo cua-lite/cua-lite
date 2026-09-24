@@ -1278,8 +1278,9 @@ Two knobs differ from the block above, both to buy resolution on the seed questi
   per-arm point-to-point swing turns out to be ~6pp and a 40-step grid cannot tell a dip from a
   trend. It costs: 13 x 468 eval episodes against 3200 training ones, **65% of all episodes**.
 
-**The eval's own spread, measured on this 117-task set.** Five arms scored the same
-`sft.highr.i1.reasoning.gpt5_5/epoch_2` checkpoint as their step-0 pass, on five different pods:
+**The eval's own spread, measured on this 117-task set.** Five step-0 passes over the same
+`sft.highr.i1.reasoning.gpt5_5/epoch_2` checkpoint, on five different pods — the three arms below
+plus two the campaign later dropped:
 **.3164 .3453 .3229 .3253 .3262** — mean .3272, **sd 1.08pp**, so **2 sigma = 2.2pp** for a single
 arm and **1.25pp** for the three-arm mean. (The impress-47 threshold quoted above is 3.7pp from
 five passes; 117 tasks at n=4 is the tighter measurement, as the task count predicts.)
@@ -1292,30 +1293,28 @@ read one arm at a time.
 `EVAL_INTERVAL=2`, so the grid is every 16 steps from 0 to 192 (rollout 24, the last of 25).
 Values are **pp against each arm's own step-0**; `—` is a reading the run has not reached yet.
 
-| step | 501/7001 | 502/7002 | 503/7003 | **synth mean** | 601/7011 | 602/7012 | **mixed mean** |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 0 *(absolute)* | .3164 | .3453 | .3229 | **.3282** | .3262 | .3253 | **.3258** |
-| 16 | −1.81 | −1.05 | +3.25 | **+0.13** | −3.42 | −0.89 | **−2.16** |
-| 32 | +5.08 | −3.56 | +4.38 | **+1.98** | −0.80 | +2.54 | **+0.87** |
-| 48 | +1.97 | +2.87 | +3.60 | **+2.81** | +3.92 | +2.72 | **+3.32** |
-| 64 | +2.96 | +1.35 | +7.33 | **+3.88** | +3.65 | +3.22 | **+3.44** |
-| 80 | +1.86 | +3.08 | +6.06 | **+3.67** | +4.22 | +2.68 | **+3.45** |
-| 96 | +7.20 | +1.29 | +5.05 | **+4.51** | +3.68 | −2.35 | **+0.67** |
-| 112 | +8.95 | +2.21 | +7.37 | **+6.18** | — | +1.53 | — |
-| 128 | — | — | — | — | — | — | — |
-| 144 | — | — | — | — | — | — | — |
-| 160 | — | — | — | — | — | — | — |
-| 176 | — | — | — | — | — | — | — |
-| 192 | — | — | — | — | — | — | — |
-| **best so far** | **+8.95** | **+3.08** | **+7.37** | **+6.18** | **+4.22** | **+3.22** | **+3.45** |
+| step | 501/7001 | 502/7002 | 503/7003 | **mean** |
+|---:|---:|---:|---:|---:|
+| 0 *(absolute)* | .3164 | .3453 | .3229 | **.3282** |
+| 16 | −1.81 | −1.05 | +3.25 | **+0.13** |
+| 32 | +5.08 | −3.56 | +4.38 | **+1.98** |
+| 48 | +1.97 | +2.87 | +3.60 | **+2.81** |
+| 64 | +2.96 | +1.35 | +7.33 | **+3.88** |
+| 80 | +1.86 | +3.08 | +6.06 | **+3.67** |
+| 96 | +7.20 | +1.29 | +5.05 | **+4.51** |
+| 112 | +8.95 | +2.21 | +7.37 | **+6.18** |
+| 128 | — | — | — | — |
+| 144 | — | — | — | — |
+| 160 | — | — | — | — |
+| 176 | — | — | — | — |
+| 192 | — | — | — | — |
+| **best so far** | **+8.95** | **+3.08** | **+7.37** | **+6.18** |
 
 Absolute values behind the deltas, for the arms' own records:
 
     501/7001  .3164 .2983 .3672 .3361 .3460 .3350 .3884 .4059
     502/7002  .3453 .3348 .3097 .3740 .3588 .3761 .3582 .3674
     503/7003  .3229 .3554 .3667 .3589 .3962 .3835 .3734 .3966
-    601/7011  .3262 .2920 .3182 .3654 .3627 .3684 .3630
-    602/7012  .3253 .3164 .3507 .3525 .3575 .3521 .3018
 
 The mean is monotone from 16 to 112 except for the step-80 reading, and all three arms were
 positive at every reading from 48 on. Individual arms are not: 502 ran −3.56 at step 32 and
@@ -1340,26 +1339,13 @@ produce the same slope**, which a lucky easy-tasks-last ordering cannot do. Over
 that is **~+24pp on the training distribution against +6.18pp on the eval** — the generalization
 gap — and the same arm (502) is the weakest on both.
 
-The two mixed arms do not show it: **−0.20 and +1.61 pp per rollout**, pooled **+0.70** (t = 1.32),
-not separable from flat over fourteen rollouts. Do not read that as the perturb rows suppressing
-learning. `raw_reward` is measured on whatever the pool contains, so the two conditions are scored
-on **different task populations** — 1071 rows including 257 eval-instruction rewrites against 814
-synth rows — and the mixed arms' residual sd is larger (10.4pp on 601) exactly as a pool mixing two
-difficulty populations predicts. The synth and mixed train curves are each internally comparable
-and not comparable to each other; only the shared 117-task eval is.
-
 ```python
 # devs/exps/train/desktop -- GRPO seed replication, libreoffice.synth814 / libreoffice.eval117
-# Live through rollout 16 of 25 (synth arms) and 14 of 25 (mixed arms).
-POOL = {"501/7001": "synth814", "502/7002": "synth814", "503/7003": "synth814",
-        "601/7011": "train1071", "602/7012": "train1071"}
-
+# Live through rollout 16 of 25.
 EVAL = {  # optimizer step -> mean reward, 117 tasks x 4 draws, T=1
   "501/7001": {0:.3164, 16:.2983, 32:.3672, 48:.3361, 64:.3460, 80:.3350, 96:.3884, 112:.4059},
   "502/7002": {0:.3453, 16:.3348, 32:.3097, 48:.3740, 64:.3588, 80:.3761, 96:.3582, 112:.3674},
   "503/7003": {0:.3229, 16:.3554, 32:.3667, 48:.3589, 64:.3962, 80:.3835, 96:.3734, 112:.3966},
-  "601/7011": {0:.3262, 16:.2920, 32:.3182, 48:.3654, 64:.3627, 80:.3684, 96:.3630},
-  "602/7012": {0:.3253, 16:.3164, 32:.3507, 48:.3525, 64:.3575, 80:.3521, 96:.3018, 112:.3406},
 }
 
 TRAIN = {  # rollout/raw_reward, index = rollout
@@ -1369,23 +1355,10 @@ TRAIN = {  # rollout/raw_reward, index = rollout
                0.4430,0.4062,0.4859,0.3203,0.3750,0.5234,0.6406,0.4453],
   "503/7003": [0.3359,0.3984,0.3047,0.2969,0.3750,0.4453,0.3516,0.3906,
                0.5547,0.4219,0.4609,0.6172,0.6797,0.5547,0.5625,0.4688],
-  "601/7011": [0.3750,0.3281,0.4219,0.3281,0.4295,0.3438,0.6562,0.4062,
-               0.3125,0.4453,0.3438,0.4453,0.1859,0.4219],
-  "602/7012": [0.3694,0.2812,0.3125,0.2969,0.4062,0.3672,0.5469,0.3828,
-               0.3594,0.4844,0.4922,0.5781,0.4219,0.5078],
 }
 ```
 
 
-**Two further arms run `synth + perturb`** — the same 814 plus 257 rewrites (impress 108 /
-calc 106 / writer 43), 1071 tasks, seeds 601/7011 and 602/7012. Through step 96 they are
-indistinguishable from the clean arms: mixed +3.32 / +3.44 / +3.45 / +0.67 at steps 48/64/80/96
-against synth's +2.81 / +3.88 / +3.67 / +4.51. That is the same verdict the impress A/B reached
-from the other direction — its 6.77pp gap at 40 steps closed monotonically and was gone by 120 —
-except these
-arms never show the early gap at all, which is what a 3x larger pool diluted across three domains
-predicts. **Do not read it as equality**: n=2, and at step 96 the two mixed arms sat at +3.68 and
-−2.35.
 
 - **`ROLLOUT_SEED` / `SEED` need a pod-local `run_grpo.sh` patch.** The committed launcher has no
   seed knob, so without it all three arms land on slime's defaults and the "three seeds" are one
@@ -1399,9 +1372,10 @@ predicts. **Do not read it as equality**: n=2, and at step 96 the two mixed arms
   reads as `6 x 47/117 = +2.4pp` here while the noise floor only improves by `sqrt(117/47) = 1.6x`.
   This design is more sensitive to an effect shared across the three applications and *less*
   sensitive to any one domain's — the trade taken after seven single-domain runs failed to agree.
-- **Five arms on five hosts, one recipe each.** No two arms share a pod, so a host-level confound
-  cannot move a whole condition — the complement of the impress A/B's design, which put both arms
-  on one host to hold the host fixed.
+- **Three arms on three hosts.** No two arms share a pod, so a host-level confound cannot move the
+  whole condition — the complement of the impress A/B's design, which put both arms on one host to
+  hold the host fixed. It also means a host effect is inside the seed spread reported here, not
+  separable from it.
 
 ```bash
 # --- Slime container; one arm. The three clean arms differ only in the two seeds. ---
@@ -1410,7 +1384,6 @@ P=desktop.use.highr.i1.reasoning
 CKPT=$W/.ckpts/pulled/sft.highr.i1.reasoning.gpt5_5/epoch_2
 DATA=$W/devs/exps/train/desktop/data
 CELL=grpo.libreoffice.synth814.rs501s7001
-# The two mixed arms are the same block with libreoffice.train1071 and seeds 601/7011, 602/7012.
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
   MODEL_ID=Qwen/Qwen3.5-4B HF_CKPT="$CKPT" \
@@ -1444,7 +1417,7 @@ byte-identically.
 # --- ONE-TIME DATA BUILD; skip generation if the files already exist ---
 DATA=devs/exps/train/desktop/data
 MISSING=0
-for m in libreoffice.synth814 libreoffice.train1071 libreoffice.eval117; do
+for m in libreoffice.synth814 libreoffice.eval117; do
   [ -e "$DATA/$m.parquet" ] || MISSING=1
 done
 if [ "$MISSING" = 0 ]; then
@@ -1452,7 +1425,7 @@ if [ "$MISSING" = 0 ]; then
 else
   TMP=$(mktemp -d)
   for dom in impress calc writer; do
-    for split in train.synth train.perturb eval; do
+    for split in train.synth eval; do
       uv run python -m lite.train.export.export_tasks \
         --env-id lite.osworld --split "$split" \
         --filter "lambda m: m.others.get('domain') == 'libreoffice_$dom'" \
@@ -1477,7 +1450,7 @@ def rows(path, force=None):
         m = dict(coerce_meta(r["metadata"]))
         # Every training row is tagged "train". main.py registers each train.synth /
         # train.perturb task under BOTH its own split name and "train", so the tag is an
-        # alias rather than a second task -- but it is the tag these five runs consumed.
+        # alias rather than a second task -- but it is the tag these runs consumed.
         if force:
             m["split"] = force
         out.append({"problem": r["problem"], "metadata": m})
@@ -1485,12 +1458,10 @@ def rows(path, force=None):
 
 
 syn = [x for d in DOMS for x in rows(f"{T}/{d}.train.synth.parquet", force="train")]
-per = [x for d in DOMS for x in rows(f"{T}/{d}.train.perturb.parquet", force="train")]
 ev = [x for d in DOMS for x in rows(f"{T}/{d}.eval.parquet")]
 write_records_to_parquet(syn, f"{D}/libreoffice.synth{len(syn)}.parquet")
-write_records_to_parquet(syn + per, f"{D}/libreoffice.train{len(syn) + len(per)}.parquet")
 write_records_to_parquet(ev, f"{D}/libreoffice.eval{len(ev)}.parquet")
-print(f"synth {len(syn)}, train {len(syn) + len(per)}, eval {len(ev)}")
+print(f"synth {len(syn)}, eval {len(ev)}")
 BUILD
 fi
 
@@ -1506,8 +1477,6 @@ D = sys.argv[1]
 EXPECT = {  # (rows, sha256 over "env_key<TAB>split<TAB>problem" per row, in file order)
     "libreoffice.synth814":
         (814, "aec9e1581d9a2768e827bfceb877f46d6a29680f0842e85eda25bc9781032162"),
-    "libreoffice.train1071":
-        (1071, "8c682209ba1cccb8550cfc17609945d9ec1ced7f9e461eeeab01a5eb6517ac66"),
     "libreoffice.eval117":
         (117, "903fc60adefdbd7055eb77ea5b0fb7747df424b772caa966dc520cf2fe105ecd"),
 }
@@ -1526,7 +1495,6 @@ CHECK
 Composition, and the one deviation that has to travel with every number in this section:
 
     libreoffice.synth814    287 impress + 278 calc + 249 writer synth
-    libreoffice.train1071   the same 814 + 257 perturb (108 / 106 / 43), task-level rewrites
     libreoffice.eval117     47 impress + 47 calc + 23 writer
 
 **`eval117` is not the scored eval split.** `utils.tasks.eval_rows(scored_only=True)` returns
