@@ -803,12 +803,13 @@ orders the outcomes. Treat a single run's number as uninformative until the repe
 has been measured.
 
 **Result: a clean in-domain corpus moves the eval number by ~+10pp; eval-derived rows cost only
-time.** Four runs from the same SFT checkpoint. Two on `lite.scalecua rl`, read on the 115-task
-LibreOffice eval (2 sigma = 2.2pp from a baseline measured four times). Two on `lite.osworld train`
-impress, read on the 47-task impress eval at five checkpoints each (2 sigma = 3.7pp from five
-baseline measurements 0.4701 / 0.4521 / 0.4775 / 0.4615 / 0.4303; the shared 0.4303 is the
-contaminated arm's own step-0 pass, and the clean arm skipped its own because the two start from
-the same weights):
+time.** Five runs from the same SFT checkpoint. Two on `lite.scalecua rl`, read on the 115-task
+LibreOffice eval (2 sigma = 2.2pp from a baseline measured four times). Three on
+`lite.osworld train` — two single-domain arms on impress read at five checkpoints each on the
+47-task impress eval (2 sigma = 3.7pp from five baseline measurements 0.4701 / 0.4521 / 0.4775 /
+0.4615 / 0.4303; the shared 0.4303 is the contaminated arm's own step-0 pass, and the clean arm
+skipped its own because the two start from the same weights), and one two-domain run on
+impress + calc read on the 93-task impress + calc eval:
 
 | training corpus | pool | delta |
 |---|---|---:|
@@ -840,11 +841,44 @@ the rollout budget.
 Both impress arms are n=1 on a 47-task eval. The five-point curves, not any single reading, are
 what the claim rests on.
 
-**Contamination.** The training pool is `scalecua_rl`, which `utils/tasks.py` labels
-**environment-level** (same starting screens, new goals and verifiers). 99 of the 115 eval tasks
-have a same-setup task in the pool. `perturb` is excluded: it is **task-level** (rewrites of the
-eval instructions), and the same file records SFT on its successes measuring −6.77pp at 8 updates
-and −14.49pp at 26. `synth` is excluded because no run that produced a gain used it.
+**Two domains at once: +12.24pp on 93 tasks.** The single-domain arms are 47 tasks wide, which is
+where this campaign has burned itself before. The same recipe on `libreoffice_impress` +
+`libreoffice_calc` — pools unioned, nothing else changed, `n=3` per eval task instead of 4 —
+doubles the denominator to 93 of the 328 scored eval tasks:
+
+| `lite.osworld train` impress + calc, 200 steps | 0 | 40 | 80 | 120 | 160 | 200 |
+|---|---:|---:|---:|---:|---:|---:|
+| `train.synth` 565 + `perturb` 214, pass rate | 0.3219 | 0.3374 | 0.3229 | 0.4292 | 0.4191 | **0.4443** |
+| delta | — | +1.55 | +0.10 | **+10.73** | +9.72 | **+12.24pp** |
+
+The last three readings sit at 0.42-0.44 and none of them is within reach of the first two, so this
+is a level change rather than one lucky checkpoint. **Nothing before 120 steps predicts it**: at 40
+and 80 steps the run reads +1.55pp and +0.10pp, i.e. flat, and the first live reading of this run
+was reported as two-domain training being worse than single-domain on exactly those two points.
+Every curve in this section has the same shape — read a 200-step run at 80 steps and it says
+nothing.
+
+**This eval set has no noise floor of its own.** The measured one above is 115 tasks at `n=4`
+(threshold ~5pp); 93 tasks at `n=3` is fewer tasks and fewer samples per task, so its threshold is
+wider than 5pp, not narrower. +12.24pp and +10.73pp clear it either way; +1.55pp and +0.10pp clear
+nothing, which is the point. Measure it before reading a smaller delta off this set.
+
+The step-0 rate is lower here (0.3219 vs 0.4303 on impress alone) because calc is the harder half:
+the calc pilots in the table above start from 0.1902. The delta, not the level, is what compares.
+
+**Contamination, per run.** `utils/tasks.py` grades the three corpora and every run above is
+labelled by which ones it drew from. Report the label with the number, always:
+
+| corpus | level | overlap with its eval set |
+|---|---|---|
+| `synth` | none — authored templates | 0 of 47 impress, 0 of 93 impress + calc |
+| `scalecua_rl` | environment-level: same starting screens, new goals and verifiers | 99 of 115 LibreOffice |
+| `perturb` | task-level: rewrites of the eval instructions | 40 of 47 impress, 77 of 93 impress + calc |
+
+The one clean-corpus run (`synth` 287, zero overlap) is also the one with the largest mean delta,
+which is why the claim is about the corpus and not about proximity. The two runs that include
+`perturb` are labelled in every table above; the +12.24pp two-domain run is one of them, and its
+clean-arm control has not been run.
 
 <details>
 <summary>Data</summary>
@@ -1063,3 +1097,163 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 \
   denominator from masked tokens to turn count; the impress pilots set it and the calc pilot did
   not, and the calc pilot is the one that moved furthest. One fewer knob between this run and the
   pilots it is read against.
+
+##### The three `lite.osworld train` runs
+
+These are the +9.88pp / +8.25pp / +12.24pp rows above: same base checkpoint, same render config,
+same hyperparameters, and only the two manifests change between them. The shape is the browser and
+mobile campaigns' shape (`LR=1e-6`, `RBS=16`, `nspr=8`, 8 steps per rollout), not the `LR=3e-6`,
+`RBS=32`, 4-steps-per-rollout shape of the `lite.scalecua` block above — so that one number is
+quotable across all three campaigns. **Compare learning rates per optimizer step, not nominally**:
+`RBS x nspr / steps_per_rollout` is 16 trajectories per gradient step here against the pilots' 64,
+so `1e-6` here is 6.3e-8 per trajectory and the pilots' `3e-6` is 4.7e-8 — this run's effective
+rate is the higher of the two despite the smaller nominal value.
+
+<details>
+<summary>Data</summary>
+
+All six manifests are plain domain filters over two tracked corpora — no calibration sidecar, no
+rollout log, no GPU. `sorted()` is what makes two builds on two clusters byte-identical.
+
+```bash
+# --- ONE-TIME DATA BUILD; skip generation for any file that already exists ---
+DATA=devs/exps/train/desktop/data
+MISSING=0
+for m in impress.synth287 impress.train395 impress.eval47 \
+         impress_calc.synth565 impress_calc.train779 impress_calc.eval93; do
+  [ -e "$DATA/$m.parquet" ] || MISSING=1
+done
+if [ "$MISSING" = 0 ]; then
+  echo "keep existing fixed manifests"
+else
+  uv run python - "$DATA" <<'PY'
+import sys
+sys.path.insert(0, "devs/exps/train/desktop")
+
+from lite.utils.parquet import write_records_to_parquet
+from utils.tasks import OSW, _read_jsonl, domain_of, eval_rows
+
+D = sys.argv[1]
+row = lambda t, split: {"problem": f"Complete the task: {t}",
+                        "metadata": {"env_key": f"lite.osworld@{t}", "split": split}}
+syn = {r["task_id"]: r for r in _read_jsonl(OSW / "train.synth.jsonl")}
+pt = {r["task_id"]: r for r in _read_jsonl(OSW / "train.perturb.jsonl")}
+
+for stem, doms in (("impress", {"libreoffice_impress"}),
+                   ("impress_calc", {"libreoffice_impress", "libreoffice_calc"})):
+    # sorted() is load-bearing: it is what makes two independent builds byte-identical.
+    s = sorted(t for t, r in syn.items() if domain_of(r) in doms)
+    p = sorted(t for t, r in pt.items() if domain_of(r) in doms)
+    ev = sorted(r["task_id"] for r in eval_rows(scored_only=True) if domain_of(r) in doms)
+    train = sorted([(t, "train.synth") for t in s] + [(t, "train.perturb") for t in p])
+    write_records_to_parquet([row(t, "train.synth") for t in s],
+                             f"{D}/{stem}.synth{len(s)}.parquet")
+    write_records_to_parquet([row(t, sp) for t, sp in train],
+                             f"{D}/{stem}.train{len(train)}.parquet")
+    write_records_to_parquet([row(t, "eval") for t in ev], f"{D}/{stem}.eval{len(ev)}.parquet")
+    print(f"{stem}: synth {len(s)}, train {len(train)}, eval {len(ev)}")
+PY
+fi
+
+uv run python - "$DATA" <<'PY'
+import hashlib
+import sys
+
+import pandas as pd
+
+from lite.data.staging import coerce_meta
+
+D = sys.argv[1]
+EXPECT = {  # (rows, sha256 over the env_key column in file order)
+    "impress.synth287":     (287, "246fc3b18e501ab01ac9a04c5e92427b3324dbc58810849f443b32cbd6585c03"),
+    "impress.train395":     (395, "b7fa1005057575e612510c9f2adf669ade92c905cc963596b87e9a3e0b6b7355"),
+    "impress.eval47":       (47,  "c194503155ddd7b221401a236718e5a95a765128498efb66d2a3e03ab0ed47fc"),
+    "impress_calc.train779": (779, "1a83e8e5d9a1bfe561d97be55866a2ba11a5fed6efa7e7e816549fdaea1b83b1"),
+    "impress_calc.eval93":  (93,  "56b1ffcfcea45176bed7ed7276e591d022a638ad2ed7f576541724716cb274da"),
+}
+for stem, (n, want) in EXPECT.items():
+    keys = [coerce_meta(r["metadata"])["env_key"]
+            for _, r in pd.read_parquet(f"{D}/{stem}.parquet").iterrows()]
+    got = hashlib.sha256("\n".join(keys).encode()).hexdigest()
+    assert len(keys) == n and got == want, f"{stem}: {len(keys)} rows, sha {got}"
+    print(f"{stem} ok: {n} rows, env_key_sha256={got}")
+PY
+```
+
+Composition, and the provenance label that has to travel with every number read off them:
+
+    impress.synth287      287 synth           overlaps  0 of the 47 impress eval tasks
+    impress.train395      287 synth + 108 perturb       40 of 47  (task-level)
+    impress.eval47         47 eval tasks, libreoffice_impress
+    impress_calc.train779 565 synth (calc 278 / impress 287)
+                        + 214 perturb (calc 106 / impress 108)   77 of 93  (task-level)
+    impress_calc.eval93    93 eval tasks, calc 46 / impress 47
+
+`impress_calc.synth565.parquet` also falls out of the build. It is the clean-arm control for the
+two-domain run and has not been trained yet; the `+12.24pp` above is the `perturb`-including arm.
+
+</details>
+
+```bash
+# --- Slime container ---
+# One of the three runs; pick the row below and change nothing else.
+W=/workspaces/cua-lite
+P=desktop.use.highr.i1.reasoning
+CKPT=$W/.ckpts/pulled/sft.highr.i1.reasoning.gpt5_5/epoch_2
+
+# CELL                         TRAIN                 EVAL                NSPE SKIP0 GPUS CONC
+# grpo.impress.synth287.clean  impress.synth287      impress.eval47       4    1    0-3   32
+# grpo.impress.train395.contam impress.train395      impress.eval47       4    0    4-7   32
+# grpo.impress_calc.train779   impress_calc.train779 impress_calc.eval93  3    0    0-7   48
+CELL=grpo.impress_calc.train779
+TRAIN=impress_calc.train779; EVAL=impress_calc.eval93; NSPE=3; SKIP0=0
+GPUS=0,1,2,3,4,5,6,7; NGPU=8; CONC=48
+
+: "${CUA_LITE_ENV_SERVER_URL:?paste export line from env-server shell}"
+: "${CUA_LITE_ENV_SERVER_TOKEN:?paste export line from env-server shell}"
+[ -d "$CKPT" ] || { echo "MISSING CKPT=$CKPT"; exit 1; }
+
+CUDA_VISIBLE_DEVICES=$GPUS NUM_TRAIN_GPUS=$NGPU TP_SIZE=4 \
+  MODEL_ID=Qwen/Qwen3.5-4B \
+  HF_CKPT="$CKPT" \
+  CUA_LITE_MULTIMODAL_LAZY_EXPAND=1 \
+  NCCL_NVLS_ENABLE=0 \
+  ENV_ID=lite.osworld \
+  PROMPT_DATA="$W/devs/exps/train/desktop/data/$TRAIN.parquet" \
+  EVAL_PROMPT_DATA="$W/devs/exps/train/desktop/data/$EVAL.parquet" \
+  CONFIG_PATH="$W/devs/exps/train/desktop/configs/qwen3_5/$P.yaml" \
+  ENV_CONCURRENCY=$CONC \
+  ROLLOUT_BATCH_SIZE=16 N_SAMPLES_PER_PROMPT=8 NUM_STEPS_PER_ROLLOUT=8 \
+  ROLLOUT_TEMPERATURE=1.0 ROLLOUT_MAX_RESPONSE_LEN=2048 \
+  LR=1e-6 \
+  EVAL_TEMPERATURE=1 N_SAMPLES_PER_EVAL_PROMPT=$NSPE \
+  EVAL_INTERVAL=5 SKIP_EVAL_BEFORE_TRAIN=$SKIP0 \
+  SAVE=1 NO_SAVE_OPTIM=1 SAVE_INTERVAL=5 NUM_ROLLOUT=25 \
+  SAVE_DIR="/root/checkpoints/qwen3_5-4b/$CELL/megatron" \
+  WANDB_GROUP_SUFFIX=".$CELL" \
+  bash "$W/scripts/train/run_grpo.sh"
+```
+
+- **Both manifests are `lite.osworld`, so `ENV_ID=lite.osworld` covers preflight outright.** The
+  two-env caveat above applies only to the `lite.scalecua` training block; nothing here needs a
+  hand-run probe of a second env.
+- **The two impress arms ran side by side on one 8-GPU host, 4 GPUs each; the two-domain run had
+  all 8.** That is the whole reason the pair is a clean A/B — same host, same env-server, same
+  hour, so a host-level confound moves both or neither. It also means their wall clocks
+  (~13.5h and ~11.8h) are co-tenant numbers, not the solo cost; the two-domain run took 10.2h on 8
+  GPUs.
+- **`NUM_ROLLOUT=25` is 25 rollouts = 200 optimizer steps = 3200 trajectories, evaluated every 40
+  steps.** Not a budget guess. In two of the three runs the largest delta is the last reading, and
+  the two-domain run reads +1.55pp then +0.10pp at 40 and 80 steps before +10.73pp at 120 — stopped
+  at 80 it would have been reported dead. Only the clean impress arm peaks early (40 steps) and
+  drifts down.
+- **`SKIP_EVAL_BEFORE_TRAIN=1` only for the clean impress arm**, which starts from the same weights
+  as the contaminated arm and borrows its 0.4303. Any run that is not paired with an identically
+  seeded step-0 pass must measure its own.
+- **`ENV_CONCURRENCY` is 32 per 4-GPU run and 48 for the 8-GPU run** on a 96-vCPU host, i.e. 8 and
+  6 containers per rollout engine. The env-server admits up to 2.5 load per cpu; 48 concurrent
+  desktop containers settle around 40-55 load. `run_grpo.sh` records only
+  `SERVER_CONCURRENCY = ceil(ENV_CONCURRENCY / NUM_ENGINES)` in the launched command line, so that
+  is where the value has to be read back from, multiplied by `NUM_ENGINES`.
+- **No `SAVE_HF_DIR`.** The three runs saved Megatron checkpoints only; add it back if a
+  downstream eval needs HF weights, and expect the extra wall clock at every `SAVE_INTERVAL`.
