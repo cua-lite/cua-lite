@@ -16,6 +16,12 @@
 # AgentLab-aligned path — recommended for weak open models), "som" (set-of-marks;
 # qwen families only).
 #
+# $EVAL_REASONING_EFFORT optionally overrides GPT api_kwargs.reasoning_effort
+# (none|minimal|low|medium|high|xhigh|max). It is valid only for gpt-* models.
+# $EVAL_AGENT_KWARGS optionally forwards JSON to rollout.py --agent-kwargs
+# (for example {"api_base":"http://127.0.0.1:8080"} for a Claude proxy).
+# $EVAL_ENV_KWARGS optionally forwards JSON to rollout.py --env-kwargs.
+#
 # This runner evaluates the paper-style 241-template subset: one instantiated
 # intent per exact `(intent_template_id, intent_template)` pair from WebArena's
 # 812 raw configs. Generate the committed prompt-data files with:
@@ -71,6 +77,10 @@
 #   CUDA_VISIBLE_DEVICES=<gpus> ./devs/exps/eval/browsergym.webarena/run.sh <model-id>
 #   # text+bid mode (recommended for weak open models):
 #   EVAL_MODE=text_only ./devs/exps/eval/browsergym.webarena/run.sh <model-id>
+#   # GPT reasoning override:
+#   EVAL_REASONING_EFFORT=xhigh ./devs/exps/eval/browsergym.webarena/run.sh gpt-5.5
+#   # Claude proxy:
+#   EVAL_AGENT_KWARGS="{\"api_base\":\"${ANTHROPIC_API_BASE%/}\"}" ./devs/exps/eval/browsergym.webarena/run.sh claude-opus-5
 #
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/browsergym.webarena/run.sh Qwen/Qwen3-VL-8B-Instruct
@@ -110,10 +120,25 @@ if [[ "$ENABLE_THINKING" -eq 1 && "$MODE" != "text_only" && "$MODE" != "som" ]];
 fi
 SUPPORTS_ENABLE_THINKING=0
 case "$MODEL" in
-  Qwen/Qwen3-VL-*-Thinking|Qwen/Qwen3.5-*) SUPPORTS_ENABLE_THINKING=1 ;;
+  Qwen/Qwen3-VL-*-Thinking|Qwen/Qwen3.5-*|Qwen/Qwen3.8-*) SUPPORTS_ENABLE_THINKING=1 ;;
 esac
 if [[ "$ENABLE_THINKING" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -ne 1 ]]; then
-  echo "[run.sh] ERROR: EVAL_ENABLE_THINKING=true is only supported for Qwen3-VL Thinking/Qwen3.5 local models, got: $MODEL" >&2
+  echo "[run.sh] ERROR: EVAL_ENABLE_THINKING=true is only supported for Qwen3-VL Thinking/Qwen3.5/Qwen3.8 local models, got: $MODEL" >&2
+  exit 1
+fi
+REASONING_EFFORT="${EVAL_REASONING_EFFORT:-}"
+if [ -n "$REASONING_EFFORT" ]; then
+  case "$REASONING_EFFORT" in
+    none|minimal|low|medium|high|xhigh|max) ;;
+    *) echo "[run.sh] ERROR: EVAL_REASONING_EFFORT must be one of none|minimal|low|medium|high|xhigh|max, got: $REASONING_EFFORT" >&2; exit 1 ;;
+  esac
+  case "$MODEL" in
+    gpt-*) ;;
+    *) echo "[run.sh] ERROR: EVAL_REASONING_EFFORT is only supported for gpt-* models, got: $MODEL" >&2; exit 1 ;;
+  esac
+fi
+if [[ "$ENABLE_THINKING" -eq 1 && -n "${EVAL_AGENT_KWARGS:-}" ]]; then
+  echo "[run.sh] ERROR: EVAL_AGENT_KWARGS and EVAL_ENABLE_THINKING=true both pass --agent-kwargs; put enable_thinking in EVAL_AGENT_KWARGS or unset one." >&2
   exit 1
 fi
 BASE_SLUG="${MODEL//\//_}"
@@ -225,6 +250,17 @@ if [[ "$ENABLE_THINKING" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -eq 1 ]]; then
     --agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"temperature": 0.6, "top_p": 0.9,"max_new_tokens": 4096}}'
   )
 fi
+if [ -n "$REASONING_EFFORT" ]; then
+  EXTRA_ROLLOUT_ARGS+=(
+    --api-kwargs "{\"reasoning_effort\":\"$REASONING_EFFORT\"}"
+  )
+fi
+if [ -n "${EVAL_AGENT_KWARGS:-}" ]; then
+  EXTRA_ROLLOUT_ARGS+=(--agent-kwargs "$EVAL_AGENT_KWARGS")
+fi
+if [ -n "${EVAL_ENV_KWARGS:-}" ]; then
+  EXTRA_ROLLOUT_ARGS+=(--env-kwargs "$EVAL_ENV_KWARGS")
+fi
 
 # Optional extra filter clauses ANDed onto the read/write splits (e.g. skip map
 # tasks on a host built with WEBARENA_INSTALL_MAP=0). Default: no-op (`True`).
@@ -240,6 +276,9 @@ fi
 echo "         log_root=$LOG_ROOT"
 echo "         config=$CFG"
 echo "         enable_thinking=$ENABLE_THINKING"
+if [ -n "$REASONING_EFFORT" ]; then
+  echo "         reasoning_effort=$REASONING_EFFORT"
+fi
 if [ "${#EXTRA_ROLLOUT_ARGS[@]}" -gt 0 ]; then
   echo "         extra_args=${EXTRA_ROLLOUT_ARGS[*]}"
 fi
