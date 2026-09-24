@@ -338,6 +338,8 @@ uv run python scripts/rollout.py \
 
 # Specific tasks via parquet
 --prompt-data /path/to/tasks.parquet
+# WebArena's committed read/write split lives under:
+# lite/gym/envs/browsergym/data/webarena_241_templates.{read,write}.prompt_data.parquet
 
 # Parallel environments
 --concurrency 4
