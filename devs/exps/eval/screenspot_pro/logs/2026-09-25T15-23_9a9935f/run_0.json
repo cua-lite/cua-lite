@@ -1,0 +1,606 @@
+{
+  "schema_version": 1,
+  "env": "screenspot_pro",
+  "commit_dir": "2026-09-25T15-23_9a9935f",
+  "run_id": "run_0",
+  "commit": {
+    "short_sha": "9a9935f",
+    "subject": "eval(screenspot_pro): use official non-thinking Venus grounding settings"
+  },
+  "artifact_root": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0",
+  "result_count": 16,
+  "status_counts": {
+    "complete": 14,
+    "partial": 1,
+    "empty": 1
+  },
+  "scoring": "Mean episode return over samples with error == null; API errors are excluded and ordinary zero-reward predictions remain included.",
+  "results": [
+    {
+      "model": "gpt-6-astra",
+      "slug": "gpt-6-astra__gpt__default__screenspot_pro.medium",
+      "base_slug": "gpt-6-astra",
+      "config_id": "medium",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.9386464263124604,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/gpt-6-astra__gpt__default__screenspot_pro.medium/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/gpt-6-astra__gpt__default__screenspot_pro.medium",
+      "num_errors": 0,
+      "sum_episode_return": 1484.0,
+      "config_path": "scripts/configs/gpt/default/screenspot_pro.medium.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-6-astra__gpt__default__screenspot_pro.medium/run_info.txt",
+        "source_commits": [
+          "bda9c79"
+        ],
+        "run_info_sha256": "546564b32f06273dd1cd7efafa00700023dc6c4c1018bd7ba23ba348e51a9cad",
+        "sample_summaries_sha256": "05114b71a0669c577ec82641b0956a0d2e0bfb1d174656078d4b64e81eaebf65",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "c8bb96d353a242d1a0d82e6d762aa15dba571f8e9d535cabb53d898e4fe7c9d4",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/screenspot_pro/2026-09-17T06-00_bda9c79/run_0/gpt-6-astra__medium",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/gpt-6-astra__gpt__default__screenspot_pro.medium"
+      },
+      "agent_kwargs": {
+        "api_kwargs": {
+          "reasoning_effort": "medium",
+          "reasoning_summary": "concise",
+          "truncation": "auto",
+          "chain_previous_response": true,
+          "parallel_tool_calls": false,
+          "max_output_tokens": 4096,
+          "detail": "original"
+        }
+      },
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/gpt-6-astra__gpt__default__screenspot_pro.medium/breakdown.json"
+    },
+    {
+      "model": "claude-opus-5",
+      "slug": "claude-opus-5",
+      "base_slug": "claude-opus-5",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.8526249209361164,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/claude-opus-5/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/claude-opus-5",
+      "config_path": "scripts/configs/claude/default/screenspot_pro.yaml",
+      "agent_kwargs": {
+        "api_kwargs": {
+          "effort": "medium",
+          "max_tokens": 1024,
+          "thinking_budget": 0,
+          "prompt_caching": true,
+          "cache_breakpoints": 4,
+          "token_efficient_tools_beta": false
+        },
+        "api_base": "http://127.0.0.1:8080"
+      },
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "num_errors": 0,
+      "sum_episode_return": 1348.0,
+      "error_task_ids": [],
+      "provenance": {
+        "source_commits": [
+          "b1892ef"
+        ],
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/claude-opus-5/run_info.txt",
+        "run_info_sha256": "4c85a33788cdfcfa37195efd002f77e2220c911a975f09968782d4372bd7309e",
+        "summary_sha256": "780b97fc806565640b9393ad674afc72d8951d5214c1e2af38086715aa2ed0cc",
+        "config_sha256": "2bb9a59f8c342f8c8cec2e82d3df79d07896dc89698ba7a94063e108a889a16e",
+        "sample_summary_count": 1581,
+        "sample_summary_manifest_sha256": "6223a4924cebb81eeb14ae1b63deeec16ffd3dd4c358ea6c259c64bd7eba6452",
+        "sample_summary_manifest_format": "SHA256 of sorted lines: <task_id> <summary.json sha256>\\n",
+        "runtime_mode": "direct",
+        "concurrency": 20,
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/claude-opus-5"
+      },
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/claude-opus-5/breakdown.json"
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "slug": "gpt-5.6-sol",
+      "base_slug": "gpt-5.6-sol",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.8247944339025933,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/gpt-5.6-sol/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/gpt-5.6-sol",
+      "config_path": "scripts/configs/gpt/default/screenspot_pro.yaml",
+      "agent_kwargs": {
+        "api_kwargs": {
+          "reasoning_effort": "medium",
+          "reasoning_summary": "concise",
+          "truncation": "auto",
+          "chain_previous_response": true,
+          "parallel_tool_calls": false,
+          "max_output_tokens": 4096,
+          "detail": "original"
+        }
+      },
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "num_errors": 0,
+      "sum_episode_return": 1304.0,
+      "error_task_ids": [],
+      "provenance": {
+        "source_commits": [
+          "b1892ef"
+        ],
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/gpt-5.6-sol/run_info.txt",
+        "run_info_sha256": "08e56eab799b94d4c12e5353d9abd5552acfd6c095634eff092c534029da9ffa",
+        "summary_sha256": "5a9705ace8fee9be86b1361744f2ea549112c072830c6d9621f7193c0d2fb50b",
+        "config_sha256": "cbe5513fd7a939967ec7b6b4ed08781357a5658fafcc90574ab3d161399ac402",
+        "sample_summary_count": 1581,
+        "sample_summary_manifest_sha256": "fa550e70a05a6cc078291f1d1e6b08ff4ceaa345fe4df0a797a39a29370e8b3f",
+        "sample_summary_manifest_format": "SHA256 of sorted lines: <task_id> <summary.json sha256>\\n",
+        "runtime_mode": "direct",
+        "concurrency": 20,
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/gpt-5.6-sol"
+      },
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/gpt-5.6-sol/breakdown.json"
+    },
+    {
+      "model": "Qwen/Qwen3.8-27B",
+      "slug": "Qwen_Qwen3.8-27B",
+      "base_slug": "Qwen_Qwen3.8-27B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.7539531941808981,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.8-27B/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.8-27B",
+      "num_errors": 0,
+      "sum_episode_return": 1192.0,
+      "config_path": "scripts/configs/qwen3_8/default/screenspot_pro.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.8-27B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "be21e9dc5cf1cd52165f023a08e06092c1ab68b740a380a2d03518414b986106",
+        "sample_summaries_sha256": "bdf4a597a021e2eb4c485b434ee07d3f344fa6ea090e50c3ab9266bf821bd858",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "0a43368c2c0d34b74ebb07d912bb43b14f1ebfd9e67b376cc95b78a363fbb46a",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/screenspot_pro/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3.8-27B",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/Qwen_Qwen3.8-27B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {},
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.8-27B/breakdown.json"
+    },
+    {
+      "model": "inclusionAI/UI-Venus-2-9B",
+      "slug": "UI-Venus-2-9B",
+      "base_slug": "inclusionAI_UI-Venus-2-9B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.7191650853889943,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/UI-Venus-2-9B/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/UI-Venus-2-9B",
+      "config_path": "scripts/configs/ui_venus_2/default/screenspot_pro.yaml",
+      "agent_kwargs": {
+        "enable_thinking": false
+      },
+      "env_kwargs": {},
+      "num_errors": 0,
+      "sum_episode_return": 1137.0,
+      "error_task_ids": [],
+      "provenance": {
+        "source_commits": [
+          "9a9935f"
+        ],
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/UI-Venus-2-9B/run_info.txt",
+        "run_info_sha256": "bcf93c4d8cdbf80b71830a68c5fb601baa4d693000c2216ccc92d1a20a9829c6",
+        "summary_sha256": "3fcb8d1b7edc6b6734f1e31cb8f71e7da2141a99a975cd6c256a18f88ef004fc",
+        "config_sha256": "b3b940b9683a38dae9db7035db082c5250d3c6d80163100340a6a701028acad8",
+        "sample_summary_count": 1581,
+        "sample_summary_manifest_sha256": "d521e195ac1673edc05252dfc938ffbc0442dd0fa919c685b67ee8572e78b0a0",
+        "sample_summary_manifest_format": "SHA256 of sorted lines: <task_id> <summary.json sha256>\\n",
+        "runtime_mode": "direct",
+        "concurrency": 12
+      },
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/UI-Venus-2-9B/breakdown.json"
+    },
+    {
+      "model": "Qwen/Qwen3.5-27B",
+      "slug": "Qwen_Qwen3.5-27B",
+      "base_slug": "Qwen_Qwen3.5-27B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.6951296647691335,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.5-27B/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.5-27B",
+      "num_errors": 0,
+      "sum_episode_return": 1099.0,
+      "config_path": "scripts/configs/qwen3_5/default/screenspot_pro.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.5-27B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "2df70024cf16317b92d8fef279d2e685b7003253f6be6f5f6098f049ecb42edb",
+        "sample_summaries_sha256": "cf5439c772089d0211af33a20d74db37450bda7d886405494602acba505f76bc",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "1fe5ca6d9be98dae1431f30c6114572e65ae4153195a9e8637972ff4fa382577",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/screenspot_pro/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3.5-27B",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/Qwen_Qwen3.5-27B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {},
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.5-27B/breakdown.json"
+    },
+    {
+      "model": "Tongyi-MAI/MAI-UI-8B",
+      "slug": "Tongyi-MAI_MAI-UI-8B",
+      "base_slug": "Tongyi-MAI_MAI-UI-8B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.6223908918406073,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Tongyi-MAI_MAI-UI-8B/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Tongyi-MAI_MAI-UI-8B",
+      "num_errors": 0,
+      "sum_episode_return": 984.0,
+      "config_path": "scripts/configs/mai_ui/default/screenspot_pro.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Tongyi-MAI_MAI-UI-8B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "d175831cdaffcbd3b0c273bc6bf680083c65ec37fc9d8a41463824593acb0d3d",
+        "sample_summaries_sha256": "8a800fc93a0dbb83262aa9036dcb2822be51dd3742819f6484837706a7686a2b",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "dc46a7cfeccb39b77cf16d942e409a44838c10b0a2805681e79ff47823eb5e75",
+        "config_matches_recorded_commit": true,
+        "original_log_root": "/srv/home/weichenzhang/cua-lite-overall/worktrees/screenspot_pro/.exps/eval/screenspot_pro/2026-09-12T06-10_dd6c13d/run_0/Tongyi-MAI_MAI-UI-8B",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/Tongyi-MAI_MAI-UI-8B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {},
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Tongyi-MAI_MAI-UI-8B/breakdown.json"
+    },
+    {
+      "model": "Qwen/Qwen3-VL-4B-Instruct",
+      "slug": "Qwen_Qwen3-VL-4B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-4B-Instruct",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.5825426944971537,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3-VL-4B-Instruct",
+      "num_errors": 0,
+      "sum_episode_return": 921.0,
+      "config_path": "scripts/configs/qwen3_vl/default/screenspot_pro.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3-VL-4B-Instruct/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "1f8f25aa748e30e7f90131d5f685084abcf1bd299de11eb56f6c45bfa2a24a9a",
+        "sample_summaries_sha256": "f747e596d626f1b8dbd68a25f8882c5b2f63bedceb71691efc0beefd0c8d867d",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "bf445647f3c4675e4b4d893370edfae8c07b871f639879c11ed8fa8531b34a4b",
+        "config_matches_recorded_commit": true,
+        "original_log_root": "/srv/home/weichenzhang/cua-lite-overall/worktrees/screenspot_pro/.exps/eval/screenspot_pro/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3-VL-4B-Instruct",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/Qwen_Qwen3-VL-4B-Instruct"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3-VL-4B-Instruct/breakdown.json"
+    },
+    {
+      "model": "Qwen/Qwen3.5-9B",
+      "slug": "Qwen_Qwen3.5-9B",
+      "base_slug": "Qwen_Qwen3.5-9B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.5812776723592663,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.5-9B/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.5-9B",
+      "num_errors": 0,
+      "sum_episode_return": 919.0,
+      "config_path": "scripts/configs/qwen3_5/default/screenspot_pro.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.5-9B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "31dd6587c0c60ab674a822760b24cccd411883c4ad10538af1368411fdcc6a43",
+        "sample_summaries_sha256": "eba06183fdbfdf25b58923c6b9f0a97cdb15b7108bd7465e1fc47762afec0ee1",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "1fe5ca6d9be98dae1431f30c6114572e65ae4153195a9e8637972ff4fa382577",
+        "config_matches_recorded_commit": true,
+        "original_log_root": "/srv/home/weichenzhang/cua-lite-overall/worktrees/screenspot_pro/.exps/eval/screenspot_pro/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3.5-9B",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/Qwen_Qwen3.5-9B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.5-9B/breakdown.json"
+    },
+    {
+      "model": "Qwen/Qwen3.5-4B",
+      "slug": "Qwen_Qwen3.5-4B",
+      "base_slug": "Qwen_Qwen3.5-4B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.5774826059456041,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.5-4B/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.5-4B",
+      "num_errors": 0,
+      "sum_episode_return": 913.0,
+      "config_path": "scripts/configs/qwen3_5/default/screenspot_pro.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3.5-4B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "20fd57e8b5630ab19d697e6663ed0b082a7504a4148546b9d7f3a4832f91c8e5",
+        "sample_summaries_sha256": "fb1616aa7f94f89d1ced1518d1547c1e3d75f28919d2d00d2a16596e754b73fe",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "1fe5ca6d9be98dae1431f30c6114572e65ae4153195a9e8637972ff4fa382577",
+        "config_matches_recorded_commit": true,
+        "original_log_root": "/srv/home/weichenzhang/cua-lite-overall/worktrees/screenspot_pro/.exps/eval/screenspot_pro/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3.5-4B",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/Qwen_Qwen3.5-4B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3.5-4B/breakdown.json"
+    },
+    {
+      "model": "Qwen/Qwen3-VL-32B-Instruct",
+      "slug": "Qwen_Qwen3-VL-32B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-32B-Instruct",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.5768500948766604,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3-VL-32B-Instruct",
+      "num_errors": 0,
+      "sum_episode_return": 912.0,
+      "config_path": "scripts/configs/qwen3_vl/default/screenspot_pro.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3-VL-32B-Instruct/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "ef05f7753b678c6e67ecd87ed5504a0a5cb812177aaab72086de8b4b372db9d5",
+        "sample_summaries_sha256": "ce517855522c0b72a98d49d01ccbfc8d75de49e97ab94a55ba269ebbe3b28ab3",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "bf445647f3c4675e4b4d893370edfae8c07b871f639879c11ed8fa8531b34a4b",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/screenspot_pro/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3-VL-32B-Instruct",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/Qwen_Qwen3-VL-32B-Instruct"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {},
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3-VL-32B-Instruct/breakdown.json"
+    },
+    {
+      "model": "Qwen/Qwen3-VL-8B-Instruct",
+      "slug": "Qwen_Qwen3-VL-8B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-8B-Instruct",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.5521821631878557,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3-VL-8B-Instruct",
+      "num_errors": 0,
+      "sum_episode_return": 873.0,
+      "config_path": "scripts/configs/qwen3_vl/default/screenspot_pro.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/Qwen_Qwen3-VL-8B-Instruct/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "de93963fddb671f14e296d4af6782c8247559a7962376432ba1700b06c45b6fa",
+        "sample_summaries_sha256": "db5c2bb542e9eb2155d588bbbafc2b2751f7989c464f70c50cba584d6fec23aa",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "bf445647f3c4675e4b4d893370edfae8c07b871f639879c11ed8fa8531b34a4b",
+        "config_matches_recorded_commit": true,
+        "original_log_root": "/srv/home/weichenzhang/cua-lite-overall/worktrees/screenspot_pro/.exps/eval/screenspot_pro/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3-VL-8B-Instruct",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/Qwen_Qwen3-VL-8B-Instruct"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/Qwen_Qwen3-VL-8B-Instruct/breakdown.json"
+    },
+    {
+      "model": "ByteDance-Seed/UI-TARS-1.5-7B",
+      "slug": "ByteDance-Seed_UI-TARS-1.5-7B",
+      "base_slug": "ByteDance-Seed_UI-TARS-1.5-7B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.49778621125869704,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
+      "num_errors": 0,
+      "sum_episode_return": 787.0,
+      "config_path": "scripts/configs/ui_tars_15_v1/default/screenspot_pro.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/ByteDance-Seed_UI-TARS-1.5-7B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "33de3eabed13cf88724feca61c35129f0bef212c4981e04a11342d16afb6e4bb",
+        "sample_summaries_sha256": "3da34b85de08eece4ac84e17173259800ed3295c98cb93df570bac3d722400fc",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "48615b3e686e9de0d72b4c5ebae79d712c317d9b1b9a78993cc5afc47a53df42",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/screenspot_pro/2026-09-12T06-10_dd6c13d/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/ByteDance-Seed_UI-TARS-1.5-7B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {},
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/ByteDance-Seed_UI-TARS-1.5-7B/breakdown.json"
+    },
+    {
+      "model": "meituan/EvoCUA-8B-20260105",
+      "slug": "meituan_EvoCUA-8B-20260105",
+      "base_slug": "meituan_EvoCUA-8B-20260105",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 1581,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.4351676154332701,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/meituan_EvoCUA-8B-20260105/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/meituan_EvoCUA-8B-20260105",
+      "num_errors": 0,
+      "sum_episode_return": 688.0,
+      "config_path": "scripts/configs/evocua/default/screenspot_pro.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/meituan_EvoCUA-8B-20260105/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "e5fe6b757fa639cce27a90d6f7facf561d445ad29ac78593d3caf037c1564351",
+        "sample_summaries_sha256": "5391019a2655daecf46405004a6342c6b4a24eb1c8c85044b794d5c59baf8c1e",
+        "sample_summary_count": 1581,
+        "error_count": 0,
+        "config_sha256": "db60b5987a51ccc0bad3f4ca8c0d622fe2055d74ef54798ab2144375bcf0dfb8",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/screenspot_pro/2026-09-12T06-10_dd6c13d/run_0/meituan_EvoCUA-8B-20260105",
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/meituan_EvoCUA-8B-20260105"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {},
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/meituan_EvoCUA-8B-20260105/breakdown.json"
+    },
+    {
+      "model": "gpt-5.5",
+      "slug": "gpt-5.5",
+      "base_slug": "gpt-5.5",
+      "config_id": "default",
+      "status": "partial",
+      "num_valid": 1570,
+      "num_tasks": 1581,
+      "num_samples": 1581,
+      "mean_episode_return": 0.7445859872611464,
+      "summary_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/gpt-5.5/summary.json",
+      "artifact_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/gpt-5.5",
+      "config_path": "scripts/configs/gpt/default/screenspot_pro.yaml",
+      "agent_kwargs": {
+        "api_kwargs": {
+          "reasoning_effort": "medium",
+          "reasoning_summary": "concise",
+          "truncation": "auto",
+          "chain_previous_response": true,
+          "parallel_tool_calls": false,
+          "max_output_tokens": 4096,
+          "detail": "original"
+        }
+      },
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "num_errors": 11,
+      "sum_episode_return": 1169.0,
+      "error_task_ids": [
+        "macos_common_macos_12",
+        "macos_common_macos_14",
+        "macos_common_macos_17",
+        "macos_common_macos_2",
+        "macos_common_macos_3",
+        "macos_common_macos_33",
+        "macos_common_macos_41",
+        "macos_common_macos_43",
+        "macos_common_macos_48",
+        "macos_common_macos_51",
+        "macos_common_macos_64"
+      ],
+      "provenance": {
+        "source_commits": [
+          "b1892ef"
+        ],
+        "run_info_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/gpt-5.5/run_info.txt",
+        "run_info_sha256": "53cd6c777f3522410470372de61c4691e03f16fa8caa10319fd7042f990593c5",
+        "summary_sha256": "6ce71626c417dc452d67fa3bfa8f05e3932438706ca61c649774009f1c7c0dfb",
+        "config_sha256": "cbe5513fd7a939967ec7b6b4ed08781357a5658fafcc90574ab3d161399ac402",
+        "sample_summary_count": 1570,
+        "sample_summary_manifest_sha256": "224e4e5a798d945c6a71e8bb3718ff6879f6a64514b328f16f33b0578e0fb63b",
+        "sample_summary_manifest_format": "SHA256 of sorted lines: <task_id> <summary.json sha256>\\n",
+        "runtime_mode": "direct",
+        "concurrency": 20,
+        "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/gpt-5.5"
+      },
+      "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/gpt-5.5/breakdown.json"
+    },
+    {
+      "model": "gemini-3.6-flash",
+      "slug": "gemini-3.6-flash",
+      "base_slug": "gemini-3.6-flash",
+      "config_id": "default",
+      "status": "empty",
+      "num_valid": 0,
+      "num_tasks": 1581,
+      "num_samples": 0,
+      "mean_episode_return": null,
+      "note": "No run was launched in this campaign."
+    }
+  ],
+  "last_updated": "2026-09-25 16:26 PDT",
+  "aggregation_note": "A fresh non-thinking run replaces UI-Venus-2-9B. Other rows retain their recorded source artifacts and actual configurations; source paths are authoritative."
+}
