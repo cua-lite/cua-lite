@@ -1,0 +1,9 @@
+{
+  "description": "MobileGym grounded teacher trajectories collected on MobileGym's browser-simulated Android tasks and deterministic state-diff judge via the cua-lite `mobilegym` runtime, from three teachers published as separate configs (`mobile.use.gpt5_5` from gpt-5.5, `mobile.use.qwen3_8_27b` from Qwen/Qwen3.8-27B, `mobile.use.qwen3_5_27b` from Qwen/Qwen3.5-27B with thinking on) and annotated by the same quality pass; collected with reward_shaping on, so metadata.others.episode_return is 1.0 for a MobileGym Success-Rate success and 0.5*progress otherwise; ordinary quality gates tagged in metadata.others.exclude_reason, publish-invalid OOB coordinates, undeclared tool calls and invalid action names hard-dropped (filter with not exclude_reason and episode_return>=0.30)",
+  "original_urls": [
+    "https://github.com/Purewhiter/mobilegym",
+    "https://arxiv.org/abs/2605.26114"
+  ],
+  "license": "See original project (Purewhiter/mobilegym).",
+  "citation": "See https://arxiv.org/abs/2605.26114 (MobileGym, Wu et al., 2026)."
+}

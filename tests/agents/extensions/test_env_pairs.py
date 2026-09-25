@@ -58,10 +58,13 @@ from lite.agents.extensions.browsergym.protocol import (
     render_tool_call_json,
     render_tool_call_xml,
 )
-from lite.agents.extensions.teacher.agent import GPTTeacherAgent
+from lite.agents.extensions.teacher.agent import (
+    GPTMobileTeacherAgent,
+    GPTTeacherAgent,
+)
 from lite.agents.factory import AGENTS, API_AGENTS, LOCAL_AGENTS
 from lite.agents.models import AgentRegistry
-from lite.agents.models.gpt.agent import GPTDesktopUseAgent
+from lite.agents.models.gpt.agent import GPTDesktopUseAgent, GPTMobileUseAgent
 from lite.core import (
     LiteCUAMetadata,
     LiteSample,
@@ -693,19 +696,105 @@ _TEACHER_ACTION_OUTPUT = [
 ]
 
 
-def test_teacher_parse_seam_signature_tracks_the_base() -> None:
-    """``GPTDesktopUseAgent.sample()`` is the ONLY caller and always passes
-    ``call_id_start=``. A narrower override raises ``TypeError`` on the first model
-    reply of every ``gpt.teacher`` run, so pin the keyword set."""
+@pytest.mark.parametrize(
+    "base_cls, teacher_cls",
+    [(GPTDesktopUseAgent, GPTTeacherAgent), (GPTMobileUseAgent, GPTMobileTeacherAgent)],
+    ids=["desktop", "mobile"],
+)
+def test_teacher_parse_seam_signature_tracks_the_base(base_cls, teacher_cls) -> None:
+    """Each use-agent's ``sample()`` is the ONLY caller of its own seam and always
+    passes ``call_id_start=``. A narrower override raises ``TypeError`` on the first
+    model reply of every ``gpt.teacher`` run, so pin the keyword set.
+
+    Both platforms are checked because ONE override in ``_GPTTeacherMixin`` serves
+    both: the mobile seam exists only so that override applies there too, and a
+    signature drift on either side breaks it silently at import time.
+    """
     import inspect
 
-    base = inspect.signature(GPTDesktopUseAgent._parse_output_items)
-    teacher = inspect.signature(GPTTeacherAgent._parse_output_items)
+    base = inspect.signature(base_cls._parse_output_items)
+    teacher = inspect.signature(teacher_cls._parse_output_items)
     missing = sorted(set(base.parameters) - set(teacher.parameters))
     assert not missing, (
-        f"gpt.teacher drops base seam parameters {missing} — sample() calls it "
-        "with them and would raise TypeError"
+        f"{teacher_cls.__name__} drops base seam parameters {missing} — sample() calls "
+        "it with them and would raise TypeError"
     )
+
+
+def test_mobilegym_teacher_surface_is_renderable_by_the_qwen_student() -> None:
+    """Every action the mobilegym collect recipe offers the teacher must be one the
+    Qwen mobile student can render back.
+
+    This is a DATA-LOSS gate, not a style one. `export_sft` runs `--no-strict` in the
+    campaign runbook, so an unrenderable action does not fail the export -- it prints
+    one `Skipped N rows` line and discards that trajectory whole. One `drag` in a
+    30-step episode costs all 30 steps, and the runbook's i1-vs-i4 row-count check
+    cannot see it because both cells drop the same row. Measured once for real: 1 of 4
+    trajectories in the first smoke collection carried a `drag`.
+    """
+    import yaml as _yaml
+
+    from lite.agents.models.qwen3_5.action_space import Qwen3_5MobileActionSpace
+
+    cfg = _yaml.safe_load((_CONFIGS / "gpt/recipes/collect/mobilegym.yaml").read_text())
+    md = _env_metadata("mobilegym", dict(cfg.get("env_kwargs") or {}))
+    agent = _agent_make_for_test(
+        "gpt-5.5",
+        env=SimpleNamespace(metadata=md),
+        agent_id=cfg["agent_id"],
+        **_agent_kwargs_for_construction(cfg),
+    )
+    student = Qwen3_5MobileActionSpace()
+    # A minimal well-formed call per offered GUI action, in canonical Lite shape.
+    probes = {
+        "tap": {"coordinate": [300, 400], "clicks": 1},
+        "long_press": {"coordinate": [300, 400], "duration": 1},
+        "swipe": {"start_coordinate": [1, 2], "end_coordinate": [3, 4]},
+        "drag": {"start_coordinate": [1, 2], "end_coordinate": [3, 4]},
+        "pinch": {"coordinate": [1, 2], "direction": "in", "amount": 25},
+        "type": {"text": "x"},
+        "system_button": {"button": "Back"},
+        "wait": {"duration": 1},
+        "screenshot": {},
+    }
+    offered = {
+        (t["function"]["name"] if "function" in t else t["name"]) for t in agent._build_tools()
+    }
+    unrenderable = []
+    for name in sorted(offered & probes.keys()):
+        try:
+            student.convert_tool_calls_to_agent(
+                [{"id": "c0", "type": "function",
+                  "function": {"name": name, "arguments": probes[name]}}]
+            )
+        except Exception as exc:  # noqa: BLE001 -- any failure is the finding
+            unrenderable.append(f"{name}: {type(exc).__name__}")
+    assert not unrenderable, (
+        "mobilegym collect recipe offers the teacher actions the Qwen student cannot "
+        f"render, so export silently drops those trajectories: {unrenderable}. "
+        "Pin them out via env_kwargs.valid_actions in the recipe."
+    )
+
+
+def test_mobile_teacher_appends_the_contract_at_its_own_prompt_seam() -> None:
+    """Mobile assembles its system prompt in ``_system_prompt_for_mobile_request``,
+    not ``_effective_system_prompt``, so that is where the contract has to land.
+
+    Getting this wrong is SILENT: the run still collects, the Thought/Action
+    requirement just never reaches the model, and the rows come back with no
+    ``inline_reasoning`` — the one thing the teacher exists to produce. Asserting
+    against the plain base agent pins BOTH halves: the contract is added, and the
+    ``{w}``/``{h}`` substitution the seam owns still happens.
+    """
+    prompt = "MOBILE BASE {w}x{h}"
+    teacher = GPTMobileTeacherAgent(system_prompt=prompt)
+    plain = GPTMobileUseAgent(system_prompt=prompt)
+
+    base_out = plain._system_prompt_for_mobile_request(720, 1600)
+    teacher_out = teacher._system_prompt_for_mobile_request(720, 1600)
+
+    assert base_out == "MOBILE BASE 720x1600"
+    assert teacher_out == base_out + "\n" + teacher._structured_output_instruction()
 
 
 def test_teacher_stamps_call_ids_from_the_loops_counter() -> None:
@@ -770,7 +859,7 @@ def _teacher_recipe_rows() -> list[Path]:
     ]
 
 
-def test_teacher_recipe_rows_are_the_known_five() -> None:
+def test_teacher_recipe_rows_are_the_known_six() -> None:
     """Premise, dep-light: asserted where no host state can skip it. It used to
     live inside the construction loop below, where the first unavailable env
     skipped the whole function and took this count with it."""
@@ -779,6 +868,7 @@ def test_teacher_recipe_rows_are_the_known_five() -> None:
         "lite.cuaworld.yaml",
         "lite.osworld.yaml",
         "lite.scalecua.yaml",
+        "mobilegym.yaml",
         "webgym.yaml",
     ]
 
@@ -803,4 +893,9 @@ def test_teacher_rows_construct_against_their_real_envs(path: Path) -> None:
         agent_id="gpt.teacher",
         **_agent_kwargs_for_construction(cfg),
     )
-    assert isinstance(agent, GPTTeacherAgent), path.name
+    # Pin the LEAF, not just the mixin. Asserting only ``_GPTTeacherMixin`` would
+    # still pass if the desktop pattern were ever broadened to cover ``@mobile@use``
+    # and a mobile env silently got a desktop-based agent -- which would use the
+    # desktop action space and coordinate frame on a phone.
+    expected = GPTMobileTeacherAgent if "mobile" in md.dims else GPTTeacherAgent
+    assert type(agent) is expected, f"{path.name}: dims={md.dims} -> {type(agent).__name__}"
