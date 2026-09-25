@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import os
 from io import BytesIO
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -519,19 +520,16 @@ def test_best_judge_only_caches_judge_page_true():
     assert env._best_judge["complete"] is True
 
 
-def test_judge_silences_exceptions(caplog):
-    """judge() raising should warn but not propagate — env keeps stepping."""
+def test_judge_errors_propagate():
+    """Evaluator failures must reach the rollout error handler."""
     class _BustedJudge:
         def judge(self, tree, line):
             raise ValueError("upstream judge bug")
 
     env = _make_unit_env(judge_class=_BustedJudge)
-    with caplog.at_level("WARNING"):
+    with pytest.raises(ValueError, match="upstream judge bug"):
         env._run_judge({"t": 1}, {})
-    assert any("judge() raised" in rec.message for rec in caplog.records)
-    # best_judge stays None → reward 0, not an exception.
     assert env._best_judge is None
-    assert env._compute_reward() == 0.0
 
 
 def test_judge_skips_on_no_xml():
@@ -542,17 +540,85 @@ def test_judge_skips_on_no_xml():
     assert env._judge.call_count == 0
 
 
-def test_judge_notimplemented_is_silent():
-    """Reference's SingleTask.judge is NotImplementedError by default; tasks
-    without an override must not flood logs (already happens on abstract
-    paths under some task discovery edge cases)."""
+def test_judge_notimplemented_propagates():
+    """An abstract judge cannot provide a valid score."""
     class _AbstractJudge:
         def judge(self, tree, line):
             raise NotImplementedError
 
     env = _make_unit_env(judge_class=_AbstractJudge)
-    env._run_judge({"t": 1}, {})  # should not raise
+    with pytest.raises(NotImplementedError):
+        env._run_judge({"t": 1}, {})
     assert env._best_judge is None
+
+
+@pytest.fixture
+def llm_judge_client(monkeypatch):
+    # The pinned dependency lives in the AndroidLab image, not the host venv.
+    pytest.importorskip("android_lab.evaluation.task")
+    monkeypatch.setenv("AZURE_API_BASE", "https://judge.example.test")
+    monkeypatch.setenv("AZURE_API_KEY", "test-key")
+    client = MagicMock()
+    monkeypatch.setattr("openai.AzureOpenAI", lambda **kwargs: client)
+    return client.chat.completions.create
+
+
+@pytest.mark.parametrize("text,finish_reason,expected", [
+    ("[True]", "stop", True),
+    ("[False]", "stop", False),
+    ("", "stop", None),
+    ("[True] [False]", "stop", None),
+    ("[True]", "length", None),
+])
+def test_llm_judge_response_validation(llm_judge_client, text, finish_reason, expected):
+    from android_lab.evaluation.task import SingleTask
+
+    llm_judge_client.return_value = SimpleNamespace(choices=[SimpleNamespace(
+        finish_reason=finish_reason, message=SimpleNamespace(content=text),
+    )])
+    judge = SingleTask()
+    if expected is None:
+        with pytest.raises(ValueError):
+            judge._llm_judge("question", "answer", "ground truth")
+    else:
+        assert judge._llm_judge("question", "answer", "ground truth") is expected
+    assert llm_judge_client.call_args.kwargs["model"] == "gpt-4o-mini"
+    assert llm_judge_client.call_args.kwargs["max_tokens"] == 16
+    assert llm_judge_client.call_args.kwargs["temperature"] == 0.0
+
+
+def test_llm_judge_requires_credentials(monkeypatch):
+    task = pytest.importorskip("android_lab.evaluation.task")
+    for name in ("AZURE_API_BASE", "AZURE_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(RuntimeError, match="no credentials"):
+        task.SingleTask()._llm_judge("question", "answer", "ground truth")
+
+
+@pytest.mark.parametrize("task_id", [14, 16, 17, 22])
+def test_setting_judge_api_failure_propagates(llm_judge_client, task_id):
+    import httpx
+    import openai
+    from android_lab.evaluation.tasks.setting import setting
+
+    llm_judge_client.side_effect = openai.AuthenticationError(
+        "judge authentication failed",
+        response=httpx.Response(401, request=httpx.Request("POST", "https://judge.example.test")),
+        body=None,
+    )
+    judge = getattr(setting, f"SingleTask_Setting_{task_id}")()
+    judge.judge_page = lambda tree: True
+    line = {
+        "target": "question",
+        "parsed_action": {"action": "finish", "kwargs": {"message": "answer"}},
+        "command": {
+            "adb shell 'getprop persist.sys.timezone'": "America/Los_Angeles",
+            "adb shell getprop ro.build.version.release": "13",
+            "adb shell settings get global airplane_mode_on": "1",
+        },
+    }
+    with pytest.raises(openai.AuthenticationError, match="judge authentication failed"):
+        judge.judge({}, line)
 
 
 # ---------------------------------------------------------------------------
@@ -589,6 +655,41 @@ def _env_for_step(monkeypatch, extra_tools=None) -> tuple[AndroidLabEnv, list[di
 
     monkeypatch.setattr(env, "_run_judge", fake_run_judge)
     return env, judge_lines
+
+
+@pytest.mark.asyncio
+async def test_judge_rpc_failure_records_error_for_resume(monkeypatch, tmp_path):
+    import lite.agents.factory as agent_factory
+    from lite.infer.rollout import run_rollout
+
+    env, _ = _env_for_step(monkeypatch, extra_tools=["response"])
+    monkeypatch.setattr(env, "_run_judge", AndroidLabEnv._run_judge.__get__(env))
+    env._judge_loaded = True
+    env._rpc = MagicMock()
+    env._rpc.post.side_effect = RuntimeError("server /task/judge returned 500")
+
+    async def sample(env, hooks):
+        result = await env.step([_tc("response", {"text": "final answer"})])
+        return SimpleNamespace(
+            steps=[], episode_return=result.reward,
+            terminated=result.terminated, truncated=result.truncated,
+        )
+
+    monkeypatch.setattr(env, "close", AsyncMock())
+    monkeypatch.setattr(gym, "make", lambda *args, **kwargs: env)
+    monkeypatch.setattr(
+        agent_factory, "make", lambda *args, **kwargs: SimpleNamespace(sample=sample),
+    )
+    all_done, log_root = await run_rollout(
+        model_id="claude-opus-5", model_path="claude-opus-5", env_id="androidlab",
+        agent_kwargs={}, env_kwargs={}, seed=1, concurrency=1,
+        log_root=tmp_path, task_id="setting_14", save_data=False,
+    )
+    sample_dir = log_root / "task" / "setting_14" / "sample_00"
+    assert not all_done
+    assert "/task/judge returned 500" in (sample_dir / "error.txt").read_text()
+    assert not (sample_dir / "summary.json").exists()
+    assert env._best_judge is None
 
 
 @pytest.mark.asyncio
