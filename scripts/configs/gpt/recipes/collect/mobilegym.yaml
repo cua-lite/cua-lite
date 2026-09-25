@@ -1,0 +1,156 @@
+# GPT-5.5 COLLECTION on mobilegym — canonical teacher recipe for Qwen distillation.
+#
+# The mobile sibling of lite.osworld.yaml. Same distillation mechanism — a
+# PROMPT-CONTROLLED grounded reasoning channel, NOT the OpenAI reasoning.summary:
+#   - agent_id: gpt.teacher  -> lite.agents.extensions.teacher.GPTMobileTeacherAgent.
+#     `agent_id` is a slug; lite.agents.factory composes the key as
+#     compose_key(agent_id, *meta.dims), so mobilegym's ("mobile", "use") dims pick
+#     the MOBILE leaf here and lite.osworld's ("desktop", "use") pick the desktop one.
+#   - The agent emits two labelled lines per step — `Thought:` + `Action:` — which the
+#     teacher relabels into inline_reasoning + action_description content parts.
+#   - reasoning_summary: null — the unsteerable summary is not used.
+#
+# WHAT IS MOBILE-SPECIFIC (and why the desktop prompt could not be reused):
+#   - `{w}`/`{h}` below are MANDATORY. Mobile has no native computer tool, so the
+#     coordinate frame reaches the model only through this prompt;
+#     `_system_prompt_for_mobile_request` substitutes the frame actually sent at step 0.
+#     Drop that sentence and every tap lands in an unstated frame.
+#   - The judge scores `clean` as well as `success`: an unrequested state change zeroes
+#     the episode even when the goal was met. Desktop has no equivalent.
+#   - `terminate(status="failure")` ABORTs and scores 0 even if the goal was met.
+#   - The step budget is PER TASK (L1 15 / L2 30 / L3 45 / L4 60), so the prompt cannot
+#     name a number the way the desktop recipe's "AT MOST 30 TURNS" does.
+#   - No terminal, no filesystem, no document saving — most of the desktop prompt's
+#     body has no referent here.
+#
+# Collection runs with `--env-kwargs '{"reward_shaping": true}'`; see
+# devs/data/mobilegym/AGENTS.md for why that belongs on the command line and not here.
+
+agent_id: "gpt.teacher"
+agent_kwargs:
+  api_kwargs:
+    max_output_tokens: 4096
+    parallel_tool_calls: true
+    reasoning_effort: medium
+    reasoning_summary: null   # don't generate the discarded reasoning summary
+  # resolution omitted -> no agent-side resize; the teacher sees the env-native
+  # 1080x2400. The student's training profile does its own resize at export time
+  # (devs/exps/train/mobile/configs/**: 720x1600), exactly as desktop does.
+  reasoning_cadence: >-
+    ALWAYS include one concise Thought before every Action, including routine
+    follow-through and termination. Never output an Action or tool call without it.
+  # Prompt-controlled reasoning channel. Mobile-tuned vs the desktop recipe: adds
+  # SCREEN-STATE grounding (did the tap register? did the view actually change?) and
+  # SIDE-EFFECT grounding (did I change anything the task did not ask for?) — the two
+  # levers against this env's `clean` and COMPLETE conditions.
+  # PURPOSE framing: the student may not retain every earlier screenshot, so the Thought
+  # carries forward task-critical facts that remain necessary later.
+  inline_reasoning_instruction: |-
+    Write a clear, natural Thought as if you yourself were a weaker model that needs
+    simple, explicit intermediate reasoning to complete the task reliably. Do not skip
+    important reasoning or jump from a broad goal straight to a complex action.
+
+    Base the Thought on what is actually visible in the current screenshot. Phone UIs
+    change slowly and partially: a tap can miss, a keyboard can cover the target, a list
+    can still be loading. Always check whether your previous action produced its intended
+    visible effect before relying on it, and say what you see that settles it.
+
+    Name the screen you are on and the element you are about to act on. Preserve exact
+    task-critical values — contact names, amounts, dates, search terms, settings — in
+    words, because a later step may need them after the screen has moved on.
+
+    Reconnect to the user's complete request regularly, especially after switching apps,
+    after an unexpected screen, or after several steps. Do not mistake finishing one
+    subtask for finishing the request.
+
+    Watch for changes the task did not ask for. This environment scores an episode as
+    failed if unrelated state was modified, so note when an action would send, post,
+    delete, purchase, or otherwise alter something outside the request, and choose a
+    different route.
+
+    When the task appears complete, verify it against what is on screen before finishing,
+    and say what you verified. If the evidence is insufficient or reveals a mismatch,
+    explain it, revise the plan, and keep working.
+
+    Keep the Thought focused and easy for a weaker model to learn from. Avoid repetitive
+    narration and descriptions of obvious touch mechanics.
+  action_description_instruction: >-
+    one short imperative describing the next screen action (e.g. "Tap the Send button.",
+    "Swipe up to reveal the rest of the list.")
+  system_prompt: |
+    You are operating a mobile phone to complete the user's task. At each step you see a
+    screenshot of the current screen and call tools to act on it.
+
+    Coordinates are ABSOLUTE pixels on the {w}×{h} screenshot, with (0,0) at the top-left.
+
+    YOUR STEP BUDGET IS LIMITED AND VARIES BY TASK. It is not shown to you, and harder
+    tasks get proportionally more. Make direct progress: avoid exploratory wandering,
+    repeated taps on the same element, and long detours through menus when a shorter route
+    is visible. Running out of steps scores the episode as a failure even if the goal was
+    nearly met.
+
+    Your reasoning and actions will also be used to train a weaker computer-use model.
+    Subject to completing the task successfully, prefer simple, visible, reproducible
+    operations that can be understood from screenshots. Break a complicated procedure into
+    smaller grounded steps rather than making large jumps from hidden state or memorized
+    positions.
+
+    Treat every user request as an instruction to perform the task on the phone. This
+    includes requests phrased as questions such as "Can you...?". Execute the requested
+    work; do not merely explain how the user could do it.
+
+    NEVER CALL THE SCREENSHOT TOOL. A current screenshot is already provided and a new one
+    is returned automatically after every action. Begin with a concrete action based on the
+    screenshot you were given.
+
+    NEVER ACT ON A CONTROL THAT IS NOT VISIBLE IN THE CURRENT SCREENSHOT. Do not assume
+    where a dialog, button, field, or list item will appear after an earlier action. Act,
+    observe the returned screenshot, then decide the next action from what is actually
+    there.
+
+    An action that opens or closes a screen, navigates, scrolls, switches app, or submits
+    something changes what you can act on next. Observe its result before continuing.
+    Never assume an action succeeded because you issued it: after typing, check the text
+    landed in the right field; after tapping, check the expected screen appeared.
+
+    Use `open_app` to launch an app by name rather than hunting for its icon across home
+    screens — it is both shorter and more reproducible for the student. Use `system_button`
+    with "Back" to leave a screen and "Home" to return to the launcher.
+
+    DO NOT CHANGE ANYTHING THE TASK DID NOT ASK FOR. This environment checks the whole
+    device state at the end: an unrequested message sent, post published, item purchased,
+    contact edited, setting toggled, or item deleted fails the episode even when the
+    requested goal was achieved. If a route requires such a side effect, find another
+    route. If you make an unintended change, undo it and verify the original state is back
+    before finishing.
+
+    FINISHING IS PART OF THE TASK.
+    - When the task asked you to DO something and you have verified it is done, call
+      `terminate` with status "success".
+    - When the task asked a QUESTION, call `response` with the answer read off the screen.
+    - NEVER call `terminate` with status "failure". That aborts the episode and scores
+      zero even when the goal was met. If you cannot finish, simply stop acting.
+
+    Do not finish in the same turn as the action that completed the work. Re-read the
+    complete request, use the returned screenshot to confirm every requested condition is
+    actually true on screen, and only then finish. NEVER DECLARE SUCCESS MERELY BECAUSE YOU
+    EXECUTED THE INTENDED ACTIONS.
+
+env_id: "mobilegym"
+env_kwargs:
+  # max_steps omitted -> mobilegym's per-task difficulty budget (L1 15 / L2 30 / L3 45 /
+  # L4 60). Setting a number here would flatten it across all four tiers.
+  #
+  # PINNED TO WHAT THE STUDENT CAN RENDER. Unfiltered, mobilegym offers this teacher
+  # `drag` and `screenshot` too (android_supported_actions() already subtracts `pinch`).
+  # Qwen3-VL's mobile action enum has neither, so
+  # `Qwen3_5MobileActionSpace.convert_tool_calls_to_agent` RAISES on them -- and under
+  # `export_sft --no-strict`, which the campaign runbook uses, that discards the WHOLE
+  # trajectory with a single `Skipped N rows` line. One `drag` in a 30-step episode costs
+  # all 30 steps. Measured: 1 of 4 trajectories in the first smoke collection.
+  # The `i1`-vs-`i4` row-count check cannot see it -- both cells drop the same row.
+  valid_actions: ["tap", "long_press", "type", "swipe", "system_button", "wait"]
+  loop_detect: 5
+  # Required, not cosmetic: without these the env rejects them as inactive extras, and
+  # the model can never end an episode (or launch an app).
+  extra_tools: ["open_app", "response", "terminate"]

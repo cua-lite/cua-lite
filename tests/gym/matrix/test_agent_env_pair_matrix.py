@@ -99,9 +99,15 @@ _CONFIG_ROOTS = (Path("scripts/configs"),)
 # vacuously passing.
 _MIN_CONFIG_YAMLS = 150
 _MIN_DISTINCT_PAIRS = 110
-_EXPECTED_AGENT_CONFIG_ROWS = 196
-_EXPECTED_ENV_CONFIG_ROWS = 191
-_EXPECTED_DISTINCT_PAIRS = 153
+# +2 on each since the 196/191/153 report, one from each of two new config yamls.
+# The gpt mobilegym collect recipe is the first gpt.teacher recipe for a MOBILE env;
+# claude/default/waa.yaml (#30) is the first claude config for waa. Each adds one
+# agent row, one env row, and one distinct pair — note the middle counter is
+# len(PAIR_ROWS), rows that HAVE an env, not the number of distinct envs, so a
+# config for an already-covered env still increments it.
+_EXPECTED_AGENT_CONFIG_ROWS = 198
+_EXPECTED_ENV_CONFIG_ROWS = 193
+_EXPECTED_DISTINCT_PAIRS = 155
 
 
 class ConfigRow:
