@@ -1284,8 +1284,9 @@ CUDA_VISIBLE_DEVICES=$GPUS NUM_TRAIN_GPUS=$NGPU TP_SIZE=4 \
 The three runs above are each **n=1**, and two of them argued with each other for two commits
 before the curves settled it. This one fixes a recipe and varies only the seed — **three arms,
 three seeds, one pool** — so the repeat spread of a fixed recipe is measured instead of assumed,
-and adds `libreoffice_writer` to make the unit the whole application family. In flight; numbers
-below are through optimizer step 112 of 200.
+and adds `libreoffice_writer` to make the unit the whole application family. All three arms have
+trained their full 200 steps; twelve of the thirteen eval points are in, and the last one
+(step 192, the eval after rollout 24) is still scoring.
 
 Two knobs differ from the block above, both to buy resolution on the seed question:
 
@@ -1324,18 +1325,18 @@ Values are **pp against each arm's own step-0**; `—` is a reading the run has 
 | 80 | +1.86 | +3.08 | +6.06 | **+3.67** |
 | 96 | +7.20 | +1.29 | +5.05 | **+4.51** |
 | 112 | +8.95 | +2.21 | +7.37 | **+6.18** |
-| 128 | — | — | — | — |
-| 144 | — | — | — | — |
-| 160 | — | — | — | — |
-| 176 | — | — | — | — |
+| 128 | +8.03 | +3.32 | +8.07 | **+6.47** |
+| 144 | +7.43 | +1.23 | +7.95 | **+5.54** |
+| 160 | +9.76 | +1.19 | +6.38 | **+5.78** |
+| 176 | +7.16 | +1.09 | +6.39 | **+4.88** |
 | 192 | — | — | — | — |
-| **best so far** | **+8.95** | **+3.08** | **+7.37** | **+6.18** |
+| **best** | **+9.76** | **+3.32** | **+8.07** | **+6.47** |
 
 Absolute values behind the deltas, for the arms' own records:
 
-    501/7001  .3164 .2983 .3672 .3361 .3460 .3350 .3884 .4059
-    502/7002  .3453 .3348 .3097 .3740 .3588 .3761 .3582 .3674
-    503/7003  .3229 .3554 .3667 .3589 .3962 .3835 .3734 .3966
+    501/7001  .3164 .2983 .3672 .3361 .3460 .3350 .3884 .4059 .3967 .3907 .4140 .3880
+    502/7002  .3453 .3348 .3097 .3740 .3588 .3761 .3582 .3674 .3785 .3576 .3572 .3562
+    503/7003  .3229 .3554 .3667 .3589 .3962 .3835 .3734 .3966 .4036 .4024 .3867 .3868
 
 The mean is monotone from 16 to 112 except for the step-80 reading, and all three arms were
 positive at every reading from 48 on. Individual arms are not: 502 ran −3.56 at step 32 and
@@ -1351,33 +1352,47 @@ This also re-reads the early-flat pattern the two-domain run hit. Its 40- and 80
 `ROLLOUT_BATCH_SIZE=16` over 814 tasks no prompt repeats inside 50 rollouts and the run is 25, so
 this is a rolling held-out score on the training distribution, not a convergence curve.
 
-It rises, and the rise is the cleaner of the two signals. Ordinary least squares on the sixteen
-rollouts, no smoothing: slope **+2.02 / +0.87 / +1.83 pp per rollout** (t = 5.04 / 1.84 / 4.59),
-**+1.58pp per rollout pooled** (t = 5.95), residual sd 7.4-8.7pp per arm. The t-statistics assume
-independent residuals and the model state drifts, so treat them as optimistic; the load-bearing
-evidence is that **three different `rollout_seed` values draw three different prompt orders and
-produce the same slope**, which a lucky easy-tasks-last ordering cannot do. Over sixteen rollouts
-that is **~+24pp on the training distribution against +6.18pp on the eval** — the generalization
-gap — and the same arm (502) is the weakest on both.
+It rises and then stops, and the shape is cleaner than the eval's. Pooling the three arms per
+rollout and fitting no smoothing: **+1.28pp per rollout over rollouts 0-11**, then **−0.28pp over
+12-23**. As levels, the pooled mean goes `.3665` (first 8 rollouts) → `.4920` (middle 8) → `.4994`
+(last 8): about **+13pp earned in the first half and held, not extended**, on prompts no arm has
+seen before. Per arm over all 24 rollouts the fit is +1.36 / +0.67 / +0.62 pp per rollout
+(t = 5.83 / 2.49 / 2.00), residual sd 7.9-10.5pp — but a single line through a rise-then-plateau
+understates the first half and overstates the second, which is why the two segments are reported
+separately.
+
+The t-statistics assume independent residuals and the model state drifts, so treat them as
+optimistic. The load-bearing evidence is that **three different `rollout_seed` values draw three
+different prompt orders and produce the same shape**, which a lucky easy-tasks-last ordering
+cannot do. Note also where the two curves disagree: the training distribution plateaus by rollout
+12 (step 96) while the eval mean keeps climbing to its maximum at step 128 and only then drifts —
+so the last hundred steps buy eval movement without any further gain on the training pool.
 
 ```python
 # devs/exps/train/desktop -- GRPO seed replication, libreoffice.synth814 / libreoffice.eval117
-# Live through rollout 16 of 25.
+# Through rollout 24 of 25; the step-192 eval is the last point and is still running.
 EVAL = {  # optimizer step -> mean reward, 117 tasks x 4 draws, T=1
-  "501/7001": {0:.3164, 16:.2983, 32:.3672, 48:.3361, 64:.3460, 80:.3350, 96:.3884, 112:.4059},
-  "502/7002": {0:.3453, 16:.3348, 32:.3097, 48:.3740, 64:.3588, 80:.3761, 96:.3582, 112:.3674},
-  "503/7003": {0:.3229, 16:.3554, 32:.3667, 48:.3589, 64:.3962, 80:.3835, 96:.3734, 112:.3966},
+  "501/7001": {0:.3164, 16:.2983, 32:.3672, 48:.3361, 64:.3460, 80:.3350, 96:.3884,
+               112:.4059, 128:.3967, 144:.3907, 160:.4140, 176:.3880},
+  "502/7002": {0:.3453, 16:.3348, 32:.3097, 48:.3740, 64:.3588, 80:.3761, 96:.3582,
+               112:.3674, 128:.3785, 144:.3576, 160:.3572, 176:.3562},
+  "503/7003": {0:.3229, 16:.3554, 32:.3667, 48:.3589, 64:.3962, 80:.3835, 96:.3734,
+               112:.3966, 128:.4036, 144:.4024, 160:.3867, 176:.3868},
 }
 
 TRAIN = {  # rollout/raw_reward, index = rollout
   "501/7001": [0.3281,0.2656,0.2812,0.1641,0.4297,0.5000,0.3359,0.4531,
-               0.3750,0.3547,0.3984,0.4766,0.5469,0.5625,0.5938,0.5391],
+               0.3750,0.3547,0.3984,0.4766,0.5469,0.5625,0.5938,0.5391,
+               0.5156,0.4609,0.6016,0.4062,0.5000,0.5625,0.5547,0.6953],
   "502/7002": [0.3047,0.2812,0.5312,0.3984,0.4688,0.4609,0.3047,0.3906,
-               0.4430,0.4062,0.4859,0.3203,0.3750,0.5234,0.6406,0.4453],
+               0.4430,0.4062,0.4859,0.3203,0.3750,0.5234,0.6406,0.4453,
+               0.3281,0.3438,0.4219,0.4688,0.6094,0.4844,0.4766,0.6451],
   "503/7003": [0.3359,0.3984,0.3047,0.2969,0.3750,0.4453,0.3516,0.3906,
-               0.5547,0.4219,0.4609,0.6172,0.6797,0.5547,0.5625,0.4688],
+               0.5547,0.4219,0.4609,0.6172,0.6797,0.5547,0.5625,0.4688,
+               0.5547,0.7344,0.4375,0.4922,0.4609,0.4887,0.3828,0.3594],
 }
 ```
+
 
 
 
