@@ -25,7 +25,7 @@
 | `Qwen/Qwen3.5-9B` | default | 98/98 | 0.004221 |
 | `Qwen/Qwen3-VL-8B-Instruct` | default | 98/98 | 0.002883 |
 | `meituan/EvoCUA-8B-20260105` | default | 98/98 | 0.002474 |
-| ⚠️ `claude-opus-5` | default | _**74/98**_ | _**0.630739**_ |
+| ⚠️ `claude-opus-5` | max | _**74/98**_ | _**0.630739**_ |
 | ⚠️ `gemini-3.6-flash` | default | _**0/98**_ | _**—**_ |
 
 Mean episode return excludes API/environment errors and includes valid zero rewards.

@@ -2280,7 +2280,7 @@
       "model": "claude-opus-5",
       "slug": "claude-opus-5",
       "base_slug": "claude-opus-5",
-      "config_id": "default",
+      "config_id": "max",
       "status": "partial",
       "num_valid": 74,
       "num_tasks": 98,
