@@ -1893,7 +1893,7 @@
       "status": "partial",
       "num_valid": 74,
       "num_tasks": 98,
-      "num_samples": 96,
+      "num_samples": 98,
       "mean_episode_return": 0.6307387468866062,
       "summary_path": ".exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/claude-opus-5/summary.json",
       "artifact_path": ".exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/claude-opus-5",
@@ -2001,25 +2001,28 @@
           "079",
           "081",
           "091",
+          "092",
           "094",
           "099",
+          "101",
           "106",
           "108"
         ],
-        "missing_task_ids": [
-          "092",
-          "101"
-        ],
+        "missing_task_ids": [],
         "sample_summary_manifest_sha256": "4b53e43bf6277bff079cdb598ad89230757090207aa88937ec9dc793dd2ec2c4",
         "sample_summary_manifest_format": "SHA256 of sorted lines: <task_id> <summary.json sha256>\\n",
         "source_files": [
           {
             "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_azure_judge/.exps/eval/osworld_2/2026-09-23_opus5_default/run_0/claude-opus-5/summary.json",
-            "sha256": "975b5c0211002dcc3e3649a56a1b0eb966fe82ea23c478629aa22a28bbce592e"
+            "sha256": "f747184848ab64d71aa1eb20fec738b9957a7d0bc4a27f1d0e0c7a7cc28593eb"
           },
           {
             "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_azure_judge/.exps/eval/osworld_2/2026-09-23_opus5_default/run_0/claude-opus-5/run_info.txt",
             "sha256": "302a5e6e92d517c9151b23b2b49f91f6fad7c094a349a0b394f5c314ed9b5277"
+          },
+          {
+            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_azure_judge/.exps/eval/osworld_2/2026-09-23_opus5_default/run_0/claude-opus-5/result-accounting.json",
+            "sha256": "a4355719cef91aeb682f583460920d63d1504741d2239166954282cba27b3d18"
           }
         ],
         "source_commits": [
@@ -2044,13 +2047,22 @@
           "079",
           "081",
           "091",
+          "092",
           "094",
           "099",
+          "101",
           "106",
           "108"
         ],
-        "source_code_note": "Source tree had the retained WebP, observed-key, judge-error and image-normalization fixes; source SHA alone is not the complete implementation."
-      }
+        "source_code_note": "Source tree had the retained WebP, observed-key, judge-error and image-normalization fixes; source SHA alone is not the complete implementation.",
+        "user_stopped_task_ids": [
+          "092",
+          "101"
+        ],
+        "finalization_note": "Tasks 092 and 101 were stopped by the user after repeated API failures and excluded from the denominator; partial trajectories and prior API-error evidence are retained."
+      },
+      "finalized": true,
+      "avg_steps": 67.8108108108108
     },
     {
       "model": "gpt-5.6-sol",
@@ -2526,5 +2538,5 @@
   ],
   "scoring": "Mean episode return over finite, error-free sample summaries. API and environment exceptions are excluded; normal zero rewards are included.",
   "aggregation_note": "Consolidated retained rollouts, not a new rollout at the report commit. Per-task source selection is recorded for judge replacements.",
-  "recorded_at": "2026-09-25T00:58:52-07:00"
+  "recorded_at": "2026-09-25T10:05:25+00:00"
 }

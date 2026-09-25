@@ -4,7 +4,7 @@
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/` (gitignored).
 - **Started**: `2026-09-22 PDT`.
-- **Last updated**: `2026-09-25T00:58:52-07:00`.
+- **Last updated**: `2026-09-25T10:05:25+00:00`.
 - **Notes**: OSWorld-2.1, 98 selected tasks; service exclusions and task 072 filtered out.
 - **Provenance**: [JSON snapshot](/devs/exps/eval/osworld_2/logs/2026-09-25T00-52_f5279f6/run_0.json) records source runs, task replacements, configuration and artifact hashes. This is a consolidation of retained runs across commits; code drifted mid-campaign, as recorded in the source metadata.
 
@@ -30,6 +30,10 @@
 
 Mean episode return excludes API/environment errors and includes valid zero rewards.
 Finished counts valid samples; the expected task count remains 98.
+
+Claude Opus 5 is finalized with 74 valid results and 24 API-error exclusions.
+Tasks 092 and 101 were stopped after repeated API failures; mean steps are 67.81
+over valid results. The partial trajectories and failure evidence remain in the source artifacts.
 
 ## Experiment Specification
 
