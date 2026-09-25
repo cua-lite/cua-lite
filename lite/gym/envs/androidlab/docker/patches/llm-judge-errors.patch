@@ -1,0 +1,174 @@
+--- a/android_lab/evaluation/task.py
++++ b/android_lab/evaluation/task.py
+@@ -8,9 +8,10 @@
+ ``check_answer`` is preserved for the Q&A tasks (information retrieval) that
+ compare ``finish(message=...)`` against a stored ground truth via LLM judge.
+ Endpoint resolution: ``AZURE_API_BASE`` + ``AZURE_API_KEY`` → Azure;
+-else ``OPENAI_API_KEY`` (+ ``OPENAI_BASE_URL``) → OpenAI; else False
+-(reward=0, no crash). Model is ``gpt-4o-mini`` on both paths (matches
+-upstream); override via ``self.args.judge_model``.
++else ``OPENAI_API_KEY`` (+ ``OPENAI_BASE_URL``) → OpenAI. Missing credentials,
++API failures, and invalid judge responses raise instead of awarding zero.
++Model is ``gpt-4o-mini`` on both paths (matches upstream); override via
++``self.args.judge_model``.
+ """
+ from __future__ import annotations
+
+@@ -53,54 +54,50 @@
+             return False
+         if self.final_ground_truth is None:
+             return False
+-        try:
+-            question = line.get("target", "")
+-            if "kwargs" in parsed:
+-                model_answer = parsed["kwargs"].get("message", "")
+-            else:
+-                model_answer = parsed.get("input", "")
+-            return self._llm_judge(question, model_answer, self.final_ground_truth)
+-        except Exception as e:
+-            logger.warning("check_answer failed: %s", e)
+-            return False
++        question = line.get("target", "")
++        if "kwargs" in parsed:
++            model_answer = parsed["kwargs"].get("message", "")
++        else:
++            model_answer = parsed.get("input", "")
++        return self._llm_judge(question, model_answer, self.final_ground_truth)
+
+     def _llm_judge(self, question: str, model_answer: str, ground_truth: str) -> bool:
+         azure_endpoint = os.environ.get("AZURE_API_BASE")
+         azure_key = os.environ.get("AZURE_API_KEY")
+         if not (azure_endpoint and azure_key) and not os.environ.get("OPENAI_API_KEY"):
+-            logger.warning(
++            raise RuntimeError(
+                 "LLM judge has no credentials — set AZURE_API_BASE+AZURE_API_KEY "
+-                "(preferred) or OPENAI_API_KEY. Returning False (reward=0)."
++                "(preferred) or OPENAI_API_KEY."
+             )
+-            return False
+         prompt = (
+             "You need to judge the model answer is True or False based on "
+             "Standard Answer we provided. Answer [True] or [False].\n\n"
+             f"Question: {question}\n\nModel Answer: {model_answer}\n\n"
+             f"Standard Answer: {ground_truth}"
+         )
+-        try:
+-            if azure_endpoint and azure_key:
+-                from openai import AzureOpenAI
+-                client = AzureOpenAI(
+-                    api_key=azure_key,
+-                    azure_endpoint=azure_endpoint,
+-                    api_version="2025-04-01-preview",
+-                )
+-            else:
+-                from openai import OpenAI
+-                client = OpenAI()  # honors OPENAI_API_KEY + OPENAI_BASE_URL
+-            model = (getattr(self.args, "judge_model", None) if self.args else None) or "gpt-4o-mini"
+-            r = client.chat.completions.create(
+-                model=model,
+-                messages=[{"role": "user", "content": prompt}],
+-                max_tokens=16, temperature=0.0,
++        if azure_endpoint and azure_key:
++            from openai import AzureOpenAI
++            client = AzureOpenAI(
++                api_key=azure_key,
++                azure_endpoint=azure_endpoint,
++                api_version="2025-04-01-preview",
+             )
+-            out = r.choices[0].message.content or ""
+-            return "True" in out and "False" not in out
+-        except Exception as e:
+-            logger.warning("LLM judge call failed: %s", e)
+-            return False
++        else:
++            from openai import OpenAI
++            client = OpenAI()  # honors OPENAI_API_KEY + OPENAI_BASE_URL
++        model = (getattr(self.args, "judge_model", None) if self.args else None) or "gpt-4o-mini"
++        r = client.chat.completions.create(
++            model=model,
++            messages=[{"role": "user", "content": prompt}],
++            max_tokens=16, temperature=0.0,
++        )
++        choice = r.choices[0]
++        if choice.finish_reason != "stop":
++            raise ValueError(f"LLM judge did not finish: {choice.finish_reason}")
++        out = (choice.message.content or "").strip()
++        if out not in ("[True]", "True", "[False]", "False"):
++            raise ValueError(f"Invalid LLM judge response: {out!r}")
++        return out in ("[True]", "True")
+
+     def judge_page(self, xml_compressed_tree) -> bool:
+         return True
+--- a/android_lab/evaluation/tasks/setting/setting.py
++++ b/android_lab/evaluation/tasks/setting/setting.py
+@@ -318,13 +318,10 @@
+         timezone = command["adb shell 'getprop persist.sys.timezone'"]
+         if line["parsed_action"]["action"] != "finish":
+             return {"judge_page": False}
+-        try:
+-            self.final_ground_truth = timezone
+-            if self.check_answer(line):
+-                return {"judge_page": True, "1": True, "complete": True}
+-            else:
+-                return {"judge_page": True, "1": False, "complete": False}
+-        except:
++        self.final_ground_truth = timezone
++        if self.check_answer(line):
++            return {"judge_page": True, "1": True, "complete": True}
++        else:
+             return {"judge_page": True, "1": False, "complete": False}
+
+
+@@ -360,13 +357,10 @@
+             return {"judge_page": False}
+         if line["parsed_action"]["action"] != "finish":
+             return {"judge_page": False}
+-        try:
+-            self.final_ground_truth = "English (United States)"
+-            if self.check_answer(line):
+-                return {"judge_page": True, "1": True, "complete": True}
+-            else:
+-                return {"judge_page": True, "1": False, "complete": False}
+-        except:
++        self.final_ground_truth = "English (United States)"
++        if self.check_answer(line):
++            return {"judge_page": True, "1": True, "complete": True}
++        else:
+             return {"judge_page": True, "1": False, "complete": False}
+
+
+@@ -381,13 +375,10 @@
+         answer = command["adb shell getprop ro.build.version.release"]
+         if line["parsed_action"]["action"] != "finish":
+             return {"judge_page": False}
+-        try:
+-            self.final_ground_truth = answer
+-            if self.check_answer(line):
+-                return {"judge_page": True, "1": True, "complete": True}
+-            else:
+-                return {"judge_page": True, "1": False, "complete": False}
+-        except:
++        self.final_ground_truth = answer
++        if self.check_answer(line):
++            return {"judge_page": True, "1": True, "complete": True}
++        else:
+             return {"judge_page": True, "1": False, "complete": False}
+
+
+@@ -523,11 +514,8 @@
+             answer = "not open"
+         if line["parsed_action"]["action"] != "finish":
+             return {"judge_page": False}
+-        try:
+-            self.final_ground_truth = answer
+-            if self.check_answer(line):
+-                return {"judge_page": True, "1": True, "complete": True}
+-            else:
+-                return {"judge_page": True, "1": False, "complete": False}
+-        except:
+-            return {"judge_page": True, "1": False, "complete": False}
++        self.final_ground_truth = answer
++        if self.check_answer(line):
++            return {"judge_page": True, "1": True, "complete": True}
++        else:
++            return {"judge_page": True, "1": False, "complete": False}

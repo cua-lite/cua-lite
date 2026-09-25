@@ -231,6 +231,7 @@ build() {
 
     log "assembling build context at $ctx ..."
     cp "$DOCKER_DIR/Dockerfile" "$DOCKER_DIR/server.py" "$ctx/"
+    cp -r "$DOCKER_DIR/patches" "$ctx/"
     cp "$EXTRACTED_DIR"/*.deb "$EXTRACTED_DIR"/*.zip "$EXTRACTED_DIR"/*.ini "$ctx/"
     unzip -q -o "$CACHE_DIR/emulator-11906825.zip" -d "$ctx/"  # → ctx/emulator/
     cp "$CACHE_DIR/adbkey" "$CACHE_DIR/adbkey.pub" "$ctx/"
