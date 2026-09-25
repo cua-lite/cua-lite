@@ -28,24 +28,6 @@
 | ⚠️ `claude-opus-5` | default | _**74/98**_ | _**0.630739**_ |
 | ⚠️ `gemini-3.6-flash` | default | _**0/98**_ | _**—**_ |
 
-Mean episode return |
-|---|---|---:|---:|
-| `gpt-6-astra` | medium | 98/98 | 0.630220 |
-| `Qwen/Qwen3.5-27B` | default | 98/98 | 0.027505 |
-| `Qwen/Qwen3.8-27B` | default | 98/98 | 0.023604 |
-| `Qwen/Qwen3-VL-32B-Instruct` | default | 98/98 | 0.011586 |
-| `Qwen/Qwen3-VL-4B-Instruct` | default | 98/98 | 0.008630 |
-| `Qwen/Qwen3.5-4B` | default | 98/98 | 0.007369 |
-| `inclusionAI/UI-Venus-2-9B` | default | 98/98 | 0.004974 |
-| `ByteDance-Seed/UI-TARS-1.5-7B` | default | 98/98 | 0.004884 |
-| `Qwen/Qwen3.5-9B` | default | 98/98 | 0.004221 |
-| `Qwen/Qwen3-VL-8B-Instruct` | default | 98/98 | 0.002883 |
-| `meituan/EvoCUA-8B-20260105` | default | 98/98 | 0.002474 |
-| ⚠️ `claude-opus-5` | default | _**74/98**_ | _**0.630739**_ |
-| ⚠️ `gpt-5.6-sol` | default | _**95/98**_ | _**0.557468**_ |
-| ⚠️ `gpt-5.5` | default | _**96/98**_ | _**0.339228**_ |
-| ⚠️ `gemini-3.6-flash` | default | _**0/98**_ | _**—**_ |
-
 Mean episode return excludes API/environment errors and includes valid zero rewards.
 Finished counts valid samples; the expected task count remains 98.
 
