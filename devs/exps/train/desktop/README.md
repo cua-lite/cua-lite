@@ -1561,3 +1561,200 @@ from the `SAVE_INTERVAL=2` checkpoints before putting the two sections in one ta
 two rows are worth `2/117 = 1.7pp`.
 
 </details>
+
+#### Seeds 4 and 5, stopped at step 128
+
+Two more arms of the identical recipe — same `libreoffice.synth814` pool, same `eval117`, same
+hyper-parameters, only the seed pair differs. Both were **cut short by a cluster-wide Singularity
+preemption** at rollouts 18 and 17 of 25. The runs carry `NO_SAVE_OPTIM=1`, which the launcher
+prints as *weights only, no optimizer — not resumable*, so there is no continuation: what is below
+is everything these two arms will ever report, and the readings stop at step 128.
+
+They are still worth the table. The question the three-seed section left open was whether 502 —
+the arm that never left +1.1 to +3.3pp — is the typical outcome or the odd one, and two more
+independent draws bear on that directly.
+
+| step | 501/7001 | 502/7002 | 503/7003 | **504/7004** | **505/7005** | mean (3) | **mean (5)** |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 *(absolute)* | .3164 | .3453 | .3229 | **.3107** | **.3197** | .3282 | **.3230** |
+| 16 | −1.81 | −1.05 | +3.25 | **+1.68** | **+3.70** | +0.13 | **+1.15** |
+| 32 | +5.08 | −3.56 | +4.38 | **+1.14** | **+1.29** | +1.97 | **+1.67** |
+| 48 | +1.97 | +2.87 | +3.60 | **+5.64** | **+2.97** | +2.81 | **+3.41** |
+| 64 | +2.96 | +1.35 | +7.33 | **+6.50** | **+4.43** | +3.88 | **+4.51** |
+| 80 | +1.86 | +3.08 | +6.06 | **+2.80** | **+4.57** | +3.67 | **+3.67** |
+| 96 | +7.20 | +1.29 | +5.05 | **+4.27** | **+5.61** | +4.51 | **+4.68** |
+| 112 | +8.95 | +2.21 | +7.37 | **+4.17** | **+7.16** | +6.18 | **+5.97** |
+| 128 | +8.03 | +3.32 | +8.07 | **+6.32** | **+3.74** | +6.47 | **+5.90** |
+| **best (≤128)** | +8.95 | +3.32 | +8.07 | **+6.50** | **+7.16** | | |
+
+Absolute values:
+
+    504/7004  .3107 .3275 .3221 .3671 .3757 .3387 .3534 .3524 .3739
+    505/7005  .3197 .3567 .3326 .3494 .3640 .3654 .3758 .3913 .3571
+
+**502 is the outlier, not the rule.** Four of the five arms reach +6pp or better inside the first
+128 steps (+8.95 / +8.07 / +6.50 / +7.16); only 502 stays under +3.4. Its own step-0 is the
+highest of the five, which remains the one visible correlate, but with n=5 that is a hypothesis to
+test on a sixth seed, not a finding. The five-arm mean crosses the 0.85pp threshold (2σ/√5 on the
+step-0 sd below) from step 32 on and stays there.
+
+**The noise floor, now from eight passes.** The same `sft.highr.i1.reasoning.gpt5_5/epoch_2`
+checkpoint scored on the same 117 tasks, once per arm at step 0, across eight pods:
+**.3164 .3453 .3229 .3253 .3262 .3298 .3157 .3328** — mean **.3268**, **sd 0.95pp**. Thresholds:
+**1.91pp** for a single arm, **1.10pp** for a three-arm mean, **0.85pp** for a five-arm mean. This
+supersedes the 1.08pp quoted from five passes above.
+
+```python
+# Partial: 18 and 17 rollouts of 25, ended by preemption, not resumable.
+EVAL_PARTIAL = {
+  "504/7004": {0:.3107, 16:.3275, 32:.3221, 48:.3671, 64:.3757, 80:.3387, 96:.3534,
+               112:.3524, 128:.3739},
+  "505/7005": {0:.3197, 16:.3567, 32:.3326, 48:.3494, 64:.3640, 80:.3654, 96:.3758,
+               112:.3913, 128:.3571},
+}
+
+TRAIN_PARTIAL = {
+  "504/7004": [0.3203,0.3359,0.4141,0.2266,0.5000,0.4375,0.3984,0.5156,0.5078,
+               0.3984,0.4219,0.4609,0.4219,0.4141,0.5469,0.5078,0.6016,0.5703],
+  "505/7005": [0.3693,0.4219,0.5078,0.3672,0.3047,0.3750,0.2891,0.5000,0.5391,
+               0.4062,0.4453,0.4844,0.6562,0.4531,0.3750,0.4688,0.4531],
+}
+```
+
+#### The official ScaleCUA RL split, stopped at step 64
+
+The same recipe with **one variable changed: the training corpus**. Three arms, seeded
+501/7001, 502/7002, 503/7003 to pair one-for-one with the synth arms above, same checkpoint, same
+`eval117` manifest, same LR / batch / rollout / eval settings. Preempted at rollout 8 of 25, so
+only the first five of thirteen eval points exist. **This does not yet answer the question it was
+built to answer** — the synth arms' three-seed mean was +0.13pp at step 16 and +1.97pp at 32
+before reaching +6.18pp at 112, so nothing before step 96 separates the two corpora.
+
+**The pool: 640 tasks.** Every LibreOffice row of the official `lite.scalecua` `rl` split that
+carries no `exclude_reason` — impress 237 / calc 242 / writer 161 — concatenated impress → calc →
+writer like the synth pool. Two facts about it are worth recording independently of the outcome:
+
+- **Read the domain from the catalog, not the task id.** 106 rl tasks whose ids read
+  `..._rl_libreoffice_calc_<hex>_...` carry `others.domain == "multi_apps"`: they begin in a
+  LibreOffice application and cross into another. Taking the domain off the id inflates the split
+  from 640 to 746. The build asserts the per-domain counts for exactly this reason.
+- **All 640 derive from the 117 eval base tasks.** Every row decodes to one of the 117 OSWorld
+  tasks that make up `eval117`, and all 117 are covered. `utils/tasks.py` classifies this as
+  *environment-level* reuse — same starting screens, new goals and new verifiers (96% different
+  verifier function, 100% different expected value) — as opposed to `train.perturb`, which rewrites
+  the eval instructions themselves. So this arm is not a transfer test: it trains on new goals
+  inside the very environments it is scored in. A null result here is therefore the *strongest*
+  form of the claim, and a positive one is the easiest possible setting, not evidence of transfer.
+
+**The env plumbing differs.** Training rows are `lite.scalecua@…` while eval rows stay
+`lite.osworld@…`, so the env-server must serve both ids (`--env-ids lite.osworld lite.scalecua`)
+while `ENV_ID` stays `lite.osworld` — it only names the wandb group, the eval label and the run
+paths; the per-row `env_key` is what selects the env. `lite.scalecua` needs no image of its own:
+it runs on `cua-lite/lite.osworld:latest`, and only its task catalogs have to be generated. Note
+that `/envs/lite.scalecua` reports *available* from the catalog alone, and the step-0 eval runs
+entirely on `lite.osworld` rows — so neither one proves the scalecua env can boot. The signal that
+does is a non-zero `rollout/raw_reward` at rollout 0.
+
+| step | 501/7001 | 502/7002 | 503/7003 | **mean** | synth mean (3) |
+|---:|---:|---:|---:|---:|---:|
+| 0 *(absolute)* | .3298 | .3157 | .3328 | **.3261** | .3282 |
+| 16 | +1.43 | −0.12 | −0.77 | **+0.18** | +0.13 |
+| 32 | +2.08 | +3.12 | −0.96 | **+1.41** | +1.97 |
+| 48 | +3.44 | +3.04 | +2.39 | **+2.96** | +2.81 |
+| 64 | +2.91 | +3.70 | +3.42 | **+3.34** | +3.88 |
+
+    501/7001  .3298 .3441 .3506 .3642 .3589
+    502/7002  .3157 .3145 .3469 .3461 .3527
+    503/7003  .3328 .3251 .3232 .3567 .3670
+
+Through step 64 the two corpora are indistinguishable: +3.34pp against +3.88pp, both above the
+1.10pp three-arm threshold, and the arms' step-0 means differ by 0.21pp — well inside the 0.95pp
+noise floor, which is what makes the two tables comparable at all.
+
+**Where they already differ is the training distribution.** Pooled over the first eight rollouts,
+`rollout/raw_reward` is **.6042** on the scalecua pool against **.3665** on synth — the same
+checkpoint finds the official RL tasks roughly 24pp easier than the synthetic ones. That is
+consistent with the hypothesis this arm was built to test (SFT on GPT-5.5's ScaleCUA rollouts
+already saturates these tasks) but does not establish it: an easier pool is a statement about the
+pool, and only the held-out curve after step 96 can say whether the gain transfers.
+
+```python
+# Partial: 8 rollouts of 25, ended by preemption, not resumable.
+EVAL_SCALECUA = {
+  "501/7001": {0:.3298, 16:.3441, 32:.3506, 48:.3642, 64:.3589},
+  "502/7002": {0:.3157, 16:.3145, 32:.3469, 48:.3461, 64:.3527},
+  "503/7003": {0:.3328, 16:.3251, 32:.3232, 48:.3567, 64:.3670},
+}
+
+TRAIN_SCALECUA = {
+  "501/7001": [0.6441,0.7022,0.5373,0.5180,0.6328,0.5907,0.6117,0.5702],
+  "502/7002": [0.4402,0.6289,0.6605,0.5987,0.6074,0.8305,0.6732,0.6430],
+  "503/7003": [0.5020,0.5075,0.5292,0.6453,0.6057,0.6687,0.5726,0.5802],
+}
+```
+
+<details>
+<summary>Data — the 640-task pool</summary>
+
+Built from the pinned `lite.scalecua` catalogs (`catalog.lock.json` fixes the ScaleCUA revision),
+so the build is reproducible from the repo alone. Two pods that installed the catalogs
+independently produced the identical `content_sha256`, which is the check below.
+
+```bash
+W=/workspaces/cua-lite
+# The catalogs are gitignored and generated, not committed. No image is built:
+# lite.scalecua runs on cua-lite/lite.osworld:latest.
+bash "$W/lite/gym/envs/lite/scalecua/scripts/utils/tasks.sh" generate
+bash "$W/lite/gym/envs/lite/scalecua/scripts/utils/tasks.sh" check
+
+TMP=$(mktemp -d)
+for dom in impress calc writer; do
+  uv run python -m lite.train.export.export_tasks \
+    --env-id lite.scalecua --split rl \
+    --filter "lambda m: not m.others.get('exclude_reason') and m.others.get('domain') == 'libreoffice_$dom'" \
+    -o "$TMP/$dom.rl.parquet"
+done
+
+uv run python - "$TMP" <<'PY'
+import hashlib
+import sys
+
+import pandas as pd
+
+from lite.data.staging import coerce_meta
+from lite.utils.parquet import write_records_to_parquet
+
+T = sys.argv[1]
+DOMS = ("impress", "calc", "writer")                    # concat order is load-bearing
+EXPECT = {"impress": 237, "calc": 242, "writer": 161}   # from others.domain, NOT the task id
+
+recs = []
+for d in DOMS:
+    rows = pd.read_parquet(f"{T}/{d}.rl.parquet")
+    assert len(rows) == EXPECT[d], f"{d}: got {len(rows)}, expected {EXPECT[d]}"
+    for _, r in rows.iterrows():
+        m = dict(coerce_meta(r["metadata"]))
+        # split stays "rl". lite.scalecua registers RUNTIME_SPLITS ("train", "rl") and its
+        # "train" split is a DIFFERENT corpus, so the train.synth-style "train" alias must
+        # not be forced here.
+        assert m["split"] == "rl" and m["env_key"].startswith("lite.scalecua@"), m
+        recs.append({"problem": r["problem"], "metadata": m})
+
+assert len(recs) == 640, len(recs)
+write_records_to_parquet(recs, "libreoffice.scalecua_rl640.parquet")
+keys = [coerce_meta(r["metadata"])["env_key"] for r in recs]
+sha = hashlib.sha256("\n".join(keys).encode()).hexdigest()
+assert sha == "22a23030364940c897d312e735505a92c8d0d5d1b90da4842a0c32274ca6203b", sha
+print("pool 640 rows, content_sha256 ok")
+PY
+```
+
+The launch block is the one above with two changes: `PROMPT_DATA` points at this pool, and the
+env-server is started with both env ids —
+
+```bash
+python3 scripts/serve_env.py --port 30100 --token "$TOK" \
+  --env-ids lite.osworld lite.scalecua --max-live-envs 32 --idle-ttl-sec 21600
+```
+
+</details>
