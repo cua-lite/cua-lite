@@ -125,9 +125,12 @@ fi
 # model-family → rollout config (grounding subset: qwen3_vl, qwen3_5, evocua, ui_tars, ui_tars_15_v1, mai_ui)
 case "$MODEL" in
   gpt-*)                            CFG=scripts/configs/gpt/default/screenspot_pro.yaml ;;
+  claude-*)                         CFG=scripts/configs/claude/default/screenspot_pro.yaml ;;
   Qwen/Qwen3-VL-*-Instruct)        CFG=scripts/configs/qwen3_vl/default/screenspot_pro.yaml ;;
   Qwen/Qwen2.5-VL-*-Instruct)      CFG=scripts/configs/qwen2_5_vl/default/screenspot_pro.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/screenspot_pro.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/screenspot_pro.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/screenspot_pro.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/screenspot_pro.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/screenspot_pro.yaml ;;
   meituan/EvoCUA-*)                CFG=scripts/configs/evocua/default/screenspot_pro.yaml ;;
@@ -149,7 +152,7 @@ HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   --model-id "$MODEL" \
   ${MODEL_PATH:+--model-path "$MODEL_PATH"} \
   --env-id screenspot_pro --splits eval \
-  --concurrency 64 \
+  --concurrency "${EVAL_CONCURRENCY:-64}" \
   --env-kwargs '{"step_timeout": 180}' \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"

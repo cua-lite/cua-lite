@@ -1,19 +1,9 @@
-# Claude rollout eval on ScreenSpot-Pro — single-step click grounding.
-# 1581 tasks, no exclusion filter (no refusal class on Pro).
-#
-# Routing: env declares ``task_type="grounding.point"``, so make picks
-# ``ClaudeDesktopGroundingPointAgent`` (key=claude@desktop@grounding.point).
-# That class bakes in:
-#   - the grounding system_prompt (``CLAUDE_GROUNDING_SYSTEM_PROMPT``)
-#   - ``thinking_budget=0``, ``effort="low"`` and ``max_tokens=1024`` (no
-#     extended reasoning; the family default is ``effort="medium"``)
-#   - a single ``left_click({coordinate})`` function tool (no native
-#     ``computer_*`` tool) — eliminates the CUA "examine first" bias.
-# So this YAML carries no agent_kwargs overrides — diffs surface in code.
-#
-# Related configs (sync if changing the class defaults):
-#   - scripts/configs/claude/default/osworld_g.yaml        (sibling grounding bench)
-#   - scripts/configs/gpt/default/screenspot_pro.yaml      (GPT counterpart)
+# Claude single-step grounding evaluation with Medium reasoning effort.
+# Keep the grounding agent's click-only tools and other default settings.
 
 agent_id: "claude"
+agent_kwargs:
+  api_kwargs:
+    effort: "medium"
+
 env_id: "screenspot_pro"
