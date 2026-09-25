@@ -68,6 +68,7 @@ def image_for(env_id: str) -> ContainerImage:
         "cua-lite/osworld_2:osworld-v2.1-volume",
         (
             "lite/gym/envs/osworld_2/docker/Dockerfile",
+            "lite/gym/envs/osworld_2/docker/patches/llm-judge-errors.patch",
             "lite/gym/envs/osworld_2/docker/grow_root_disk.sh",
             "lite/gym/envs/osworld_2/docker/freecad_python.py",
             "lite/gym/envs/osworld_2/image_spec.py",

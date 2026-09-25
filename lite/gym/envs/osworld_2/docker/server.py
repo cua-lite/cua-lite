@@ -280,10 +280,19 @@ def screenshot() -> dict:
 
 @app.post("/evaluate")
 def evaluate() -> dict:
+    from desktop_env.evaluators.errors import (
+        clear_evaluation_infrastructure_error,
+        consume_evaluation_infrastructure_error,
+    )
+
     if _env is None:
         raise HTTPException(status_code=409, detail="no active env")
     with _lock:
+        clear_evaluation_infrastructure_error()
         raw = _env.evaluate()
+        error = consume_evaluation_infrastructure_error()
+        if error is not None:
+            raise error
     # Match upstream's canonical extraction (lib_run_single.py): a dict result without "score"
     # scores 0.0, NOT a KeyError; a non-coercible score also scores 0.0 (upstream wraps the float()
     # in try/except (TypeError, ValueError)). `raw` may be a dict, float, or int.

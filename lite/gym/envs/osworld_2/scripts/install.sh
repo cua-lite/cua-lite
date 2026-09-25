@@ -13,7 +13,7 @@
 #
 # HF auth: accept all three dataset gates in README.md, then `hf auth login`.
 # Official source is cloned automatically. OSWORLD_V2_SRC may select a clean checkout
-# of the pinned revision instead; upstream task/evaluator code is never patched.
+# of the pinned revision instead; the image patch propagates judge failures without changing scores.
 #
 # Usage:
 #   uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh          # full install (idempotent; rebuilds if image sources changed)

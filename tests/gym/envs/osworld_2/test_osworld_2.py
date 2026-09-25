@@ -1026,3 +1026,110 @@ def test_container_name_disjoint_from_v1_and_lite():
     assert "-osworld_2-" in name
     assert "-osworld-" not in name
     assert ".osworld-" not in name
+
+
+def test_judge_failures_survive_task_exception_handlers(tmp_path, monkeypatch):
+    """Exercise the image patch against the pinned upstream checkout, without a VM."""
+    import ast
+    from io import BytesIO
+    import logging
+    import os
+    import subprocess
+    import threading
+    from functools import wraps
+    from PIL import Image
+
+    source = Path(os.environ.get("OSWORLD_V2_SRC", Path(m.ENV_DIR) / ".cache" / "OSWorld-V2"))
+    if not (source / "desktop_env/evaluators/model_client.py").exists():
+        pytest.skip("set OSWORLD_V2_SRC to the pinned OSWorld-V2 checkout")
+    target = tmp_path / "desktop_env/evaluators/model_client.py"
+    target.parent.mkdir(parents=True)
+    target.write_text((source / "desktop_env/evaluators/model_client.py").read_text())
+    backend_file = tmp_path / "desktop_env/evaluators/backends/base.py"
+    backend_file.parent.mkdir(parents=True)
+    backend_file.write_text((source / "desktop_env/evaluators/backends/base.py").read_text())
+    patch = Path(c.__file__).parent / "docker/patches/llm-judge-errors.patch"
+    subprocess.run(["patch", "-p1", "-i", str(patch)], cwd=tmp_path, check=True, capture_output=True)
+
+    encoder = next(n for n in ast.parse(backend_file.read_text()).body
+                   if isinstance(n, ast.FunctionDef) and n.name == "encode_image")
+    image_scope = {"base64": base64, "BytesIO": BytesIO, "Image": Image}
+    exec(compile(ast.Module(body=[encoder], type_ignores=[]), str(backend_file), "exec"), image_scope)
+    for mode, color in (("RGBA", (17, 90, 210, 255)), ("RGBA", (17, 90, 210, 80)),
+                        ("RGB", (17, 90, 210))):
+        path = tmp_path / "judge.png"
+        original = Image.new(mode, (8, 12), color)
+        original.save(path)
+        encoded = base64.b64decode(image_scope["encode_image"](str(path)))
+        with Image.open(BytesIO(encoded)) as decoded:
+            if mode == "RGBA" and color[-1] == 255:
+                assert decoded.mode == "RGB" and decoded.size == original.size
+                assert decoded.tobytes() == original.convert("RGB").tobytes()
+            else:
+                assert encoded == path.read_bytes()
+
+    scope = {"__name__": "judge_failure_test"}
+    exec((source / "desktop_env/evaluators/errors.py").read_text(), scope)
+    error_type = scope["EvaluationInfrastructureError"]
+    backend = SimpleNamespace(generate=lambda *a, **kw: "NO", chat=lambda *a, **kw: "NO")
+    scope.update(
+        wraps=wraps, os=os, logger=logging.getLogger(__name__),
+        _ENV={"save_raw_dir": "OSWORLD_EVAL_SAVE_RAW_DIR"},
+        _build_config=lambda *a, **kw: SimpleNamespace(provider="openai", model="judge"),
+        _normalize_images=lambda images: images or [], create_backend=lambda config: backend,
+    )
+    monkeypatch.delenv("OSWORLD_EVAL_SAVE_RAW_DIR", raising=False)
+    tree = ast.parse(target.read_text())
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in {
+        "_record_judge_failure", "generate_text", "generate_chat",
+    }]
+    future = ast.parse("from __future__ import annotations").body
+    exec(compile(ast.Module(body=future + nodes, type_ignores=[]), str(target), "exec"), scope)
+
+    import sys
+    monkeypatch.setitem(sys.modules, "desktop_env.evaluators.errors", SimpleNamespace(**scope))
+    server_path = Path(c.__file__).parent / "docker/server.py"
+    evaluate = next(n for n in ast.parse(server_path.read_text()).body
+                    if isinstance(n, ast.FunctionDef) and n.name == "evaluate")
+    evaluate.decorator_list = []
+    scope.update(_lock=threading.Lock(), json=json)
+    exec(compile(ast.Module(body=[evaluate], type_ignores=[]), str(server_path), "exec"), scope)
+
+    def judge_failed(*args, **kwargs):
+        raise RuntimeError("Azure API 401")
+
+    for entry, method, args in (("generate_text", "generate", ("prompt",)),
+                                ("generate_chat", "chat", ([{"role": "user", "content": "prompt"}],))):
+        def task_evaluate():
+            try:
+                return float(scope[entry](*args) == "YES")
+            except Exception:
+                return 0.0
+
+        scope["_env"] = SimpleNamespace(evaluate=task_evaluate)
+        setattr(backend, method, judge_failed)
+        with pytest.raises(error_type, match="Azure API 401"):
+            scope["evaluate"]()
+        setattr(backend, method, lambda *a, **kw: "  ")
+        with pytest.raises(error_type, match="empty response"):
+            scope["evaluate"]()
+        for verdict, reward in (("NO", 0.0), ("YES", 1.0)):
+            setattr(backend, method, lambda *a, **kw: verdict)
+            assert scope["evaluate"]()["reward"] == reward
+        build_config = scope["_build_config"]
+        scope["_build_config"] = judge_failed
+        with pytest.raises(error_type, match="Azure API 401"):
+            scope["evaluate"]()
+        scope["_build_config"] = build_config
+        error_type("stale previous request")
+        assert scope["evaluate"]()["reward"] == 1.0
+
+    def missing_output():
+        try:
+            return float(scope["generate_text"]("prompt", [str(tmp_path / "absent.png")]) == "YES")
+        except FileNotFoundError:
+            return 0.0
+
+    scope["_env"] = SimpleNamespace(evaluate=missing_output)
+    assert scope["evaluate"]()["reward"] == 0.0
+    assert scope["consume_evaluation_infrastructure_error"]() is None

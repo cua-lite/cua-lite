@@ -29,7 +29,7 @@ FROM happysixd/osworld-docker@sha256:0e6497a9295647cf05bf2b2af522fdd79bdeba27375
 # build-essential/ninja/dev headers: a few eval libs (pyacoustid/formulas/…) may build
 # from source; without them pip fails on the meson/C builds.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-venv python3-pip python3-dev unzip curl sudo \
+      python3 python3-venv python3-pip python3-dev unzip curl sudo patch \
       build-essential ninja-build pkg-config \
  && rm -rf /var/lib/apt/lists/*
 
@@ -42,6 +42,8 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 # uv.lock includes fastapi, uvicorn, and the bundled osworld-ffmpeg source.
 COPY _vendor/OSWorld-V2 /opt/osworld-v2
 WORKDIR /opt/osworld-v2
+COPY patches/llm-judge-errors.patch /tmp/llm-judge-errors.patch
+RUN patch -p1 < /tmp/llm-judge-errors.patch && rm /tmp/llm-judge-errors.patch
 RUN uv sync --frozen --no-dev --python 3.12 --project /opt/osworld-v2 --no-cache
 
 # ── 2b. Runtime system libs the eval stack needs (opencv → libGL etc.) ───────

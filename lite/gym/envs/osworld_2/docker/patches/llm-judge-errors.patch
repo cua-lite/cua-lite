@@ -1,0 +1,76 @@
+--- a/desktop_env/evaluators/model_client.py
++++ b/desktop_env/evaluators/model_client.py
+@@ -44,9 +44,11 @@
+ import logging
+ import os
+ import shutil
++from functools import wraps
+ from typing import Any, Sequence
+ 
+ from desktop_env.evaluators.backends import BackendConfig, create_backend
++from desktop_env.evaluators.errors import EvaluationInfrastructureError
+ 
+ logger = logging.getLogger("desktopenv.eval_model")
+ 
+@@ -345,6 +347,25 @@
+ 
+ 
+ 
++def _record_judge_failure(fn):
++    """Preserve failed calls even when a task catches the exception and scores zero."""
++    @wraps(fn)
++    def wrapped(*args, **kwargs):
++        try:
++            result = fn(*args, **kwargs)
++            if not result or not result.strip():
++                raise ValueError("LLM judge returned an empty response")
++            return result
++        except (EvaluationInfrastructureError, FileNotFoundError):
++            raise
++        except Exception as exc:
++            raise EvaluationInfrastructureError(
++                f"LLM judge failed: {exc}", subtype="llm_judge",
++            ) from exc
++    return wrapped
++
++
++@_record_judge_failure
+ def generate_text(
+     prompt: str,
+     image_paths: str | Sequence[str] | None = None,
+@@ -429,6 +450,7 @@
+     return result
+ 
+ 
++@_record_judge_failure
+ def generate_chat(
+     messages: list[dict[str, Any]],
+     options: dict[str, Any] | None = None,
+--- a/desktop_env/evaluators/backends/base.py
++++ b/desktop_env/evaluators/backends/base.py
+@@ -2,6 +2,9 @@
+ from __future__ import annotations
+ 
+ import base64
++from io import BytesIO
++
++from PIL import Image
+ import logging
+ import time
+ from abc import ABC, abstractmethod
+@@ -50,7 +53,14 @@
+ def encode_image(path: str) -> str:
+     """Read a file and return its base64-encoded content."""
+     with open(path, "rb") as f:
+-        return base64.b64encode(f.read()).decode()
++        raw = f.read()
++    with Image.open(BytesIO(raw)) as image:
++        # Large opaque RGBA PNGs can fail Azure decoding; preserve every RGB pixel.
++        if image.format == "PNG" and image.mode == "RGBA" and image.getchannel("A").getextrema() == (255, 255):
++            buffer = BytesIO()
++            image.convert("RGB").save(buffer, format="PNG")
++            raw = buffer.getvalue()
++    return base64.b64encode(raw).decode()
+ 
+ 
+ # ---------------------------------------------------------------------------
