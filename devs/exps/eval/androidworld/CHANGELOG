@@ -1,3 +1,7 @@
+## 3b0f776  (2026-09-25)
+
+- Catalog retained reference runs with source provenance and valid-sample means; API errors are excluded from the denominator.
+
 ## (post-hoc, 2026-04-28) — Qwen3.5 mobile `left_click` leakage diagnosis
 
 Annotated `2026-04-26T18-38_8b9d4bd/run_0.md`: marked Qwen3.5-9B (0.1638) and Qwen3.5-4B (0.4741) rows with ⚠️ and added a Highlights bullet documenting the leakage — Qwen3.5 emits desktop `left_click` on mobile turns despite the `mobile_use` schema only declaring the canonical 8-action enum (9B 73.6% / 4B 15.5% / 2B 0%; Qwen3-VL family 0%). Falls through to env `noop`; collapses 9B's MER from a 4B-baseline ~0.47 to 0.16. Fix landed at `lite/agents/core/qwen3_5/action_space.py` (`Qwen3_5MobileActionSpace._MOBILE_ACTION_ALIASES = {"left_click": "click"}`); next snapshot will run under the fix and supersede these scores.
