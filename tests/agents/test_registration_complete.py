@@ -437,6 +437,9 @@ ADAPTER_PATTERNS = [
 AGENT_LIST = [
     "claude@mobile@use",
     "gemini@mobile@use",
+    # Exact, not a pattern: the desktop/browser teacher's key IS one (see
+    # AGENT_PATTERNS), but mobile's prompt seam differs, so it is its own leaf.
+    "gpt.teacher@mobile@use",
     "gpt@mobile@use",
     "mai_ui@mobile@use",
     "qwen2_5_vl@mobile@grounding.action",
