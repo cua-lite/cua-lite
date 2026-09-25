@@ -125,25 +125,18 @@ def downscale_to_target(png: bytes, target: tuple[int, int]) -> tuple[str, int, 
 
     Takes raw encoded screenshot bytes (``obs.image``) and decodes once. Returns
     ``(b64, w, h)`` because the output feeds straight into the Claude API
-    data-URI payload, which every call site labels ``image/png``.
+    data-URI payload, which every call site labels ``image/webp``.
 
-    ``obs.image`` is not guaranteed PNG — mobilegym emits JPEG — so the
-    already-at-target path re-encodes anything else rather than passing the
-    source bytes through under a PNG label. Anthropic validates the declared
-    media type against the magic bytes and rejects the mismatch with a 400.
+    Lossless WebP preserves the resized pixels while reducing the accumulated
+    image history's contribution to the Messages API's 32 MB request limit.
     """
     img = Image.open(io.BytesIO(png))
     w, h = img.size
-    if (w, h) == target:
-        if img.format == "PNG":
-            return base64.b64encode(png).decode("utf-8"), w, h
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return base64.b64encode(buf.getvalue()).decode("utf-8"), w, h
-    img = img.resize(target, Image.Resampling.LANCZOS)
+    if (w, h) != target:
+        img = img.resize(target, Image.Resampling.LANCZOS)
+        logger.info("Claude resize: %dx%d -> %dx%d", w, h, target[0], target[1])
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    logger.info("Claude resize: %dx%d -> %dx%d", w, h, target[0], target[1])
+    img.save(buf, format="WEBP", lossless=True, exact=True)
     return base64.b64encode(buf.getvalue()).decode("utf-8"), target[0], target[1]
 
 

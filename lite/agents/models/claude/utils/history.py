@@ -219,7 +219,7 @@ async def _image_url_blocks(
         )
         block = {
             "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+            "image_url": {"url": f"data:image/webp;base64,{image_b64}"},
         }
         blocks.append(
             mark_provider_visible_image_index(
@@ -456,7 +456,7 @@ async def append_desktop_provider_feedback(
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:image/png;base64,{next_sent_image_b64}"
+                                "url": f"data:image/webp;base64,{next_sent_image_b64}"
                             },
                         },
                         image_index,
@@ -518,7 +518,7 @@ async def append_mobile_provider_feedback(
         mark_provider_visible_image_index(
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{next_sent_image_b64}"},
+                "image_url": {"url": f"data:image/webp;base64,{next_sent_image_b64}"},
             },
             image_index,
         ),

@@ -135,6 +135,7 @@ The dev-side uploaded rollout route table is exactly:
 | `Lite.CUAWorld` | [devs/data/lite.cuaworld/AGENTS.md](/devs/data/lite.cuaworld/AGENTS.md) |
 | `Lite.ScaleCUA` | [devs/data/lite.scalecua/AGENTS.md](/devs/data/lite.scalecua/AGENTS.md) |
 | `WebGym` | [devs/data/webgym/AGENTS.md](/devs/data/webgym/AGENTS.md) |
+| `MobileGym` | [devs/data/mobilegym/AGENTS.md](/devs/data/mobilegym/AGENTS.md) |
 
 Each route also owns exactly one `devs/data/<route>/repo.json` — the static HF card
 fields (`description`, `original_urls`, `license`, `citation`). Pass its directory to `hf.stage`
@@ -143,8 +144,13 @@ It is the single source for both this route's runbook and
 [devs/migration/AGENTS.md](/devs/migration/AGENTS.md), so a re-stage from either side
 publishes the same upstream attribution. Do not retype those values into a `--description`.
 
-These five routes are also the entire user-defined migration whitelist for
-HF-uploaded rollout datasets. The match is the exact canonical dataset route,
+The five `Lite.*` / `WebGym` routes above are also the entire user-defined
+migration whitelist for HF-uploaded rollout datasets —
+[devs/migration/run.py](/devs/migration/run.py) allow-lists exactly those.
+`MobileGym` is deliberately not on it: the route has no rows published before the
+canonical contract, so there is nothing to migrate.
+
+The match is the exact canonical dataset route,
 not a scratch alias, copy, or lookalike child path. Any other uploaded dataset is
 intentionally retired as a migration input: regenerate it from the owning
 `lite/data/preproc` raw-source pipeline, then stage/verify the regenerated
@@ -159,3 +165,4 @@ canonical rows. Do not add a migration branch for retired uploads.
 | Lite.CUAWorld | `devs/data/lite.cuaworld/AGENTS.md` | software list, one-task smoke, per-software counts, hard-drop/tag counts, stage gate output, upload transport/readback result, SFT export parquet and sample inspection |
 | Lite.ScaleCUA | `devs/data/lite.scalecua/AGENTS.md` | `rl` + `train` counts, temp-resume evidence when used, hard-drop/tag counts, stage gate output, upload transport/readback result, SFT export parquet and sample inspection |
 | WebGym | `devs/data/webgym/AGENTS.md` | per-tier/popular counts, filter drop counts, quality report, stage gate output, upload transport/readback result, SFT export parquet and sample inspection |
+| MobileGym | `devs/data/mobilegym/AGENTS.md` | per-teacher attempted/kept counts at `--group-size 16 --group-shared-seed false`, reward histogram against the `episode_return >= 0.30` gate (plus the `> 0.5` ablation cell), hard-drop/tag counts, stage gate output, upload transport/readback result, SFT export parquet and sample inspection |
