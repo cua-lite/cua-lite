@@ -1284,9 +1284,8 @@ CUDA_VISIBLE_DEVICES=$GPUS NUM_TRAIN_GPUS=$NGPU TP_SIZE=4 \
 The three runs above are each **n=1**, and two of them argued with each other for two commits
 before the curves settled it. This one fixes a recipe and varies only the seed — **three arms,
 three seeds, one pool** — so the repeat spread of a fixed recipe is measured instead of assumed,
-and adds `libreoffice_writer` to make the unit the whole application family. All three arms have
-trained their full 200 steps; twelve of the thirteen eval points are in, and the last one
-(step 192, the eval after rollout 24) is still scoring.
+and adds `libreoffice_writer` to make the unit the whole application family. All three arms ran to
+completion: 25 rollouts, 200 optimizer steps, all thirteen eval points.
 
 Two knobs differ from the block above, both to buy resolution on the seed question:
 
@@ -1313,13 +1312,13 @@ read one arm at a time.
 
 **Eval** — `eval/lite.osworld_eval`, 117 tasks, T=1, 4 draws per task. Step = rollout x 8,
 `EVAL_INTERVAL=2`, so the grid is every 16 steps from 0 to 192 (rollout 24, the last of 25).
-Values are **pp against each arm's own step-0**; `—` is a reading the run has not reached yet.
+Values are **pp against each arm's own step-0**.
 
 | step | 501/7001 | 502/7002 | 503/7003 | **mean** |
 |---:|---:|---:|---:|---:|
 | 0 *(absolute)* | .3164 | .3453 | .3229 | **.3282** |
 | 16 | −1.81 | −1.05 | +3.25 | **+0.13** |
-| 32 | +5.08 | −3.56 | +4.38 | **+1.98** |
+| 32 | +5.08 | −3.56 | +4.38 | **+1.97** |
 | 48 | +1.97 | +2.87 | +3.60 | **+2.81** |
 | 64 | +2.96 | +1.35 | +7.33 | **+3.88** |
 | 80 | +1.86 | +3.08 | +6.06 | **+3.67** |
@@ -1329,22 +1328,35 @@ Values are **pp against each arm's own step-0**; `—` is a reading the run has 
 | 144 | +7.43 | +1.23 | +7.95 | **+5.54** |
 | 160 | +9.76 | +1.19 | +6.38 | **+5.78** |
 | 176 | +7.16 | +1.09 | +6.39 | **+4.88** |
-| 192 | — | — | — | — |
+| 192 | +8.33 | +0.44 | +5.65 | **+4.81** |
 | **best** | **+9.76** | **+3.32** | **+8.07** | **+6.47** |
+| **end (192)** | **+8.33** | **+0.44** | **+5.65** | **+4.81** |
 
 Absolute values behind the deltas, for the arms' own records:
 
-    501/7001  .3164 .2983 .3672 .3361 .3460 .3350 .3884 .4059 .3967 .3907 .4140 .3880
-    502/7002  .3453 .3348 .3097 .3740 .3588 .3761 .3582 .3674 .3785 .3576 .3572 .3562
-    503/7003  .3229 .3554 .3667 .3589 .3962 .3835 .3734 .3966 .4036 .4024 .3867 .3868
+    501/7001  .3164 .2983 .3672 .3361 .3460 .3350 .3884 .4059 .3967 .3907 .4140 .3880 .3997
+    502/7002  .3453 .3348 .3097 .3740 .3588 .3761 .3582 .3674 .3785 .3576 .3572 .3562 .3497
+    503/7003  .3229 .3554 .3667 .3589 .3962 .3835 .3734 .3966 .4036 .4024 .3867 .3868 .3794
 
 The mean is monotone from 16 to 112 except for the step-80 reading, and all three arms were
 positive at every reading from 48 on. Individual arms are not: 502 ran −3.56 at step 32 and
 +2.87 sixteen steps later, and 501 went +1.86 → +7.20 in one interval. **Do not quote a single
 arm's point.**
 
+**The mean hides two different runs.** From step 64 on, 501 and 503 sit at +5 to +10pp; 502 never
+leaves +1.1 to +3.3pp and ends at +0.44. Its own step-0 is the highest of the three (.3453 against
+.3164 and .3229) and its endpoint .3497 is the lowest — the arm that started ahead is the arm that
+did not move. With n=3 that is one observation, not a rule, but it is the reason the mean is
+reported with its arms visible: **+4.81pp at the end is a 3-arm average of +8.33 / +0.44 / +5.65**,
+and a 4th and 5th seed are running to say whether the flat arm or the moving ones are typical.
+
+**Last point versus best point.** The mean peaks at step 128 (+6.47) and gives back 1.7pp by 192;
+per arm the peak lands at 160 / 128 / 128. Nothing here selects a checkpoint — `SAVE_INTERVAL=2`
+keeps every other rollout — but a number quoted from the best step of a 13-point grid is a max over
+13 draws, and the honest end-of-training figure is the **end (192)** row.
+
 This also re-reads the early-flat pattern the two-domain run hit. Its 40- and 80-step readings were
-+1.55 and +0.10 before +10.73 at 120; these three average +0.13 at step 16 and +1.98 at 32 before
++1.55 and +0.10 before +10.73 at 120; these three average +0.13 at step 16 and +1.97 at 32 before
 +6.18 at 112. Same shape, and it is now four runs plus three seeds saying the first two points of a
 200-step curve do not predict it.
 
@@ -1353,43 +1365,49 @@ This also re-reads the early-flat pattern the two-domain run hit. Its 40- and 80
 this is a rolling held-out score on the training distribution, not a convergence curve.
 
 It rises and then stops, and the shape is cleaner than the eval's. Pooling the three arms per
-rollout and fitting no smoothing: **+1.28pp per rollout over rollouts 0-11**, then **−0.28pp over
-12-23**. As levels, the pooled mean goes `.3665` (first 8 rollouts) → `.4920` (middle 8) → `.4994`
-(last 8): about **+13pp earned in the first half and held, not extended**, on prompts no arm has
-seen before. Per arm over all 24 rollouts the fit is +1.36 / +0.67 / +0.62 pp per rollout
-(t = 5.83 / 2.49 / 2.00), residual sd 7.9-10.5pp — but a single line through a rise-then-plateau
-understates the first half and overstates the second, which is why the two segments are reported
-separately.
+rollout and fitting no smoothing: **+1.28pp per rollout over rollouts 0-11** (t = 3.15), then
+**+0.02pp over 12-24** (t = 0.06) — the second half is flat, not declining. As levels, the pooled
+mean goes `.3665` (first 8 rollouts) → `.4920` (middle 8) → `.5090` (last 9): about **+14pp earned
+in the first half and held, not extended**, on prompts no arm has seen before. Per arm over all 25
+rollouts the fit is +1.33 / +0.65 / +0.74 pp per rollout (t = 6.01 / 2.56 / 2.47), residual sd
+8.0-10.8pp — but a single line through a rise-then-plateau understates the first half and
+overstates the second, which is why the two segments are reported separately.
 
 The t-statistics assume independent residuals and the model state drifts, so treat them as
 optimistic. The load-bearing evidence is that **three different `rollout_seed` values draw three
 different prompt orders and produce the same shape**, which a lucky easy-tasks-last ordering
 cannot do. Note also where the two curves disagree: the training distribution plateaus by rollout
 12 (step 96) while the eval mean keeps climbing to its maximum at step 128 and only then drifts —
-so the last hundred steps buy eval movement without any further gain on the training pool.
+so the last hundred steps buy eval movement without any further gain on the training pool. Worth
+keeping in view when reading the plateau as saturation: 502's training curve rises like the other
+two (+0.65pp per rollout, t = 2.56) while its eval barely moves, so a healthy train reward does not
+certify that the eval will follow.
 
 ```python
 # devs/exps/train/desktop -- GRPO seed replication, libreoffice.synth814 / libreoffice.eval117
-# Through rollout 24 of 25; the step-192 eval is the last point and is still running.
+# Complete: 25 rollouts, 200 optimizer steps, 13 eval points per arm.
 EVAL = {  # optimizer step -> mean reward, 117 tasks x 4 draws, T=1
   "501/7001": {0:.3164, 16:.2983, 32:.3672, 48:.3361, 64:.3460, 80:.3350, 96:.3884,
-               112:.4059, 128:.3967, 144:.3907, 160:.4140, 176:.3880},
+               112:.4059, 128:.3967, 144:.3907, 160:.4140, 176:.3880, 192:.3997},
   "502/7002": {0:.3453, 16:.3348, 32:.3097, 48:.3740, 64:.3588, 80:.3761, 96:.3582,
-               112:.3674, 128:.3785, 144:.3576, 160:.3572, 176:.3562},
+               112:.3674, 128:.3785, 144:.3576, 160:.3572, 176:.3562, 192:.3497},
   "503/7003": {0:.3229, 16:.3554, 32:.3667, 48:.3589, 64:.3962, 80:.3835, 96:.3734,
-               112:.3966, 128:.4036, 144:.4024, 160:.3867, 176:.3868},
+               112:.3966, 128:.4036, 144:.4024, 160:.3867, 176:.3868, 192:.3794},
 }
 
 TRAIN = {  # rollout/raw_reward, index = rollout
   "501/7001": [0.3281,0.2656,0.2812,0.1641,0.4297,0.5000,0.3359,0.4531,
                0.3750,0.3547,0.3984,0.4766,0.5469,0.5625,0.5938,0.5391,
-               0.5156,0.4609,0.6016,0.4062,0.5000,0.5625,0.5547,0.6953],
+               0.5156,0.4609,0.6016,0.4062,0.5000,0.5625,0.5547,0.6953,
+               0.5859],
   "502/7002": [0.3047,0.2812,0.5312,0.3984,0.4688,0.4609,0.3047,0.3906,
                0.4430,0.4062,0.4859,0.3203,0.3750,0.5234,0.6406,0.4453,
-               0.3281,0.3438,0.4219,0.4688,0.6094,0.4844,0.4766,0.6451],
+               0.3281,0.3438,0.4219,0.4688,0.6094,0.4844,0.4766,0.6451,
+               0.5000],
   "503/7003": [0.3359,0.3984,0.3047,0.2969,0.3750,0.4453,0.3516,0.3906,
                0.5547,0.4219,0.4609,0.6172,0.6797,0.5547,0.5625,0.4688,
-               0.5547,0.7344,0.4375,0.4922,0.4609,0.4887,0.3828,0.3594],
+               0.5547,0.7344,0.4375,0.4922,0.4609,0.4887,0.3828,0.3594,
+               0.6719],
 }
 ```
 
