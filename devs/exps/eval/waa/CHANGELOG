@@ -1,0 +1,14 @@
+## a60028f <- 72c4277 (2026-09-20)
+
+- Use the merged Claude Messages adapter; replace the eight affected
+  mouse-modifier trajectories before reporting the Opus 5 campaign.
+
+## b191a93 (2026-09-17)
+
+- Use the documented 138-task eval subset and model-family WAA defaults.
+
+## dc093f5 (2026-09-17)
+
+- Limit Docker creation, reserve ports, create overlays inside the VM container,
+  disable THP for QEMU, and allow 60 seconds for Docker inspection.
+- Require installation checks to terminate with a valid evaluator score.

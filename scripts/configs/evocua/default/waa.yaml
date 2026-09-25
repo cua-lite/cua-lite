@@ -1,0 +1,12 @@
+# WAA: use the standard exclude_reason filter in docs/eval.md.
+agent_id: evocua
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 0.01
+    top_p: 0.9
+
+env_id: waa
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  extra_tools: ["terminate"]
