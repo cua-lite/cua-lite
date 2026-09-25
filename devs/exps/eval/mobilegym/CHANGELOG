@@ -1,3 +1,7 @@
+## 8ea5762  (2026-09-25)
+
+- Catalog retained reference runs with source provenance and valid-sample means; API errors are excluded from the denominator.
+
 ## 2a40f5258e  (2026-07-08)
 
 Initial standardized snapshot at this commit. MobileGym eval reports the
