@@ -1,116 +1,486 @@
 {
+  "schema_version": 1,
   "env": "androidlab",
   "commit_dir": "2026-09-17T14-26_5268092",
   "run_id": "run_0",
   "commit": {
-    "short_sha": "5268092"
+    "short_sha": "5268092",
+    "subject": "eval(androidlab): support reference models and GPT reasoning variants"
   },
   "artifact_root": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0",
-  "result_count": 13,
+  "snapshot_kind": "retained_run_aggregation",
+  "aggregation_branch_commit": "f9a86e428ddd7439b465b8bfe4f344c79d31e849",
+  "result_count": 15,
+  "status_counts": {
+    "complete": 14,
+    "empty": 1
+  },
   "results": [
     {
-      "model": "GPT-5.5",
+      "model": "claude-opus-5",
+      "slug": "claude-opus-5",
+      "base_slug": "claude-opus-5",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
-      "mean_episode_return": 0.6159420289855072,
+      "num_samples": 138,
+      "mean_episode_return": 0.6231884057971014,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/claude-opus-5/summary.json",
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/claude-opus-5",
+      "source_artifact_path": ".exps/eval/androidlab/probe_20260919/run_1/claude-opus-5",
+      "source_summary_sha256": "de4ea14663f015ea67ff41158804add453f9b53f0151c4c1efb22e78789de851",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/probe_20260919/run_1/claude-opus-5/run_info.txt",
+      "source_run_info_sha256": "fb05f4c8f7d370a92cb15a838f9af2a9c3c596ee1e8f5097e2a26bff92de2607",
+      "source_launch_commits": [
+        "6073c2e",
+        "f9a86e4"
+      ],
+      "source_had_uncommitted_changes": true,
+      "sample_records_sha256": "f17f1c7130cfbedcfc2758e6fc48a36c87a3586ffbcd1fbb40ec7062eb018a51",
+      "config_path": "scripts/configs/claude/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {
+        "effort": "medium",
+        "max_tokens": 4096,
+        "thinking_budget": 2048,
+        "prompt_caching": true,
+        "cache_breakpoints": 4,
+        "token_efficient_tools_beta": false
+      },
+      "source_config_sha256_by_commit": {
+        "6073c2e": "d2d80ca9c574d4c93b3759214715d963a46c0f67debbce4f7f2cc92dd99a8151",
+        "f9a86e4": "d2d80ca9c574d4c93b3759214715d963a46c0f67debbce4f7f2cc92dd99a8151"
+      }
+    },
+    {
+      "model": "gpt-5.5",
+      "slug": "gpt-5.5",
+      "base_slug": "gpt-5.5",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "num_samples": 138,
+      "mean_episode_return": 0.6086956521739131,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.5/summary.json",
       "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.5",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.5/summary.json"
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.5",
+      "source_summary_sha256": "28b0bd8bf69cc50b363f1b63243a997b5e6aa1d257cd45cac5d4a517e77ac14e",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.5/run_info.txt",
+      "source_run_info_sha256": "8bbd40a5af4a191828c011535860361e7cf42aaa20b9f73ed404cb4dce7d2be6",
+      "source_launch_commits": [
+        "3f7078c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "03be070fb345b3fe1ca7117810825758850287220b9cf73f414d1c477ca111f1",
+      "config_path": "scripts/configs/gpt/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {
+        "reasoning_effort": "medium",
+        "max_output_tokens": 4096,
+        "reasoning_summary": "concise",
+        "chain_previous_response": true,
+        "parallel_tool_calls": false,
+        "detail": "original"
+      },
+      "source_config_sha256_by_commit": {
+        "3f7078c": "34ed514e3dcc1c14028fa07cef672b5a258d0505ea665bf14fa607b3fe996aa8"
+      }
     },
     {
-      "model": "GPT-5.6 Sol",
+      "model": "gpt-5.6-sol",
+      "slug": "gpt-5.6-sol",
+      "base_slug": "gpt-5.6-sol",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
+      "num_samples": 138,
       "mean_episode_return": 0.6086956521739131,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.6-sol/summary.json",
       "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.6-sol",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.6-sol/summary.json"
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.6-sol",
+      "source_summary_sha256": "f82a469bb66db61e11818b6c22ea8b356f899d1d543b97115567b5fed2b6befd",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-5.6-sol/run_info.txt",
+      "source_run_info_sha256": "15ba6342cbfcf2cf6f6a41f96db7607cf0233cbb16491f4b08442fab036af82b",
+      "source_launch_commits": [
+        "3f7078c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "93bc122300533e5dcfe902fa45f72f06669dd18c0c4d6f44d38b77fe997bad62",
+      "config_path": "scripts/configs/gpt/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {
+        "reasoning_effort": "medium",
+        "max_output_tokens": 4096,
+        "reasoning_summary": "concise",
+        "chain_previous_response": true,
+        "parallel_tool_calls": false,
+        "detail": "original"
+      },
+      "source_config_sha256_by_commit": {
+        "3f7078c": "34ed514e3dcc1c14028fa07cef672b5a258d0505ea665bf14fa607b3fe996aa8"
+      }
     },
     {
-      "model": "GPT-6 Astra",
+      "model": "gpt-6-astra",
+      "slug": "gpt-6-astra",
+      "base_slug": "gpt-6-astra",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
+      "num_samples": 138,
       "mean_episode_return": 0.6086956521739131,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-6-astra/summary.json",
       "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-6-astra",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-6-astra/summary.json"
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-6-astra",
+      "source_summary_sha256": "eecf884c4cd1073f183c3aa6098e1bc1b50fab5c7f9b79a31c825b394c2eb243",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/gpt-6-astra/run_info.txt",
+      "source_run_info_sha256": "c7ea7de3f1deb9550b7b724f36abb38ce06261ac0d2fe0fb914e177eaa7e3197",
+      "source_launch_commits": [
+        "3f7078c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "5f8b014ffbe49b6e6a15f9b286911842a558548701dddb78eebc8ecabdde7580",
+      "config_path": "scripts/configs/gpt/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {
+        "reasoning_effort": "medium",
+        "max_output_tokens": 4096,
+        "reasoning_summary": "concise",
+        "chain_previous_response": true,
+        "parallel_tool_calls": false,
+        "detail": "original"
+      },
+      "source_config_sha256_by_commit": {
+        "3f7078c": "34ed514e3dcc1c14028fa07cef672b5a258d0505ea665bf14fa607b3fe996aa8"
+      }
     },
     {
-      "model": "Qwen3.8-27B",
+      "model": "Qwen/Qwen3.8-27B",
+      "slug": "Qwen_Qwen3.8-27B",
+      "base_slug": "Qwen_Qwen3.8-27B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
-      "mean_episode_return": 0.37681159420289856,
+      "num_samples": 138,
+      "mean_episode_return": 0.5144927536231884,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.8-27B/summary.json",
       "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.8-27B",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.8-27B/summary.json"
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.8-27B",
+      "source_summary_sha256": "274b16490cd9ceafd10449e49437f25836a639dd60dc4fd65dfe936aa810dde7",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.8-27B/run_info.txt",
+      "source_run_info_sha256": "5c37ba4a9e3a290d22dfaf40eb45f9e653b104ab7d959b44e819fc6eaceedf9b",
+      "source_launch_commits": [
+        "dd6c13d"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "ba8f968ea2997f3f5aebc19f197d2c56c50beae17be6d8d7d23068487024cef9",
+      "config_path": "scripts/configs/qwen3_8/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "dd6c13d": "b89d2f87f7c9482b3d2a63ba4497569c3725f0f1d8529f816dceed8fe4b021ae"
+      }
     },
     {
-      "model": "UI-Venus-2-9B",
+      "model": "Tongyi-MAI/MAI-UI-8B",
+      "slug": "Tongyi-MAI_MAI-UI-8B",
+      "base_slug": "Tongyi-MAI_MAI-UI-8B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
-      "mean_episode_return": 0.37681159420289856,
-      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/inclusionAI_UI-Venus-2-9B",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/inclusionAI_UI-Venus-2-9B/summary.json"
-    },
-    {
-      "model": "MAI-UI-8B",
-      "num_valid": 138,
-      "num_tasks": 138,
-      "mean_episode_return": 0.34782608695652173,
+      "num_samples": 138,
+      "mean_episode_return": 0.4927536231884058,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Tongyi-MAI_MAI-UI-8B/summary.json",
       "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Tongyi-MAI_MAI-UI-8B",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Tongyi-MAI_MAI-UI-8B/summary.json"
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Tongyi-MAI_MAI-UI-8B",
+      "source_summary_sha256": "5477d5c07ccaebafe68b8500a66da1acaa676b5c6742a919e83db7ec1a549d77",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Tongyi-MAI_MAI-UI-8B/run_info.txt",
+      "source_run_info_sha256": "ffa5fd1ced77b48a61116937e5642946d1667f8e095c18e35c2d9300ed61f6b8",
+      "source_launch_commits": [
+        "3f7078c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "21377e5fd33437e9d9652ab28072ba2610143e1e8d0ee15203dda86a395fa966",
+      "config_path": "scripts/configs/mai_ui/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "3f7078c": "b8e8f29fac7d9ca64c8f342eec54fc831ab443c4a66149547ff38f0a0d199841"
+      }
     },
     {
-      "model": "Qwen3-VL-8B",
+      "model": "inclusionAI/UI-Venus-2-9B",
+      "slug": "inclusionAI_UI-Venus-2-9B",
+      "base_slug": "inclusionAI_UI-Venus-2-9B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
-      "mean_episode_return": 0.2898550724637681,
-      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-8B-Instruct",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json"
+      "num_samples": 138,
+      "mean_episode_return": 0.4782608695652174,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/inclusionAI_UI-Venus-2-9B/summary.json",
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/inclusionAI_UI-Venus-2-9B",
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/inclusionAI_UI-Venus-2-9B",
+      "source_summary_sha256": "29d9c047e2beab72eaf5210ee580ec23e7a56e2edb671f489779a6e615f4ffe8",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/inclusionAI_UI-Venus-2-9B/run_info.txt",
+      "source_run_info_sha256": "f1f7bd0d31abb127b8acd88316eee7aa5940211fd7659e8da5134dcafaeb9f0e",
+      "source_launch_commits": [
+        "3f7078c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "129aa8f9549949d4ac0bb023fb71d08da9fcac2312bddc1f124c2107a3044df1",
+      "config_path": "scripts/configs/ui_venus_2/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "3f7078c": "a90ace8d93f59b9ff18db11daac396157034dd3a3c015ee0e103327dd443dc2c"
+      }
     },
     {
-      "model": "Qwen3.5-27B",
+      "model": "Qwen/Qwen3.5-27B",
+      "slug": "Qwen_Qwen3.5-27B",
+      "base_slug": "Qwen_Qwen3.5-27B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
-      "mean_episode_return": 0.2898550724637681,
+      "num_samples": 138,
+      "mean_episode_return": 0.4057971014492754,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-27B/summary.json",
       "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-27B",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-27B/summary.json"
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-27B",
+      "source_summary_sha256": "474207a7dc67cdc4a0253d61d9b5fcf7a2c3105cfce9fac8890cbe9428b4d657",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-27B/run_info.txt",
+      "source_run_info_sha256": "d582fe3d02d4a2c04f82872b5cc2433379abd97623198f564e0e5680237c6fb1",
+      "source_launch_commits": [
+        "3f7078c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "de64c04795dcc0e958a161813a9c005b950dd5633a1c071a13733414ee6dbe5f",
+      "config_path": "scripts/configs/qwen3_5/default/androidlab.yaml",
+      "environment_overrides": {
+        "step_timeout": 180
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "3f7078c": "c0d01e5e6a4ddb88ed1d5c660224ed554b9919d9aabc58560a130fd64f8e29ec"
+      }
     },
     {
-      "model": "Qwen3-VL-32B",
+      "model": "Qwen/Qwen3-VL-8B-Instruct",
+      "slug": "Qwen_Qwen3-VL-8B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-8B-Instruct",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
-      "mean_episode_return": 0.2753623188405797,
-      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-32B-Instruct",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json"
+      "num_samples": 138,
+      "mean_episode_return": 0.39855072463768115,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json",
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-8B-Instruct",
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-8B-Instruct",
+      "source_summary_sha256": "4b827a04ea38be8e9d8502f2d457eeb0f864ccae51b39249f237b70d23113ca8",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-8B-Instruct/run_info.txt",
+      "source_run_info_sha256": "36ea6beedcffc6c40a6985d6b17241e18f6f2499d0ba5ea0831304418011486c",
+      "source_launch_commits": [
+        "dd6c13d",
+        "6d0c07d"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "a73524ad0499525f989fabbc28e89ed4bd7d9ce1c12924f58fd753d5a4a462b6",
+      "config_path": "scripts/configs/qwen3_vl/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "dd6c13d": "de0754109a36d99dfd6a88f525d071c1d79927e4d2ed36d1089991db37bbd608",
+        "6d0c07d": "de0754109a36d99dfd6a88f525d071c1d79927e4d2ed36d1089991db37bbd608"
+      }
     },
     {
-      "model": "UI-TARS-1.5-7B",
+      "model": "ByteDance-Seed/UI-TARS-1.5-7B",
+      "slug": "ByteDance-Seed_UI-TARS-1.5-7B",
+      "base_slug": "ByteDance-Seed_UI-TARS-1.5-7B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
-      "mean_episode_return": 0.2753623188405797,
+      "num_samples": 138,
+      "mean_episode_return": 0.36231884057971014,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json",
       "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json"
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
+      "source_summary_sha256": "957fdad9f71058d14fa8119d88b38bd04e96174de5b457027b22db3ac48feff6",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/ByteDance-Seed_UI-TARS-1.5-7B/run_info.txt",
+      "source_run_info_sha256": "11ed77b6c48d63ae42d06ca46aba4cac4e2e5546ab09399c31a57fc10613c5fe",
+      "source_launch_commits": [
+        "3f7078c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "ee48d3ccdde68cd99f0abd8cf2487e7e88dd5202ec5780727f669564884fb157",
+      "config_path": "scripts/configs/ui_tars_15_v1/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "3f7078c": "ad5e31e6d44dc904f16178e96b9d811f5d03fe036217aa37b23dcf296c46b7ff"
+      }
     },
     {
-      "model": "Qwen3.5-4B",
+      "model": "Qwen/Qwen3-VL-32B-Instruct",
+      "slug": "Qwen_Qwen3-VL-32B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-32B-Instruct",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
-      "mean_episode_return": 0.2536231884057971,
-      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-4B",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-4B/summary.json"
+      "num_samples": 138,
+      "mean_episode_return": 0.36231884057971014,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json",
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-32B-Instruct",
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-32B-Instruct",
+      "source_summary_sha256": "b20d13ce497b60f71e6b75b43eb700c00cfb6f1a9f1b3e082535cac2d2592026",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-32B-Instruct/run_info.txt",
+      "source_run_info_sha256": "173001fb5685d651c9218f675277032321e2780cf43734eb1c1c7041ce718de4",
+      "source_launch_commits": [
+        "3f7078c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "846b744d3682740211b723b547815a35822429e2f8fa2f0f94815f14ddb14c49",
+      "config_path": "scripts/configs/qwen3_vl/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "3f7078c": "de0754109a36d99dfd6a88f525d071c1d79927e4d2ed36d1089991db37bbd608"
+      }
     },
     {
-      "model": "Qwen3-VL-4B",
+      "model": "Qwen/Qwen3-VL-4B-Instruct",
+      "slug": "Qwen_Qwen3-VL-4B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-4B-Instruct",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
-      "mean_episode_return": 0.2463768115942029,
+      "num_samples": 138,
+      "mean_episode_return": 0.36231884057971014,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json",
       "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-4B-Instruct",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json"
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-4B-Instruct",
+      "source_summary_sha256": "afc55eba6c388ab47003bc800dd29de63efee0d8029bd127e417612a464551cf",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3-VL-4B-Instruct/run_info.txt",
+      "source_run_info_sha256": "0fc654b4bdd3b47a86fc865712995d46ef65a78ac3cdce131e7805d23a8c370b",
+      "source_launch_commits": [
+        "dd6c13d"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "89dd643c9af2b4eeafb8053c381752823c8f2aae9a8286f3a18d1857477bba19",
+      "config_path": "scripts/configs/qwen3_vl/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "dd6c13d": "de0754109a36d99dfd6a88f525d071c1d79927e4d2ed36d1089991db37bbd608"
+      }
     },
     {
-      "model": "Qwen3.5-9B",
+      "model": "Qwen/Qwen3.5-9B",
+      "slug": "Qwen_Qwen3.5-9B",
+      "base_slug": "Qwen_Qwen3.5-9B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 138,
       "num_tasks": 138,
-      "mean_episode_return": 0.2463768115942029,
+      "num_samples": 138,
+      "mean_episode_return": 0.36231884057971014,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-9B/summary.json",
       "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-9B",
-      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-9B/summary.json"
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-9B",
+      "source_summary_sha256": "ac43045c36e42cfa1213dd57ab2257f3504bfd61a9e1389fcb5f4557ffb4de20",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-9B/run_info.txt",
+      "source_run_info_sha256": "105e74eb5f149976d5bc970c6a5fc27e29887b251615509d104ff7db249f5b0b",
+      "source_launch_commits": [
+        "3f7078c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "95baa69b39b17a4697377e4c8a684ae538b7ae40c8b9b97fcd2d6de248fedcdf",
+      "config_path": "scripts/configs/qwen3_5/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "3f7078c": "c0d01e5e6a4ddb88ed1d5c660224ed554b9919d9aabc58560a130fd64f8e29ec"
+      }
+    },
+    {
+      "model": "Qwen/Qwen3.5-4B",
+      "slug": "Qwen_Qwen3.5-4B",
+      "base_slug": "Qwen_Qwen3.5-4B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 138,
+      "num_tasks": 138,
+      "num_samples": 138,
+      "mean_episode_return": 0.34782608695652173,
+      "summary_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-4B/summary.json",
+      "artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-4B",
+      "source_artifact_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-4B",
+      "source_summary_sha256": "e32c3910cdf009d1fa144f9996eb346f7684e731c5772a7c1e655679898e87af",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/Qwen_Qwen3.5-4B/run_info.txt",
+      "source_run_info_sha256": "c9d90ee1a98b13b4096755ff8dd2c9b79d3a6de7ff1210ac0af29f099569d489",
+      "source_launch_commits": [
+        "3f7078c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "a9f18fc774bf1bebe727c18a50a600dce182184ee04399ba584820830fd67bc2",
+      "config_path": "scripts/configs/qwen3_5/default/androidlab.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "3f7078c": "c0d01e5e6a4ddb88ed1d5c660224ed554b9919d9aabc58560a130fd64f8e29ec"
+      }
+    },
+    {
+      "model": "gemini-3.6-flash",
+      "slug": "gemini-3.6-flash",
+      "base_slug": "gemini-3.6-flash",
+      "config_id": "default",
+      "status": "empty",
+      "num_valid": 0,
+      "num_tasks": 138,
+      "num_samples": 0,
+      "mean_episode_return": null,
+      "note": "Not started in this campaign."
     }
-  ]
+  ],
+  "errors": [],
+  "metric_policy": "Mean episode return over samples without errors; model failures with terminal evaluator rewards remain valid.",
+  "judge_regrade": {
+    "artifact_path": ".exps/eval/androidlab/.judge-regrade-20260921",
+    "model": "gpt-4o-mini",
+    "temperature": 0,
+    "max_tokens": 16,
+    "files_sha256": {
+      "manifest.json": "81027116bf11fb0d4b4149b3476251766221a1878235947153c5b021051a7f7e",
+      "verdicts.json": "356ff2e5899761a96e4e92f79cba885659b702eda35de06c1356c47a2388b432",
+      "applied.json": "1b476f4fdde4f5d06dcb725b810d95007a0e2f1fb13a41af2c30075336f93f2c"
+    }
+  },
+  "judge_error_propagation_commit": "2799848"
 }

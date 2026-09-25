@@ -1,3 +1,8 @@
+## 5268092  (2026-09-25)
+
+- Catalog retained reference runs with source provenance and valid-sample means; API errors are excluded from the denominator.
+- Include verified Azure regrading of saved answers and the completed Claude reference run.
+
 ## 2181393 <- f873f3c  (2026-09-17)
 
 - Evaluate 13 reference models on all 138 tasks using default family configs.
