@@ -271,14 +271,15 @@ path-in-repo and so cannot express `epoch_<k>/`.
 
 #### Eval
 
-Eighteen runs on the `lite.osworld` eval split: the rows left after `--filter` drops
+Twenty-one runs on the `lite.osworld` eval split: the rows left after `--filter` drops
 `exclude_reason`, **328 of the 369** `catalog.lock.json` pins. The 41 exclusions are
 recorded in the tracked catalog lock generated from `eval.jsonl`; count them there
 rather than restating denominators by hand. Env
 setup: [`lite/gym/envs/lite/osworld/README.md`](/lite/gym/envs/lite/osworld/README.md).
 
-Eighteen, not fifteen: **the base model runs once per screenshot profile.** A checkpoint must be
-scored against a baseline that saw the same screenshot surface, and the fifteen cells use three.
+Twenty-one, not fifteen: **the base model runs once per screenshot profile and thinking mode.** A
+checkpoint must be scored against a baseline that saw the same prompt surface: the fifteen cells
+use three screenshot profiles, each with and without `<think>`.
 
 ```bash
 # --- EVAL HOST ---
@@ -297,7 +298,7 @@ scored against a baseline that saw the same screenshot surface, and the fifteen 
 
 # MUST be unset. `--sglang-server-url` defaults to $SGLANG_SERVER_URL (lite/infer/cli.py), and
 # with a URL in hand serving.py never starts a server -- `--model-path` then only picks the
-# tokenizer/processor, so all eighteen runs GENERATE from whatever model that server holds and
+# tokenizer/processor, so all twenty-one runs GENERATE from whatever model that server holds and
 # every summary.json still looks normal. Nothing warns.
 unset SGLANG_SERVER_URL
 
@@ -356,7 +357,7 @@ echo "checkpoints OK"
 # then divide. 96 containers is what a 208-vCPU / 1.8 TB host carries with ~25% idle left;
 # with NGPU runs in flight that is `--concurrency $((96 / NGPU))`. Raising the per-run number
 # without lowering the number of runs is what oversubscribes the host.
-NGPU=8   # cards this host will use -- eighteen runs no longer fit one per card
+NGPU=8   # cards this host will use -- twenty-one runs no longer fit one per card
 CONC=12  # 8 x 12 = 96 containers
 gpu=0
 score() {
@@ -372,10 +373,12 @@ score() {
   gpu=$((gpu + 1))
 }
 
-# 3 BASE runs -- empty $2 drops --model-path, so rollout serves --model-id's own weights.
-# One per screenshot profile, not one total: a checkpoint is only comparable to a baseline
-# that saw the same screenshots. The .reasoning cells reuse their profile's base run too.
-for P in desktop.use.lowr.i4 desktop.use.lowr.i1 desktop.use.highr.i1; do
+# 6 BASE runs -- empty $2 drops --model-path, so rollout serves --model-id's own weights.
+# One per screenshot profile and thinking mode, not one total: a checkpoint is only comparable
+# to a baseline that saw the same screenshots and the same <think> channel.
+for P in desktop.use.lowr.i4 desktop.use.lowr.i1 desktop.use.highr.i1 \
+         desktop.use.lowr.i4.reasoning desktop.use.lowr.i1.reasoning \
+         desktop.use.highr.i1.reasoning; do
   score "$P" "" "base.$P@$RUN"
 done
 
@@ -390,19 +393,20 @@ wait
 `--model-id` picks the adapter and action space; the weights, tokenizer and chat template all
 come from `--model-path`.
 
-Eighteen runs over `NGPU` cards, in batches: `score` drains with `wait` before reusing card 0 —
+Twenty-one runs over `NGPU` cards, in batches: `score` drains with `wait` before reusing card 0 —
 without it `$gpu` keeps counting past the last card onto ordinals that do not exist. Set `NGPU` to
-what the host has FREE; `NGPU=1` serializes all eighteen, slow but correct. Both drains are bare
+what the host has FREE; `NGPU=1` serializes all twenty-one, slow but correct. Both drains are bare
 `wait`s, so anything else left backgrounded in this shell delays them.
 
 Score each run from `<log-root>/summary.json` -> `stats.mean_episode_return` (denominator
-`num_valid`). Which cells compare to which is settled at the top of this file. `base` runs
-thinking OFF, so it is the wrong baseline for a reasoning checkpoint — give that arm its own base
-run under the `.reasoning` config if you want its did-SFT-help number.
+`num_valid`). Which cells compare to which is settled at the top of this file. A reasoning
+checkpoint's did-SFT-help number reads against `base` + `<think>` under the same `.reasoning`
+config, never against the thinking-off `base`: turning `<think>` on moves the base model by up
+to +0.076 on its own (Results).
 
 #### Record the scores
 
-Collect all eighteen — nineteen with the RL run — and commit as
+Collect all twenty-one — twenty-two with the RL run — and commit as
 `devs/exps/train/desktop/logs/$RUN.md`: one file per campaign, edited as runs land, not a wrap-up
 from memory.
 
@@ -425,7 +429,9 @@ print(f\"{sys.argv[2]:70s} {s['mean_episode_return']:.4f} ({solved}/{s['num_vali
       f\"  err={s['num_samples'] - s['num_valid']} parse_fail={pf}\")
 " "$LOGS/$1" "$1"
 }
-for P in desktop.use.lowr.i4 desktop.use.lowr.i1 desktop.use.highr.i1; do
+for P in desktop.use.lowr.i4 desktop.use.lowr.i1 desktop.use.highr.i1 \
+         desktop.use.lowr.i4.reasoning desktop.use.lowr.i1.reasoning \
+         desktop.use.highr.i1.reasoning; do
   show "base.$P@$RUN"
 done
 while read -r P T; do show "sft.$P.$DS.$T@$RUN.$EPOCH"; done <<< "$(cells)"
@@ -458,11 +464,14 @@ there; the pass labels and the retired column are this campaign's, not a templat
 
 Mean episode return, (fully-solved / `num_valid`) in parentheses. Campaign `20260912b/c/d`: every TRAINED
 cell scored three times, interleaved (all cells once, then all again) so host drift spreads across
-cells instead of landing on one. `±` is half the range of the three.
+cells instead of landing on one. `±` is half the range of the three. The `base` + `<think>` row is
+campaign `20260924b/c/d`: same eval split, env-server mode and three-pass interleave, scored later
+on a 208-vCPU host with three runs in flight at `--concurrency 21` (63 containers).
 
 | | `lowr.i4` | `lowr.i1` | `highr.i1` | `highr.h1` (retired) |
 |---|---:|---:|---:|---:|
 | **base** | 0.2597 ±0.0091 (82/328) 3/3 | 0.1592 ±0.0031 (49/328) 3/3 | 0.2329 ±0.0090 (74/328) 3/3 | 0.2070 (65/328) |
+| **base + `<think>`** | 0.2683 ±0.0040 (85/328) 3/3 | 0.2348 ±0.0175 (74/328) 3/3 | 0.2850 ±0.0122 (89/328) 3/3 | — |
 | **`gpt5_5`** | 0.3673 ±0.0154 (115/328) 3/3 | 0.3420 ±0.0201 (107/328) 3/3 | 0.3883 ±0.0120 (122/328) 3/3 | 0.3836 (118/320) |
 | **`gpt5_5` + `<think>`** | 0.4165 ±0.0050 (132/328) 3/3 | 0.3828 ±0.0127 (121/328) 3/3 | **0.4665** ±0.0011 (147/328) 3/3 | — |
 | **`qwen3_5_27b`** | 0.3421 ±0.0031 (108/328) 3/3 | 0.3209 ±0.0071 (101/328) 3/3 | 0.3582 ±0.0150 (113/328) 3/3 | — |
@@ -477,6 +486,9 @@ Every individual run — `MER (solved) parse_failure`, one column per pass:
 | **base** | `lowr.i4` | 0.2618 (83) 0 | 0.2496 (79) 0 | 0.2679 (85) 0 |
 |  | `lowr.i1` | 0.1612 (50) 0 | 0.1551 (48) 0 | 0.1612 (50) 0 |
 |  | `highr.i1` | 0.2256 (72) 0 | 0.2435 (77) 0 | 0.2296 (73) 0 |
+| **base+`<think>`** | `lowr.i4` | 0.2649 (82) 4 | 0.2728 (88) 5 | 0.2671 (84) 3 |
+|  | `lowr.i1` | 0.2481 (78) 10 | 0.2432 (76) 2 | 0.2130 (67) 4 |
+|  | `highr.i1` | 0.2769 (86) 3 | 0.3012 (95) 1 | 0.2768 (87) 1 |
 | **`gpt5_5`** | `lowr.i4` | 0.3520 (110) 2 | 0.3672 (116) 5 | 0.3828 (120) 1 |
 |  | `lowr.i1` | 0.3369 (106) 3 | 0.3645 (115) 0 | 0.3244 (101) 0 |
 |  | `highr.i1` | 0.3742 (118) 3 | 0.3923 (123) 0 | 0.3983 (126) 0 |
@@ -496,7 +508,7 @@ Every individual run — `MER (solved) parse_failure`, one column per pass:
 
 Reading the table:
 
-- **Compare against the larger of the two cells' own `±`.** Across the eighteen cells the
+- **Compare against the larger of the two cells' own `±`.** Across the eighteen `20260912` cells the
   half-range spans ±0.0011 to ±0.0207 (median ±0.0094), so one global threshold is either too
   strict or too loose. Six cells sit at ±0.012 or worse: the whole `gpt5_5` row (±0.012-0.020),
   `gpt5_5`+`<think>` x `lowr.i1`, `qwen3_5_27b` x `highr.i1`, and the noisiest in the table,
@@ -518,10 +530,19 @@ Reading the table:
 
 #### What the profiles actually do
 
-The profile effect is something SFT creates, not a property of the eval:
+The profile effect is something the prompt surface creates, not a property of the eval:
 
 - **base prefers more images to more pixels** — `lowr.i4` best, `highr.i1` 0.027 lower, 3x its
   noise floor. Both `gpt5_5` rows reverse that; `qwen3_8_27b` does not move either way.
+- **`<think>` alone already moves base, most where it sees one image.** Against the thinking-off
+  `base` row: +0.009 at `lowr.i4` (inside its ±0.009), +0.076 at `lowr.i1` (4.3x its ±0.0175),
+  +0.052 at `highr.i1` (4.3x its ±0.0122). With `<think>` on, base already ranks `highr.i1` first
+  (0.2850 vs 0.2683 at `lowr.i4`, 1.4x the larger `±`), so part of the SFT flip below is present
+  before any training.
+- **Read a reasoning cell's SFT gain against `base` + `<think>`.** For `gpt5_5` + `<think>` that
+  is +0.148 / +0.148 / +0.182 (`lowr.i4` / `lowr.i1` / `highr.i1`); against the thinking-off
+  `base` the same cells would read +0.157 / +0.224 / +0.234, which credits SFT with what enabling
+  `<think>` did on its own.
 - **SFT flips it, `<think>` widens it** — `lowr.i4` to `highr.i1` gains +0.021 for `gpt5_5`,
   +0.050 with `<think>`.
 - **`qwen3_8_27b` is flat** — its three cells span 0.007 under a ±0.009-0.012 floor. The one row
