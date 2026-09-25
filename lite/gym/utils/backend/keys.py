@@ -59,10 +59,6 @@ _XDOTOOL: dict[str, str] = {
     "home": "Home", "end": "End", "pageup": "Prior", "pagedown": "Next",
     "insert": "Insert", "capslock": "Caps_Lock",
     "menu": "Menu", "printscreen": "Print", "clear": "Clear", "kp_enter": "KP_Enter",
-    "kp_subtract": "KP_Subtract",
-    "kp_insert": "KP_Insert", "numlock": "Num_Lock",
-    "kp_delete": "KP_Delete",
-    "kp_decimal": "KP_Decimal",
     # media / volume keys (X keysyms).
     "volumeup": "XF86AudioRaiseVolume", "volumedown": "XF86AudioLowerVolume",
     "volumemute": "XF86AudioMute", "playpause": "XF86AudioPlay",
@@ -85,9 +81,6 @@ _PYAUTOGUI: dict[str, str] = {
     "home": "home", "end": "end", "pageup": "pageup", "pagedown": "pagedown",
     "insert": "insert", "capslock": "capslock",
     "printscreen": "printscreen", "clear": "clear",
-    "kp_subtract": "subtract",
-    "kp_insert": "num0",  # Num Lock selects KP_0 / KP_Insert on the same physical key.
-    "kp_decimal": "decimal",
     # media / volume keys (pyautogui KEY_NAMES).
     "volumeup": "volumeup", "volumedown": "volumedown", "volumemute": "volumemute",
     "playpause": "playpause", "nexttrack": "nexttrack", "prevtrack": "prevtrack",

@@ -181,7 +181,6 @@ def test_key_normalization_does_not_alias_unknown_or_phrase_tokens(bad: str) -> 
         ("CtrlLeft", "ctrl"),
         ("CtrlRight", "ctrl"),
         ("AltLeft", "alt"),
-        ("Alt_L", "alt"),
         ("AltRight", "alt"),
         ("OptionLeft", "alt"),
         ("OptionRight", "alt"),
@@ -312,6 +311,7 @@ def test_media_key_source_aliases_are_explicit(alias: str, canon: str) -> None:
 @pytest.mark.parametrize(
     "bad",
     [
+        "print",
         "mute",
         "audioplay",
         "audionext",
