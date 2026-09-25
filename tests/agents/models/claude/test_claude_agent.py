@@ -2840,8 +2840,12 @@ class TestCanonicalPersistence:
         assert "## Error from previous action:\ninvalid action: screenshot" in joined
         image_blocks = [block for block in content if block.get("type") == "image_url"]
         assert len(image_blocks) == 1
+        assert image_blocks[0]["image_url"]["url"].startswith("data:image/webp;base64,")
         payload = image_blocks[0]["image_url"]["url"].split("base64,", 1)[1]
-        assert base64.b64decode(payload) == env._fresh_shot
+        with Image.open(io.BytesIO(base64.b64decode(payload))) as sent:
+            with Image.open(io.BytesIO(env._fresh_shot)) as expected:
+                assert sent.size == expected.size
+                assert sent.tobytes() == expected.tobytes()
 
     async def test_thinking_only_output_terminates_through_the_env(self, monkeypatch):
         """N3: reasoning-only output is a final turn, not a RuntimeError.
