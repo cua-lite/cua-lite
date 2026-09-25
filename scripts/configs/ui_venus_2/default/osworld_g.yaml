@@ -10,19 +10,18 @@
 # bare ``[x,y]`` list normalized to 1000. Single-step, so there is no history and
 # no image window.
 #
-# Sampling is greedy. ``max_new_tokens`` is left unset, i.e. the 2048 rollout
-# default (``DEFAULT_SAMPLING_KWARGS`` in /lite/infer/serving.py), matching every
-# sibling grounding row. The answer is one short list, but ``enable_thinking``
-# leaves ``<think>`` open in the generation prompt, so the budget has to cover
-# the reasoning in front of it.
+# Official grounding settings: non-thinking, greedy decoding, 1024 output tokens.
+# https://github.com/inclusionAI/UI-Venus/blob/UI-Venus-2/models/grounding/ui_venus2_gd.py
 #
 # Related configs:
 #   - scripts/configs/ui_venus_2/default/screenspot_pro.yaml  (sibling grounding bench)
 
 agent_id: "ui_venus_2"
 agent_kwargs:
+  enable_thinking: false
   sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
     temperature: 0.0
+    max_new_tokens: 1024
 
 env_id: "osworld_g"
 env_kwargs:

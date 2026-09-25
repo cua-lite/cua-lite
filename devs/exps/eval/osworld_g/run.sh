@@ -124,9 +124,12 @@ fi
 # model-family → rollout config (grounding subset: qwen3_vl, qwen3_5, evocua, ui_tars, ui_tars_15_v1, mai_ui)
 case "$MODEL" in
   gpt-*)                            CFG=scripts/configs/gpt/default/osworld_g.yaml ;;
+  claude-*)                         CFG=scripts/configs/claude/default/osworld_g.yaml ;;
   Qwen/Qwen3-VL-*-Instruct)        CFG=scripts/configs/qwen3_vl/default/osworld_g.yaml ;;
   Qwen/Qwen2.5-VL-*-Instruct)      CFG=scripts/configs/qwen2_5_vl/default/osworld_g.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/osworld_g.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/osworld_g.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/osworld_g.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/osworld_g.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/osworld_g.yaml ;;
   meituan/EvoCUA-*)                CFG=scripts/configs/evocua/default/osworld_g.yaml ;;
@@ -151,6 +154,6 @@ HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   `# false-positive give-up calls on bbox/polygon tasks.` \
   --filter "lambda m: not m.others.get('exclude_reason')" \
   --env-kwargs '{"step_timeout": 180}' \
-  --concurrency 64 \
+  --concurrency "${EVAL_CONCURRENCY:-64}" \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"

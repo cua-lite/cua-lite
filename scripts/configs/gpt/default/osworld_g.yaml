@@ -1,27 +1,9 @@
-# GPT rollout eval on OSWorld-G — single-step click grounding.
-# 564 tasks across bbox / polygon / refusal modes; refusals are tagged
-# ``exclude_reason="refusal"`` — skip via
-# ``--filter "lambda m: not m.others.get('exclude_reason')"``.
-#
-# Routing: env declares ``task_type="grounding.point"``, so make picks
-# ``GPTDesktopGroundingPointAgent`` (key=gpt@desktop@grounding.point).
-# That class bakes in:
-#   - the grounding system_prompt (``GPT_GROUNDING_SYSTEM_PROMPT``)
-#   - ``reasoning_effort="none"`` and ``max_output_tokens=4096`` (no extended reasoning)
-#   - a single ``click({x, y})`` function tool (no native ``{"type":"computer"}``
-#     tool) — eliminates the CUA "examine first" bias by making
-#     screenshot/key/scroll/etc. unreachable.
-# So this YAML carries no agent_kwargs overrides — diffs surface in code.
-#
-# ``report_infeasible`` is available in the env's extra_tools catalog but
-# is now opt-in (default ``extra_tools: []``). The standard eval flow
-# filters refusal tasks via ``--filter "lambda m: not m.others.get('exclude_reason')"``
-# so the tool isn't needed; set ``env_kwargs.extra_tools: ["report_infeasible"]``
-# explicitly if you want the agent to be able to refuse on bbox/polygon tasks.
-#
-# Related configs (sync if changing the class defaults):
-#   - scripts/configs/gpt/default/screenspot_pro.yaml   (sibling grounding bench)
-#   - scripts/configs/claude/default/osworld_g.yaml     (Claude counterpart)
+# GPT single-step grounding evaluation with Medium reasoning effort.
+# Keep the grounding agent's click-only tools and other default settings.
 
 agent_id: "gpt"
+agent_kwargs:
+  api_kwargs:
+    reasoning_effort: "medium"
+
 env_id: "osworld_g"
