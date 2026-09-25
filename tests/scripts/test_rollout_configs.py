@@ -694,6 +694,7 @@ _AGENT_CONFIG_ROOTS = (
     Path("scripts/configs"),
     Path("examples/lite/v1/configs"),
     Path("devs/exps/train/desktop/configs"),
+    Path("devs/exps/train/mobile/configs"),
 )
 
 _TOOL_SURFACE_AGENT_KWARGS = {"extra_tools", "extra_tool_schemas", "valid_actions", "others"}
@@ -709,6 +710,17 @@ _NAV_TOOL_NAMES = LiteBrowserNavToolSet.get_tool_names() | {
     "tab_close",
 }
 
+#: The ``mobile.use`` campaign, the desktop set's sibling. Only the image budget
+#: varies -- one resolution, and no turn-capped `h1` arm -- so the profile names carry
+#: just that. `open_app` joins the finish pair for the same reason the pair is there at
+#: all: mobilegym advertises it as a standalone extra tool, and an undeclared one is
+#: NOOPed, so a profile that omitted it would be trained and scored on a surface that
+#: cannot launch an app.
+_MOBILE_USE_RECIPE_CONFIGS = {
+    f"devs/exps/train/mobile/configs/qwen3_5/mobile.use.{_variant}.yaml"
+    for _variant in ("i1", "i1.reasoning", "i4", "i4.reasoning")
+}
+
 _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/claude/default/androidlab.yaml",
     "scripts/configs/claude/default/androidworld.yaml",
@@ -718,6 +730,7 @@ _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/gpt/default/androidworld.yaml",
     "scripts/configs/gpt/default/mobilegym.yaml",
     "scripts/configs/gpt/default/mobileworld.yaml",
+    "scripts/configs/gpt/recipes/collect/mobilegym.yaml",
     "scripts/configs/mai_ui/compact/androidworld.yaml",
     "scripts/configs/mai_ui/compact/mobilegym.yaml",
     "scripts/configs/mai_ui/default/androidlab.yaml",
@@ -751,7 +764,7 @@ _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/ui_venus_2/default/androidworld.yaml",
     "scripts/configs/ui_venus_2/default/mobilegym.yaml",
     "scripts/configs/ui_venus_2/default/mobileworld.yaml",
-}
+} | _MOBILE_USE_RECIPE_CONFIGS
 
 _MOBILE_ANSWER_FINISH_CONFIGS = {
     "scripts/configs/claude/default/androidlab.yaml",
@@ -916,6 +929,7 @@ _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/fara/default/webharbor.webvoyager/som.yaml",
     "scripts/configs/gpt/default/online_mind2web.yaml",
     "scripts/configs/gpt/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/gpt/recipes/collect/mobilegym.yaml",
     "scripts/configs/gpt/recipes/collect/webgym.yaml",
     "scripts/configs/qwen3_5/compact/webgym.yaml",
     "scripts/configs/qwen3_8/compact/webgym.yaml",
@@ -962,9 +976,11 @@ _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/qwen3_8/default/mobilegym.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
 } | (_BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS | _MOBILE_ANSWER_FINISH_CONFIGS
-     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS | _DESKTOP_USE_RECIPE_CONFIGS)
+     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS | _DESKTOP_USE_RECIPE_CONFIGS
+     | _MOBILE_USE_RECIPE_CONFIGS)
 
 _EXPECTED_TERMINATE_CONFIGS = {
+    "scripts/configs/gpt/recipes/collect/mobilegym.yaml",
     "scripts/configs/gpt/default/online_mind2web.yaml",
     "scripts/configs/qwen3_5/default/online_mind2web.yaml",
     "scripts/configs/qwen3_8/default/online_mind2web.yaml",
@@ -1035,7 +1051,8 @@ _EXPECTED_TERMINATE_CONFIGS = {
     "scripts/configs/qwen3_8/default/mobilegym.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
 } | (_BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS | _MOBILE_ANSWER_FINISH_CONFIGS
-     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS | _DESKTOP_USE_RECIPE_CONFIGS)
+     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS | _DESKTOP_USE_RECIPE_CONFIGS
+     | _MOBILE_USE_RECIPE_CONFIGS)
 
 _REQUIRED_RESPONSE_EXTRA_TOOL_CONFIGS = {
     "scripts/configs/fara/default/webgym.yaml",

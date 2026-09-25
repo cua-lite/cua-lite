@@ -877,7 +877,7 @@ class ClaudeDesktopUseAgent(_ClaudeBaseAgent, key=r"claude@(desktop|browser)@use
                             mark_provider_visible_image_index(
                                 {
                                     "type": "image_url",
-                                    "image_url": {"url": f"data:image/png;base64,{sent_image_b64}"},
+                                    "image_url": {"url": f"data:image/webp;base64,{sent_image_b64}"},
                                 },
                                 current_sent_image_index,
                             )
@@ -1321,7 +1321,7 @@ class ClaudeMobileUseAgent(_ClaudeBaseAgent, key="claude@mobile@use"):
                                     {
                                         "type": "image_url",
                                         "image_url": {
-                                            "url": f"data:image/png;base64,{sent_image_b64}"
+                                            "url": f"data:image/webp;base64,{sent_image_b64}"
                                         },
                                     },
                                     current_sent_image_index,

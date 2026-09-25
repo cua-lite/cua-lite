@@ -310,8 +310,9 @@ path-in-repo and so cannot express `epoch_<k>/`.
 
 #### Eval
 
-Eight runs on the fixed 128-row WebVoyager read-only eval subset: four base prompt surfaces and
-four SFT checkpoints. A checkpoint must be scored with the same config stem it was trained with;
+Twenty-four runs on the fixed 128-row WebVoyager read-only eval subset: four base prompt
+surfaces and four SFT checkpoints, each scored three times (see Results for why one pass is
+not a measurement). A checkpoint must be scored with the same config stem it was trained with;
 an `i1` checkpoint under `i4` is measuring a prompt surface it never saw.
 
 The base model runs once per full prompt surface, not once per image cap. A reasoning checkpoint's
@@ -446,24 +447,29 @@ score() {  # $1 = config stem, $2 = model path (empty means base), $3 = log slug
   GPU_I=$((GPU_I + 1))
 }
 
-while read -r P; do
-  score "$P" "" "base.$P@$RUN"
-done <<< "$(base_profiles)"
+# Three passes per cell (see Results). A distinct TAG per pass keeps them independent
+# draws: rollout resumes an existing --log-root sample by sample, so reusing one slug
+# would re-report the first pass instead of measuring again.
+for TAG in p1 p2 p3; do
+  while read -r P; do
+    score "$P" "" "base.$P@$RUN.$TAG"
+  done <<< "$(base_profiles)"
 
-while read -r P; do
-  score "$P" "$PULL/sft.$P.$DS@$RUN/$EPOCH" "sft.$P.$DS@$RUN.$EPOCH"
-done <<< "$(profiles)"
+  while read -r P; do
+    score "$P" "$PULL/sft.$P.$DS@$RUN/$EPOCH" "sft.$P.$DS@$RUN.$TAG.$EPOCH"
+  done <<< "$(profiles)"
+done
 
 wait
 ```
 
 `--model-id` picks the Qwen3.5 adapter and action space; the weights, tokenizer and chat template
-come from `--model-path` for SFT cells. The default `GPUS=0` serializes the eight runs, slow but
+come from `--model-path` for SFT cells. The default `GPUS=0` serializes the runs, slow but
 correct. If `GPUS` names several cards, `score` drains with `wait` before reusing the first card.
 
 #### Record the scores
 
-Collect all eight runs under `devs/exps/train/browser/logs/$RUN.md`: one file per campaign,
+Collect all twenty-four runs under `devs/exps/train/browser/logs/$RUN.md`: one file per campaign,
 edited as runs land, not reconstructed later from memory.
 
 ```bash
@@ -522,32 +528,52 @@ Front matter:
 
 ### Results
 
-Mean episode return, (fully-solved / `num_valid`) in parentheses. Fill this from fresh
-WebVoyager read-only passes. `over128` is the dense mean over the fixed prompt set and should be
-reported beside the valid-only mean whenever `err` is non-zero.
+Mean episode return, (fully-solved / `num_valid`) in parentheses, then the pass count — the
+cell format of `desktop/README.md`. `±` is **half the range** of the passes; with n=3 a range is
+what there is, and an SD over three points pretends to more.
+
+**Three passes per cell**, as in the desktop campaign — same convention, and here is the
+browser-side evidence for it. Scoring is at `temperature: 0.0` (from the config yaml, not a
+flag), but greedy is not deterministic: the `gpt5_5` + `<think>` / `i1` parent scored **70, 74,
+76, 76, 76, 77, 78, 78, 79** of 128 under one judge and manifest — nine measurements, mean 76.0,
+**sd 2.7, range 9** — and two passes over that checkpoint differ on 13 of 128 tasks, spread over
+eleven sites rather than concentrated in one. An earlier note here put the spread at sd 0.55 over five passes and concluded one pass was
+enough; that is superseded. Three passes bring the mean's standard error to ≈ 1.6 tasks. Use a
+distinct tag per pass so passes are independent draws, not a resume of one another.
 
 | | `i4` | `i1` |
 |---|---:|---:|
-| **base** | TBD | TBD |
-| **base + `<think>`** | TBD | TBD |
-| **`gpt5_5`** | TBD | TBD |
-| **`gpt5_5` + `<think>`** | TBD | TBD |
+| **base** | 0.0833 ±0.0156 (10.7/128) 3/3 | 0.0443 ±0.0039 (5.7/128) 3/3 |
+| **base + `<think>`** | 0.1354 ±0.0391 (17.3/128) 3/3 | 0.1484 ±0.0195 (19.0/128) 3/3 |
+| **`gpt5_5`** | 0.5052 ±0.0156 (64.7/128) 3/3 | 0.4869 ±0.0060 (62.0/127) 3/3 |
+| **`gpt5_5` + `<think>`** | 0.5964 ±0.0079 (76.3/128) 3/3 | **0.6000** ±0.0078 (76.8/128) 5/5 |
 | **GRPO from `gpt5_5` + `<think>`** | — | TBD |
 
-Every individual run - `MER (solved/num_valid) parse_failure err over128`, one column per pass:
+Every individual run — `MER (solved) parse_failure`, one column per pass. The pod is named
+because a pass here is a (time, host) pair, not just a time. **Every cell above is summarised
+over `p1`-`p3`**; a `p4` in *italics* is a spare pass that an idle pod picked up, recorded here
+but held out of the mean so that all cells share n=3 and their `±` are comparable. The one
+exception is `gpt5_5` + `<think>` / `i1`, reported over five GRPO `eval 0` points — see below.
 
-| | | `a` | `b` | `c` |
-|---|---|---:|---:|---:|
-| **base** | `i4` | TBD | TBD | TBD |
-|  | `i1` | TBD | TBD | TBD |
-| **base+`<think>`** | `i4` | TBD | TBD | TBD |
-|  | `i1` | TBD | TBD | TBD |
-| **`gpt5_5`** | `i4` | TBD | TBD | TBD |
-|  | `i1` | TBD | TBD | TBD |
-| **`gpt5_5`+`<think>`** | `i4` | TBD | TBD | TBD |
-|  | `i1` | TBD | TBD | TBD |
-| **GRPO from `gpt5_5`+`<think>`** | `i4` | — | — | — |
-|  | `i1` | TBD | TBD | TBD |
+| | | `p1` | `p2` | `p3` | `p4` |
+|---|---|---:|---:|---:|---:|
+| **base** | `i4` | 0.0781 (10) 1 *cc9* | 0.1016 (13) 1 *cc9* | 0.0703 (9) 1 *cc9* | — |
+|  | `i1` | 0.0391 (5) 1 *cc9* | 0.0469 (6) 1 *cc9* | 0.0469 (6) 1 *cc9* | — |
+| **base+`<think>`** | `i4` | 0.1250 (16) 2 *cc9d* | 0.1016 (13) 4 *cc9b* | 0.1797 (23) 2 *cc9b* | — |
+|  | `i1` | 0.1328 (17) 2 *cc9d* | 0.1719 (22) 2 *cc9b* | 0.1406 (18) 1 *cc9b* | — |
+| **`gpt5_5`** | `i4` | 0.4922 (63) 0 *cc9e* | 0.5000 (64) 0 *cc9c* | 0.5234 (67) 0 *cc9c* | *0.5312 (68) 0 cc9e* |
+|  | `i1` | 0.4922 (63/128) 0 *cc9e* | 0.4803 (61/127) 0 *cc9c* | 0.4882 (62/127) 0 *cc9c* | *0.4882 (62/127) 0 cc9e* |
+| **`gpt5_5`+`<think>`** | `i4` | 0.6016 (77) 0 *cc9b* | 0.5859 (75) 0 *cc9d* | 0.6016 (77) 0 *cc9d* | — |
+|  | `i1` *(standalone)* | 0.5469 (70) 0 *cc9b* | 0.6172 (79) 0 *cc9d* | 0.5781 (74) 0 *cc9d* | *0.6016 (77) 0 cc9b* |
+|  | `i1` *(GRPO `eval 0`)* | 78 · 76 · 76 · 78 · 76 — seeds 101/202/303/404/42 | | | |
+| **GRPO from `gpt5_5`+`<think>`** | `i1` | TBD | TBD | TBD | — |
+
+The `gpt5_5` + `<think>` / `i1` cell reports the GRPO runs' five `eval 0` points (78, 76, 76, 78,
+76 — mean **76.8/128 = 0.600**) rather than its own three standalone passes: they are five draws
+of exactly that checkpoint under this judge and manifest. The standalone row above it (70, 79, …,
+mean 74.3 over the three tagged passes) agrees to 2.5 tasks, which is also the evidence that
+slime's in-training eval and `scripts/rollout.py` carry no systematic offset — so the rest of the
+column stays comparable.
 
 Reading the table:
 
@@ -555,8 +581,27 @@ Reading the table:
   not on the SFT dataset recipe.
 - **Do not paste old browser/WebVoyager numbers into this table.** This campaign changes the
   training data contract to `webgym_gpt5_5_nogoto_wvclean`, so every cell needs a fresh score.
-- **The denominator is part of the result.** `err` is `num_samples - num_valid`; keep it beside
-  every mean instead of silently averaging failures as reward 0.
+- **`bbc_news.8` drops out of the `gpt5_5` / `i1` denominator, by design.** That cell reads
+  `/127` in three of its four passes. WebVoyager calls the judge once, at the terminating step:
+  every earlier step logs `reward=None`, then the final `/step` carries the screenshot to
+  gpt-4.1, which returns `400 content_policy_violation` ("your input image may contain content
+  that is not allowed by our content safety system") on this BBC News page. `client.py:335`
+  raises `RemoteEnvError`, `_run_one` marks the trajectory invalid, and `num_valid` falls to 127.
+  That is the right behaviour: a judge refusing to look at a page is not the model failing the
+  task, so it must not score 0. `mean_episode_return` already averages over `num_valid`, so
+  nothing else is needed — just do not read a `/127` cell as if one task were solved.
+  Three details worth keeping: the refusal is frequent but not certain (one pass in four got a
+  full 128); it is profile-skewed (`i1` hit it in three passes of four, `i4` in none of four, and
+  the one pass that did measure the task under `i1` scored it **0**, so dropping it if anything
+  flatters `i1`); and chasing a full 128 costs a ~20-minute pass at roughly one-in-four odds,
+  which is why the cell is reported at `/127` instead.
+- **`err > 0` otherwise means re-run that pass, not report it** (the desktop rule). A pass that
+  came up short for a transient reason is not a measurement of this cell, and averaging it in
+  imports whatever took the trajectory down. This supersedes the older `err <= 3` bracket rule:
+  with three passes there is no reason to keep a short one.
+- **A row on one pod, but passes across pods.** Each row's `i1` and `i4` run together on one pod
+  so the two columns share an environment. Passes moved between pods, so a pass-to-pass
+  difference mixes time and host; the `base` row is the exception, all three passes on cc9.
 - **This is a fixed-subset result, not a full WebVoyager benchmark.** Re-run multiple seeds or
   the full split before treating a cell as generally best.
 - **The GRPO row is the `i1` reasoning surface only.** It starts from the
@@ -698,20 +743,44 @@ the universe in a stable order and the complement preserves it.
 
 Most of this run is `run_grpo.sh`'s defaults. The previous campaign overrode the eval knobs; this
 one stops overriding them, so "greedy eval, one rollout per task" is not a new choice here but
-the shipped one. Four knobs deviate, plus the hardware and identity settings (`NUM_TRAIN_GPUS`,
+the shipped one. Three knobs deviate, plus the hardware and identity settings (`NUM_TRAIN_GPUS`,
 `TP_SIZE`, `MBS`, `MODEL_ID`, `HF_CKPT`, the two manifests, `CONFIG_PATH`, the save paths):
 
 | knob | value | default | why deviate |
 |---|---|---|---|
 | `ENV_CONCURRENCY` | `24` | 32 | what the site-holdout campaign ran at on 8xA100; the pods are known-good there |
 | `ROLLOUT_MAX_RESPONSE_LEN` | `2048` | 512 | the `.reasoning` surface emits `<think>` before its calls |
-| `LR` | `2e-6` | 1e-6 | the campaign's value, kept because it did move the policy over 30 rollouts |
 | `CUA_LITE_MULTIMODAL_LAZY_EXPAND` | `1` | 0 | expands multimodal rollout data lazily; what the campaign ran |
 
 The rest are defaults, written out so a later change to one cannot silently change this
-experiment: `ROLLOUT_BATCH_SIZE=16` and `N_SAMPLES_PER_PROMPT=8` (128 trajectories per rollout),
-`NUM_STEPS_PER_ROLLOUT=8` (global batch 16), `EVAL_TEMPERATURE=0`, `N_SAMPLES_PER_EVAL_PROMPT=1`,
-`EVAL_INTERVAL=SAVE_INTERVAL=5`, `SKIP_EVAL_BEFORE_TRAIN=0`.
+experiment: `LR=1e-6`, `ROLLOUT_BATCH_SIZE=16` and `N_SAMPLES_PER_PROMPT=8` (128 trajectories per
+rollout), `NUM_STEPS_PER_ROLLOUT=8` (global batch 16), `EVAL_TEMPERATURE=0`,
+`N_SAMPLES_PER_EVAL_PROMPT=1`, `EVAL_INTERVAL=SAVE_INTERVAL=5`, `SKIP_EVAL_BEFORE_TRAIN=0`.
+
+**`LR` was `2e-6` here, inherited from the site-holdout campaign; it is now the shipped `1e-6`.**
+Matched rollout for rollout on this manifest, one 1e-6 seed beat *both* 2e-6 seeds and by a
+widening margin — tasks gained out of 128 on the eval manifest, bracketed where a rollout lost
+tasks to environment errors:
+
+| rollout | 2e-6 seed A | 2e-6 seed B | 1e-6 |
+|---|---|---|---|
+| 5 | +3 .. +6 | +4 .. +8 | **+11 .. +14** |
+| 10 | +6 .. +7 | +8 | **+17 .. +18** |
+| 15 | — | — | **+21 .. +22** |
+
+Two agreeing control seeds against one treatment seed, so the ordering is better evidenced than
+the size of the gap. The failure mode matters more than the margin: both 2e-6 seeds drifted into
+degenerate policies — one inflating its responses from 108 to 229 tokens, the other shrinking
+them from 122 to 76 — and **both ended below their own step-0 baseline**. 2e-6 is not a slower
+version of this run, it is a different regime.
+
+Do not read the in-training `rollout/raw_reward` curve as a convergence curve here. With 494
+tasks and 16 prompts per rollout one epoch is 31 rollouts, so no training task repeats for the
+whole useful range of this run: that curve is a rolling *held-out* score at temperature 1.0, on
+16 tasks, and its per-rollout spread (sd ~0.06) hides the trend for a dozen rollouts. Over the
+first 18 rollouts of the 1e-6 run it rose about +0.11 with a slope of +0.006 per rollout (t=2.1),
+while greedy eval on the fixed 128 rose +0.17. The fixed eval set is the instrument; the train
+curve is not.
 
 `NUM_ROLLOUT=60` is 960 task draws over 494 tasks, just under two epochs. It is an upper bound,
 not a target — the campaign's best checkpoints were early (`iter_5` .. `iter_13` of 29) and its
@@ -783,7 +852,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 NUM_TRAIN_GPUS=8 TP_SIZE=4 MBS=1 \
   NUM_STEPS_PER_ROLLOUT=8 \
   ROLLOUT_MAX_RESPONSE_LEN=2048 \
   ROLLOUT_TEMPERATURE=1.0 \
-  LR=2e-6 \
+  LR=1e-6 \
   EVAL_TEMPERATURE=0 \
   N_SAMPLES_PER_EVAL_PROMPT=1 \
   CUA_LITE_MULTIMODAL_LAZY_EXPAND=1 \
@@ -830,3 +899,226 @@ done
 
 Score several saved `iter_*` before copying one number across; the curve's argmax is not
 automatically the checkpoint to report.
+
+**Score each cell three times and report the mean.** A single pass carries sd ≈ 3 tasks (measured
+below), which is the size of most of the differences the table is being asked to show — one pass
+per cell cannot separate `i1` from `i4`. Three passes bring the mean's standard error to ≈ 1.6
+tasks. Use a distinct tag per pass so the passes are independent draws rather than a resume:
+
+```bash
+for TAG in p1 p2 p3; do
+  score browser.use.i1 "" "base.browser.use.i1@$TAG"
+done
+```
+
+The one cell that does not follow this is `gpt5_5` + `<think>` / `i1`, which is the GRPO parent:
+its five GRPO `eval 0` measurements (78, 76, 76, 78, 76 — see Seed replication) are five draws of
+exactly that cell under the same judge and manifest, so the cell reports their mean, **76.8/128 =
+0.600**. Its three tagged standalone passes (70, 79, 74) average 74.3 — within 2.5 tasks of
+those five; a fourth, untagged repeat of the first pass scored 77 — the evidence that the two scoring paths carry no
+systematic offset.
+
+#### Ship the checkpoints
+
+The GRPO checkpoints travel through the Hub the same way the SFT ones do, one level deeper
+because this cell has two axes instead of one: **repo** = the cell
+(`ZHZisZZ/qwen3_5-4b.grpo.browser.use.i1.reasoning.wv_readonly_split.from_sft`), **subdir** =
+`seed_<rollout_seed>/rollout_<N>/`, **tag** = the producing commit.
+
+Two departures from the SFT block, both deliberate:
+
+- **`rollout_<N>`, not `epoch_<k>`.** GRPO has no epoch here — 494 train tasks at
+  `ROLLOUT_BATCH_SIZE=16` take 31 rollouts to see the set once — so the subdir counts rollouts.
+  Slime writes `iter_<N>` 0-based, so `iter_29` is the checkpoint after **30** rollouts and
+  uploads as `rollout_30`; the same off-by-one as `eval 29`. Read the number off disk, never
+  predict it.
+- **Only the reported rollout goes up.** Each seed saves at `SAVE_INTERVAL=5`, so a full curve is
+  six checkpoints per seed and ~53 GB per seed, ~265 GB for five. The intermediate points are
+  already recorded numerically in Seed replication below, which is what reproducing the curve
+  actually needs; the weights that have to exist are the ones the Results table reports. Upload
+  another rollout only when a specific checkpoint is being selected, and say which in the commit
+  message.
+
+```bash
+# --- ANY POD HOLDING THE RUN ---  (from the repo root; commit first so the tag
+# describes the weights)
+# `uv run hf`, not bare `hf`. Needs a WRITE-scoped token (HF_TOKEN, or `uv run hf auth login`).
+# The repo is public, so eval hosts need no auth.
+COMMIT="$(git rev-parse --short HEAD)"
+REPO="ZHZisZZ/qwen3_5-4b.grpo.browser.use.i1.reasoning.wv_readonly_split.from_sft"
+CKPTS=.ckpts/qwen3_5-4b
+ROLLOUT=30                       # what to publish; ITER is ROLLOUT-1 on disk
+ITER=$((ROLLOUT - 1))
+
+# "<run dir under $CKPTS>|<rollout_seed>". These are the names the 2026-09 campaign
+# actually wrote, NOT what the launch block above produces: that block hardcodes
+# CELL=grpo.$P.wv_readonly_split.from_sft, while the seeded runs set CELL per seed
+# (grid494.lr1e6.rs<rollout_seed>s<seed>) and the 42/1234 run predates that scheme and
+# carried the lr in its name instead. Read the directory names off the pod with
+# `ls .ckpts/qwen3_5-4b/`; do not retype this list for a new campaign.
+runs() {
+  printf '%s\n' \
+    "grpo.browser.use.i1.reasoning.grid494.lr1e6.rs101s5001.from_sft|101" \
+    "grpo.browser.use.i1.reasoning.grid494.lr1e6.rs202s5002.from_sft|202" \
+    "grpo.browser.use.i1.reasoning.grid494.lr1e6.rs303s5003.from_sft|303" \
+    "grpo.browser.use.i1.reasoning.grid494.lr1e6.rs404s5004.from_sft|404" \
+    "grpo.browser.use.i1.reasoning.wv_readonly_split.lr1e6.from_sft|42"
+}
+
+uv run hf repos create "$REPO" --repo-type model --exist-ok < /dev/null
+
+FAIL=""
+# NOT `RUN` -- that is the campaign slug this file asserts with ${RUN:?} above, and a
+# `while read RUN` both overwrites it and leaves it EMPTY at EOF, which would send every
+# later score() to a "...@." log root without a word.
+while IFS='|' read -r RUN_DIR SEED; do
+  D="$CKPTS/$RUN_DIR/iter_$ITER"
+  [ -d "$D" ] || { echo "SKIP seed_$SEED: no $D on this pod"; continue; }
+  # AutoProcessor needs all three later; a checkpoint missing one is not shippable.
+  for f in config.json tokenizer_config.json preprocessor_config.json; do
+    [ -e "$D/$f" ] || { echo "SKIP seed_$SEED: $D has no $f"; D=""; break; }
+  done
+  [ -n "$D" ] || continue
+  uv run hf upload "$REPO" "$D" "seed_$SEED/rollout_$ROLLOUT" --repo-type model \
+    --commit-message "$COMMIT: seed $SEED, rollout $ROLLOUT (from $RUN_DIR/iter_$ITER)" \
+    < /dev/null || { echo "FAILED seed_$SEED"; FAIL=1; }
+done <<< "$(runs)"
+
+# The tag says "these weights are commit $COMMIT". Tagging after a failed upload would
+# assert that about a repo missing a seed, so the flag has to gate it.
+if [ -n "$FAIL" ]; then
+  echo "NOT TAGGING: an upload failed above -- fix it, re-run, then tag"
+else
+  uv run hf repos tag delete "$REPO" "$COMMIT" --repo-type model --yes < /dev/null \
+    || echo "note: no existing '$COMMIT' tag (expected on a first upload)"
+  uv run hf repos tag create "$REPO" "$COMMIT" --repo-type model -m "$COMMIT" < /dev/null \
+    || echo "ERROR $REPO has NO '$COMMIT' tag; weights are on main -- re-tag by hand"
+fi
+```
+
+The five runs live on different pods (cc9, cc9b, cc9c, cc9d x2), so this runs once per pod and
+the `SKIP ... no <dir> on this pod` lines are expected — each pod uploads the run it holds.
+
+Two things that cost a re-run the first time:
+
+- **Detach it.** `hf upload` outlives the ssh session only under `nohup setsid`; without it the
+  session's SIGHUP kills the upload mid-flight. `hf repos create` has already returned by then,
+  so the repo exists and looks like progress while nothing is being sent.
+- **Verify against the Hub, not the console.** `hf upload` is single-commit and not resumable, so
+  a repo shows nothing at all until the commit lands — an in-flight upload and a dead one look
+  identical from the Hub side, and a `pgrep`-style check on the pod side can match its own
+  pattern and report a phantom process. The pair that actually settles it is the uploader's own
+  `UPLOADED`/`FAILED` log line plus `list_repo_files` afterwards.
+
+As of `0d81276` the repo holds all five seeds at `rollout_30` (46 files; 9 per seed), tagged
+`0d81276`. Uploading is fast despite ~8.7 GB per checkpoint — Xet dedupes against the SFT parent
+already on the Hub, so only 4.0-5.3 GB per seed is new data.
+
+#### Seed replication
+
+Five runs of the block above, identical except for the seed, all starting from the
+same `sft.browser.use.i1.reasoning.webgym_gpt5_5_nogoto_wvclean` export and scored by the same
+`gpt-4.1` judge on the same 128-row eval manifest. Four ran to rollout 30 and stopped; seed
+42/1234 is an earlier run of the same recipe that went to 35; only its rollouts 0-30 survive
+in the eval record.
+
+**`run_grpo.sh` as committed cannot set the seed** — it has no `ROLLOUT_SEED`/`SEED` knob and no
+generic env passthrough, so every run of the block above lands on slime's defaults
+(`--rollout-seed` 42, `--seed` 1234; `slime/slime/utils/arguments.py:383,826`). The four seeded
+runs used a pod-local patch adding those two knobs and forwarding them as `--rollout-seed` /
+`--seed`; it was deliberately never committed here. Reproducing the four seeds needs that patch,
+and the launcher should assert the knobs are present before training rather than discover
+afterwards that all four runs shared a seed. Verify against slime's own argument table in the
+training log, not against the launcher's own echo of what it meant to pass.
+
+One seed is not a result here. At rollout 20 the seeds sat at +22/+18/+17/+4; at rollout 25 they
+moved +3/+12/−4/−11 in the same hour under the same judge. Final gains are +22, +21, +11, +9
+(mean **+15.75** over the four 30-rollout seeds) — a 13-task spread across runs that differ
+only in a seed.
+
+**A single eval pass is worth about ±3 tasks, so read the mean.** The parent checkpoint was scored
+nine times under the identical judge and manifest — five times as `eval 0` of a GRPO run, four
+standalone — and returned **70, 74, 76, 76, 76, 77, 78, 78, 79** (mean 76.0, sd 2.7, range 9). Two
+standalone passes differ on **13 of 128 tasks** (10 solved only in the second, 3 only in the
+first), scattered over eleven sites rather than concentrated in one, so this is per-task
+nondeterminism in the rollout — batching-dependent argmax under `EVAL_TEMPERATURE=0`, plus
+live-mirror timing — not a bad run or a broken site. Two passes of the same cell therefore differ
+by ~3 tasks typically and by 9 in the observed worst case.
+
+**Eval** — tasks solved out of `num_valid`, greedy, `N_SAMPLES_PER_EVAL_PROMPT=1`. Slime logs these
+as `eval N` with `N = rollouts - 1`, so `eval 29` is the score after 30 rollouts.
+
+| seed | pod | 0 | 5 | 10 | 15 | 20 | 25 | 30 | gain |
+|---|---|---|---|---|---|---|---|---|---|
+| 101/5001 | cc9  | 78 | 85 | 88 | 99 | 96 | 85 | **100** | **+22** |
+| 404/5004 | cc9d | 78 | 86 | 85 | 88 | 95 | 98 | **99**  | **+21** |
+| 303/5003 | cc9c | 76 | 77 | 87 | 84 | 98 | 94 | **87**  | **+11** |
+| 202/5002 | cc9b | 76 | 83 | 86 | 87 | 80 | 92 | **85**  | **+9**  |
+| 42/1234  | cc9d | 76 | 87 | 93 | 97 | 94 | 99 | **94**  | **+18** |
+
+All points of the four 30-rollout seeds are `num_valid = 128`. Seed 42/1234 is not: its
+`num_valid` runs `128, 125, 127, 127, 128, 128, 127`, so its rate is solved ÷ `num_valid`, not
+solved ÷ 128. The step-timeout burst at rollouts 27-29 accounts for the last of those dips; the
+earlier ones are ordinary env errors.
+
+**Train** — `rollout/raw_reward`, one value per rollout, temperature 1.0. Not a convergence curve:
+494 tasks at `ROLLOUT_BATCH_SIZE=16` means no train task repeats inside 31 rollouts, so this is a
+rolling held-out score and single-rollout swings of ±0.28 are ordinary.
+
+```python
+# devs/exps/train/browser -- GRPO seed replication, gpt-4.1 judge
+EVAL = {  # rollout -> (solved, num_valid)
+  "101/5001": {0:(78,128), 5:(85,128), 10:(88,128), 15:(99,128), 20:(96,128), 25:(85,128), 30:(100,128)},
+  "202/5002": {0:(76,128), 5:(83,128), 10:(86,128), 15:(87,128), 20:(80,128), 25:(92,128), 30:(85,128)},
+  "303/5003": {0:(76,128), 5:(77,128), 10:(87,128), 15:(84,128), 20:(98,128), 25:(94,128), 30:(87,128)},
+  "404/5004": {0:(78,128), 5:(86,128), 10:(85,128), 15:(88,128), 20:(95,128), 25:(98,128), 30:(99,128)},
+  "42/1234":  {0:(76,128), 5:(87,125), 10:(93,127), 15:(97,127), 20:(94,128), 25:(99,128), 30:(94,127)},
+}
+
+TRAIN = {  # rollout/raw_reward, index = rollout
+  "101/5001": [0.421875,0.4765625,0.5703125,0.578125,0.4609375,0.6484375,0.6484375,0.8671875,
+               0.6796875,0.6796875,0.6015625,0.6875,0.6328125,0.7734375,0.8046875,0.6953125,
+               0.8046875,0.7421875,0.671875,0.640625,0.6484375,0.7578125,0.734375,0.828125,
+               0.6875,0.8359375,0.71875,0.8671875,0.7421875,0.7265625],
+  "202/5002": [0.4609375,0.3203125,0.4375,0.5078125,0.7421875,0.65625,0.59375,0.640625,
+               0.546875,0.6640625,0.6328125,0.6328125,0.765625,0.84375,0.75,0.5625,
+               0.65625,0.8125,0.6171875,0.8046875,0.7734375,0.640625,0.625,0.6875,
+               0.625,0.7578125,0.8046875,0.78125,0.671875,0.71875],
+  "303/5003": [0.5,0.3046875,0.4765625,0.453125,0.640625,0.6953125,0.640625,0.7109375,
+               0.703125,0.703125,0.6015625,0.6328125,0.6796875,0.6328125,0.6796875,0.671875,
+               0.59375,0.8203125,0.7265625,0.8125,0.7421875,0.796875,0.671875,0.8125,
+               0.6875,0.8125,0.65625,0.765625,0.875,0.5546875,0.75],
+  "404/5004": [0.421875,0.578125,0.46875,0.6171875,0.5625,0.4765625,0.6953125,0.6640625,
+               0.65625,0.796875,0.625,0.6015625,0.5859375,0.84375,0.6875,0.7265625,
+               0.78125,0.6640625,0.84375,0.75,0.71875,0.6953125,0.6015625,0.6328125,
+               0.7421875,0.859375,0.65625,0.890625,0.7109375,0.7421875,0.8359375],
+  # NOT on the same denominator as the four above -- see the note below.
+  "42/1234":  [0.7063,0.5827,0.6719,0.6457,0.6746,0.5935,0.7295,0.7778,0.6929,0.5781,
+               0.6693,0.6719,0.6719,0.6032,0.7874,0.7344,0.7953,0.7869,0.6905,0.7344,
+               0.8504,0.8976,0.7540,0.7698,0.6800,0.7795,0.7165,0.6720,0.7500,0.7500,
+               0.7315,0.7589,0.7273,0.7647,0.7840],
+}
+```
+
+**Seed 42/1234's train series was recorded rescaled by each rollout's valid count**, while the four
+others are raw over a dummy-padded 128. Read it for shape, not height, and leave it out of any
+aggregate over the train reward. Its rollouts 27-29 (0.6720, 0.7500, 0.7500) are the timeout burst.
+
+To reproduce the two aggregate panels:
+
+```python
+import numpy as np
+xs = [0, 5, 10, 15, 20, 25, 30]
+rate = np.array([[100 * EVAL[s][x][0] / EVAL[s][x][1] for x in xs] for s in EVAL])
+mean, sem = rate.mean(0), rate.std(0, ddof=1) / np.sqrt(len(rate))   # eval: mean +- SEM
+
+four = [s for s in TRAIN if s != "42/1234"]
+n = min(len(TRAIN[s]) for s in four)                                  # 30; two seeds ran a 31st
+tr = np.array([TRAIN[s][:n] for s in four])
+tmean, tsd = tr.mean(0), tr.std(0, ddof=1)                            # train: mean +- SD
+```
+
+SEM for eval and SD for train on purpose: the eval panel asks how precisely the mean is known, the
+train panel asks how wide a single rollout's draw is — the spread that buries the trend in any one
+run. With n=5, rliable's IQM would average three seeds and is noisier here than the mean, so the
+mean is used and every run is drawn alongside it.
