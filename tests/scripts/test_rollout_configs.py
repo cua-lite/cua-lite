@@ -717,8 +717,6 @@ _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/gpt/default/androidlab.yaml",
     "scripts/configs/gpt/default/androidworld.yaml",
     "scripts/configs/gpt/default/mobilegym.yaml",
-    "scripts/configs/gpt/default/mobileworld.none.yaml",
-    "scripts/configs/gpt/default/mobileworld.xhigh.yaml",
     "scripts/configs/gpt/default/mobileworld.yaml",
     "scripts/configs/mai_ui/compact/androidworld.yaml",
     "scripts/configs/mai_ui/compact/mobilegym.yaml",
@@ -763,8 +761,6 @@ _MOBILE_ANSWER_FINISH_CONFIGS = {
     "scripts/configs/gpt/default/androidlab.yaml",
     "scripts/configs/gpt/default/androidworld.yaml",
     "scripts/configs/gpt/default/mobilegym.yaml",
-    "scripts/configs/gpt/default/mobileworld.none.yaml",
-    "scripts/configs/gpt/default/mobileworld.xhigh.yaml",
     "scripts/configs/gpt/default/mobileworld.yaml",
     "scripts/configs/mai_ui/compact/androidworld.yaml",
     "scripts/configs/mai_ui/compact/mobilegym.yaml",
@@ -805,8 +801,6 @@ _MOBILE_ANSWER_FINISH_CONFIGS = {
 
 _EXPECTED_ASK_USER_CONFIGS = {
     "scripts/configs/claude/default/mobileworld.yaml",
-    "scripts/configs/gpt/default/mobileworld.none.yaml",
-    "scripts/configs/gpt/default/mobileworld.xhigh.yaml",
     "scripts/configs/gpt/default/mobileworld.yaml",
     "scripts/configs/qwen3_5/default/mobileworld.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
