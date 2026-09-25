@@ -1,116 +1,572 @@
 {
+  "schema_version": 1,
   "env": "osworld_g",
   "commit_dir": "2026-09-17T14-28_b1d4b6b",
   "run_id": "run_0",
   "commit": {
-    "short_sha": "b1d4b6b"
+    "short_sha": "b1d4b6b",
+    "subject": "eval(osworld_g): support reference models and GPT reasoning variants"
   },
   "artifact_root": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0",
-  "result_count": 13,
+  "result_count": 16,
+  "status_counts": {
+    "complete": 15,
+    "partial": 0,
+    "empty": 1
+  },
+  "scoring": "Mean episode return over samples with error == null; API errors are excluded and ordinary zero-reward predictions remain included.",
   "results": [
     {
-      "model": "GPT-5.6 Sol",
+      "model": "gpt-6-astra",
+      "slug": "gpt-6-astra__gpt__default__osworld_g.medium",
+      "base_slug": "gpt-6-astra",
+      "config_id": "medium",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
+      "mean_episode_return": 0.9254901960784314,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-6-astra__gpt__default__osworld_g.medium/summary.json",
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-6-astra__gpt__default__osworld_g.medium",
+      "num_errors": 0,
+      "sum_episode_return": 472.0,
+      "config_path": "scripts/configs/gpt/default/osworld_g.medium.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-6-astra__gpt__default__osworld_g.medium/run_info.txt",
+        "source_commits": [
+          "680f985"
+        ],
+        "run_info_sha256": "b91c8d995520e310b3b07795fe5a56da20bba9b2a8afc1ae6319a370f6bdaa74",
+        "sample_summaries_sha256": "c5661711ecbc7279ca658237784feab2df638a70b31473e9ce1b49da71b0a0bf",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "09ef4464435ef395eda15cd47bd24057608ed9509827c45ef13a5132b8dce09f",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-17T06-00_680f985/run_0/gpt-6-astra__medium"
+      },
+      "agent_kwargs": {
+        "api_kwargs": {
+          "reasoning_effort": "medium",
+          "reasoning_summary": "concise",
+          "truncation": "auto",
+          "chain_previous_response": true,
+          "parallel_tool_calls": false,
+          "max_output_tokens": 4096,
+          "detail": "original"
+        }
+      },
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-6-astra__gpt__default__osworld_g.medium/breakdown.json"
+    },
+    {
+      "model": "claude-opus-5",
+      "slug": "claude-opus-5",
+      "base_slug": "claude-opus-5",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "num_samples": 510,
+      "mean_episode_return": 0.903921568627451,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/claude-opus-5/summary.json",
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/claude-opus-5",
+      "num_errors": 0,
+      "sum_episode_return": 461.0,
+      "config_path": "scripts/configs/claude/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/probe_20260918/run_3/claude-opus-5/run_info.txt",
+        "source_commits": [
+          "3210c50"
+        ],
+        "run_info_sha256": "38c47db46c4148af52421d80780702bb6f8918d22c4cca5bc0ff5df3002671ee",
+        "sample_summaries_sha256": "4b4b602f1c88a92390a0da822632a47e1ff6a47c7581fe6c413e97187a374858",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "source_dirty_paths": [
+          "lite/agents/factory.py",
+          "lite/agents/models/claude/agent.py",
+          "lite/agents/models/claude/utils/image_io.py",
+          "tests/agents/models/claude/test_claude_agent.py",
+          "tests/agents/models/claude/test_claude_image_io.py",
+          "tests/agents/test_agents.py",
+          "tests/agents/test_make_all.py"
+        ],
+        "source_code_note": "Source run recorded uncommitted changes; its Git SHA alone is not an exact code snapshot.",
+        "config_sha256": "f43fb9f1b4cf02f55a552ed281b6cd8f3e49f7ffc2b2e7b79fc625d172667c6e",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/probe_20260918/run_3/claude-opus-5",
+        "logged_prompts_sha256": "9742d916eee1806fa94e40bd1f1e8db64f5df2bcce0f49a9fdf43973dbcc5147",
+        "logged_prompt_count": 510,
+        "source_patch_available": false
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {},
+      "provider": "Anthropic-compatible Messages endpoint",
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/claude-opus-5/breakdown.json",
+      "source_artifact_path": ".exps/eval/osworld_g/probe_20260918/run_3/claude-opus-5"
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "slug": "gpt-5.6-sol",
+      "base_slug": "gpt-5.6-sol",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 510,
+      "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.7980392156862746,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 407.0,
+      "config_path": "scripts/configs/gpt/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol/run_info.txt",
+        "source_commits": [
+          "680f985"
+        ],
+        "run_info_sha256": "ee7f5864565f6fffcdf0e774d6bc9060f32968451f23a2ef7823be18d627d251",
+        "sample_summaries_sha256": "6206c475814cefcff6cf62080b099439abbbd5dafcca3c0206ed507cf30ac9e8",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "8fc63a9030228ead3861a0ac70b30563d64aa9f1f3ef7dcbfb1c343a60979322",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-15T11-33_680f985/run_0/gpt-5.6-sol"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.6-sol/breakdown.json"
     },
     {
-      "model": "Qwen3.8-27B",
+      "model": "Qwen/Qwen3.8-27B",
+      "slug": "Qwen_Qwen3.8-27B",
+      "base_slug": "Qwen_Qwen3.8-27B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.796078431372549,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.8-27B/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.8-27B",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.8-27B/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 406.0,
+      "config_path": "scripts/configs/qwen3_8/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.8-27B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "5a4e55167c0b66bf5047fdab2069435eee5b8446b533cbb1735053a1051b790f",
+        "sample_summaries_sha256": "48ef852bcd95b39dc9f7a77d30c18a27b6a2cc08ec57297fdf5542a4a6f5229c",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "8633dd6897a2d5a158bce7b12b5d01fe9b78eab3b06a2a4f8b0edfc871c57e51",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3.8-27B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.8-27B/breakdown.json"
     },
     {
-      "model": "GPT-5.5",
+      "model": "gpt-5.5",
+      "slug": "gpt-5.5",
+      "base_slug": "gpt-5.5",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.7686274509803922,
-      "artifact_path": ".exps/eval/osworld_g/2026-09-20-default-config/gpt-5.5",
-      "summary_path": ".exps/eval/osworld_g/2026-09-20-default-config/gpt-5.5/summary.json"
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.5/summary.json",
+      "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.5",
+      "num_errors": 0,
+      "sum_episode_return": 392.0,
+      "config_path": "scripts/configs/gpt/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-20-default-config/gpt-5.5/run_info.txt",
+        "source_commits": [
+          "3210c50"
+        ],
+        "run_info_sha256": "bd53b82c3fb4ef7e4258fba7219c9d8b38ddb503561bd7d8b8ac012261888415",
+        "sample_summaries_sha256": "03d43da71ccb1b52f14b45d0d13dcafeb5a357b234e2dc05a3b099982e142ccc",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "source_dirty_paths": [
+          "lite/agents/factory.py",
+          "lite/agents/models/claude/agent.py",
+          "lite/agents/models/claude/utils/image_io.py",
+          "tests/agents/models/claude/test_claude_agent.py",
+          "tests/agents/models/claude/test_claude_image_io.py",
+          "tests/agents/test_agents.py",
+          "tests/agents/test_make_all.py"
+        ],
+        "source_code_note": "Source run recorded uncommitted changes; its Git SHA alone is not an exact code snapshot.",
+        "config_sha256": "8fc63a9030228ead3861a0ac70b30563d64aa9f1f3ef7dcbfb1c343a60979322",
+        "config_matches_recorded_commit": true,
+        "original_log_root": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_g/.exps/eval/osworld_g/2026-09-20-default-config/gpt-5.5"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/gpt-5.5/breakdown.json",
+      "source_artifact_path": ".exps/eval/osworld_g/2026-09-20-default-config/gpt-5.5"
     },
     {
-      "model": "Qwen3.5-27B",
+      "model": "Qwen/Qwen3.5-27B",
+      "slug": "Qwen_Qwen3.5-27B",
+      "base_slug": "Qwen_Qwen3.5-27B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.7431372549019608,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-27B/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-27B",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-27B/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 379.0,
+      "config_path": "scripts/configs/qwen3_5/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-27B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "9ad90a39a799c8c3013170e2d3d9f494fc06b57f5875fee7542b23d666dd3269",
+        "sample_summaries_sha256": "5a208abae18144ea2d159b80c4fd5d2bcab06edcbbe126684ce1d4a2fc3ba002",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "0dc5c81cdc4b457ea0dd6779b423a800f4a40d014388147fd4475be5f32c1ade",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3.5-27B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {},
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-27B/breakdown.json"
     },
     {
-      "model": "UI-Venus-2-9B",
+      "model": "inclusionAI/UI-Venus-2-9B",
+      "slug": "inclusionAI_UI-Venus-2-9B",
+      "base_slug": "inclusionAI_UI-Venus-2-9B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.7431372549019608,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/inclusionAI_UI-Venus-2-9B/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/inclusionAI_UI-Venus-2-9B",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/inclusionAI_UI-Venus-2-9B/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 379.0,
+      "config_path": "scripts/configs/ui_venus_2/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/inclusionAI_UI-Venus-2-9B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "eb2ba51e285b9538f26d1ee0d5188d48ca9866232de67e76693b0a260db9d293",
+        "sample_summaries_sha256": "5eb904db38b2bdbb89866f6dcac3df746820c5b6c04697e7fbdae07e7fec3879",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "33ec44553b7444f28f1a25958a77803224075721ae007487c69ac8831655bc61",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/inclusionAI_UI-Venus-2-9B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "extra_tools": [
+          "report_infeasible"
+        ]
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/inclusionAI_UI-Venus-2-9B/breakdown.json"
     },
     {
-      "model": "Qwen3-VL-32B",
+      "model": "Qwen/Qwen3-VL-32B-Instruct",
+      "slug": "Qwen_Qwen3-VL-32B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-32B-Instruct",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.7196078431372549,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-32B-Instruct",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 367.0,
+      "config_path": "scripts/configs/qwen3_vl/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-32B-Instruct/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "fc0c9f185216efcb0d5719ed8167e292ccb8d9945dea5148b7ef01f38ce69a6e",
+        "sample_summaries_sha256": "fffda3d89256660c9104972a2afe94c8b0589bd94f2a5f7b2fab5983645fefc1",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "e90aa1f0b1d43b77ec7c564bf80672c3c4e1475259b4192b8f7ac510c8cc2edf",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3-VL-32B-Instruct"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {},
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-32B-Instruct/breakdown.json"
     },
     {
-      "model": "MAI-UI-8B",
+      "model": "Tongyi-MAI/MAI-UI-8B",
+      "slug": "Tongyi-MAI_MAI-UI-8B",
+      "base_slug": "Tongyi-MAI_MAI-UI-8B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.7,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Tongyi-MAI_MAI-UI-8B/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Tongyi-MAI_MAI-UI-8B",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Tongyi-MAI_MAI-UI-8B/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 357.0,
+      "config_path": "scripts/configs/mai_ui/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Tongyi-MAI_MAI-UI-8B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "b053a29341a267f73d9ad363c95ddafe9fcfcbc77455f8220b84648904f47c3a",
+        "sample_summaries_sha256": "857047e82b3f17cf6f5f360ec84a2f039b9c768de12abca5c8cbc1d01d057096",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "3127af070352a48429bfb1055e12ad7e2f92963ed34a6210b180aac7ee1019ca",
+        "config_matches_recorded_commit": true,
+        "original_log_root": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_g/.exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/Tongyi-MAI_MAI-UI-8B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {},
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Tongyi-MAI_MAI-UI-8B/breakdown.json"
     },
     {
-      "model": "Qwen3.5-9B",
+      "model": "Qwen/Qwen3.5-9B",
+      "slug": "Qwen_Qwen3.5-9B",
+      "base_slug": "Qwen_Qwen3.5-9B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.6823529411764706,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-9B/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-9B",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-9B/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 348.0,
+      "config_path": "scripts/configs/qwen3_5/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-9B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "4bf43dd125d37e013567722568314a32e5ff3a017f276d4418718e3a0cc29857",
+        "sample_summaries_sha256": "794d1b37db24cb32c58f6d23d1dd3816e477fc75e0e6e1b02f719627c0c67229",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "0dc5c81cdc4b457ea0dd6779b423a800f4a40d014388147fd4475be5f32c1ade",
+        "config_matches_recorded_commit": true,
+        "original_log_root": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_g/.exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3.5-9B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-9B/breakdown.json"
     },
     {
-      "model": "Qwen3-VL-4B",
+      "model": "Qwen/Qwen3-VL-4B-Instruct",
+      "slug": "Qwen_Qwen3-VL-4B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-4B-Instruct",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.6549019607843137,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-4B-Instruct",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 334.0,
+      "config_path": "scripts/configs/qwen3_vl/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-4B-Instruct/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "1b0fcd4619b8ab5f5b96eea19f92d1500789653389d90cd6745bbde054206bc8",
+        "sample_summaries_sha256": "30a8e3c0c318c8a86f0ffd8f4493d459a049bf5e260e9ff2c92f13959e89c8cc",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "e90aa1f0b1d43b77ec7c564bf80672c3c4e1475259b4192b8f7ac510c8cc2edf",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3-VL-4B-Instruct"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-4B-Instruct/breakdown.json"
     },
     {
-      "model": "Qwen3-VL-8B",
+      "model": "Qwen/Qwen3-VL-8B-Instruct",
+      "slug": "Qwen_Qwen3-VL-8B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-8B-Instruct",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.6431372549019608,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-8B-Instruct",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 328.0,
+      "config_path": "scripts/configs/qwen3_vl/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-8B-Instruct/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "17f90be539da218c664c39daccfc72eb5b221ad8c165a2b565746df64f244957",
+        "sample_summaries_sha256": "7100047c202ce2affe49611eb02fe5651de0c3430266a53f777360b0a65a2add",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "e90aa1f0b1d43b77ec7c564bf80672c3c4e1475259b4192b8f7ac510c8cc2edf",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3-VL-8B-Instruct"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3-VL-8B-Instruct/breakdown.json"
     },
     {
-      "model": "Qwen3.5-4B",
+      "model": "Qwen/Qwen3.5-4B",
+      "slug": "Qwen_Qwen3.5-4B",
+      "base_slug": "Qwen_Qwen3.5-4B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.6294117647058823,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-4B/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-4B",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-4B/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 321.0,
+      "config_path": "scripts/configs/qwen3_5/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-4B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "88555de877c906381cd8b9ee22d5226aee77df118313a41e34650827bd95e360",
+        "sample_summaries_sha256": "674aa7d80827ebf7264683e58eec33817082a9a32324726255959ab0727047b8",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "0dc5c81cdc4b457ea0dd6779b423a800f4a40d014388147fd4475be5f32c1ade",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3.5-4B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/Qwen_Qwen3.5-4B/breakdown.json"
     },
     {
-      "model": "UI-TARS-1.5-7B",
+      "model": "ByteDance-Seed/UI-TARS-1.5-7B",
+      "slug": "ByteDance-Seed_UI-TARS-1.5-7B",
+      "base_slug": "ByteDance-Seed_UI-TARS-1.5-7B",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.6058823529411764,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 309.0,
+      "config_path": "scripts/configs/ui_tars_15_v1/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/ByteDance-Seed_UI-TARS-1.5-7B/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "f6b5ee75d060ffcd364cbbb57e944f34c64c56675f49a8524f2a76bf4ef81eeb",
+        "sample_summaries_sha256": "a911ab668b9b26ab07dce3e604184cb9b3bb2caa77f3a8191351b8de8067fbe8",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "2fbb5e28211db45b09a35643042bf175258652201e1abd663cbc001cbe1e7cd3",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/ByteDance-Seed_UI-TARS-1.5-7B"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/ByteDance-Seed_UI-TARS-1.5-7B/breakdown.json"
     },
     {
-      "model": "EvoCUA-8B",
+      "model": "meituan/EvoCUA-8B-20260105",
+      "slug": "meituan_EvoCUA-8B-20260105",
+      "base_slug": "meituan_EvoCUA-8B-20260105",
+      "config_id": "default",
+      "status": "complete",
       "num_valid": 510,
       "num_tasks": 510,
+      "num_samples": 510,
       "mean_episode_return": 0.5725490196078431,
+      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/meituan_EvoCUA-8B-20260105/summary.json",
       "artifact_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/meituan_EvoCUA-8B-20260105",
-      "summary_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/meituan_EvoCUA-8B-20260105/summary.json"
+      "num_errors": 0,
+      "sum_episode_return": 292.0,
+      "config_path": "scripts/configs/evocua/default/osworld_g.yaml",
+      "provenance": {
+        "run_info_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/meituan_EvoCUA-8B-20260105/run_info.txt",
+        "source_commits": [
+          "dd6c13d"
+        ],
+        "run_info_sha256": "8ca832e7d3bd9310b7db37f858c8c6397e0978b6248356b4c299a713cb761f8d",
+        "sample_summaries_sha256": "db4b2ec66e67887d98685f48ac29ce77fb287e6c27a5821219e0e93f4762df1a",
+        "sample_summary_count": 510,
+        "error_count": 0,
+        "config_sha256": "a399b0e03f79bf7ed89b5463f914801cb7f522aa03a6159a2550029e4653c059",
+        "config_matches_recorded_commit": true,
+        "original_log_root": ".exps/eval/osworld_g/2026-09-12T06-10_dd6c13d/run_0/meituan_EvoCUA-8B-20260105"
+      },
+      "agent_kwargs": {},
+      "env_kwargs": {
+        "step_timeout": 180
+      },
+      "breakdown_path": ".exps/eval/osworld_g/2026-09-17T14-28_b1d4b6b/run_0/meituan_EvoCUA-8B-20260105/breakdown.json"
+    },
+    {
+      "model": "gemini-3.6-flash",
+      "slug": "gemini-3.6-flash",
+      "base_slug": "gemini-3.6-flash",
+      "config_id": "default",
+      "status": "empty",
+      "num_valid": 0,
+      "num_tasks": 510,
+      "num_samples": 0,
+      "mean_episode_return": null,
+      "note": "No run was launched in this campaign."
     }
   ]
 }
