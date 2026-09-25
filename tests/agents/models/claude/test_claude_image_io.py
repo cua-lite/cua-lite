@@ -129,12 +129,6 @@ _PHONE = (1080, 2400)
 _DESKTOP = (1920, 1080)
 
 
-def _jpeg(width: int, height: int) -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGB", (width, height), color=(32, 64, 96)).save(buf, format="JPEG")
-    return buf.getvalue()
-
-
 def test_many_image_ceiling_only_narrows_the_high_res_profile() -> None:
     # 2576 is above the many-image cap, so it is clamped; 1568 is already below.
     assert effective_max_edge_px("claude-opus-4-8", many_image=False) == 2576
@@ -168,10 +162,21 @@ def test_many_image_must_be_declared() -> None:
     assert would_trigger_claude_auto_downsample(*_PHONE, "claude-opus-4-8", many_image=True) is True
 
 
-def test_non_png_source_is_re_encoded_rather_than_mislabelled() -> None:
-    """Every call site labels the payload ``image/png``; Anthropic 400s on a
-    JPEG carrying that label, and mobilegym emits JPEG."""
-    encoded, w, h = resize_for_claude_api(_jpeg(*_DESKTOP), "claude-opus-4-8", many_image=True)
-
-    assert (w, h) == _DESKTOP, "identity path: no resize was needed"
-    assert base64.b64decode(encoded)[:4] == b"\x89PNG", "payload must really be PNG"
+@pytest.mark.parametrize("source_format", ["JPEG", "PNG"])
+@pytest.mark.parametrize("target", [None, (960, 540)])
+def test_webp_encoding_preserves_sent_pixels(source_format, target) -> None:
+    """The transport encoding changes neither the coordinate frame nor pixels."""
+    image = Image.new("RGB", _DESKTOP, (32, 64, 96))
+    image.paste((201, 39, 82), (300, 250, 1200, 900))
+    source = io.BytesIO()
+    image.save(source, format=source_format)
+    expected = Image.open(io.BytesIO(source.getvalue()))
+    if target is not None:
+        expected = expected.resize(target, Image.Resampling.LANCZOS)
+    encoded, w, h = resize_for_claude_api(
+        source.getvalue(), "claude-opus-4-8", target=target, many_image=True,
+    )
+    with Image.open(io.BytesIO(base64.b64decode(encoded))) as decoded:
+        assert decoded.format == "WEBP"
+        assert decoded.size == (w, h) == expected.size
+        assert decoded.tobytes() == expected.tobytes()
