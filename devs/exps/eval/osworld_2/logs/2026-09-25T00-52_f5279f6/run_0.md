@@ -4,13 +4,31 @@
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/` (gitignored).
 - **Started**: `2026-09-22 PDT`.
-- **Last updated**: `2026-09-25T10:05:25+00:00`.
+- **Last updated**: `2026-09-25T20:47:51.463455+00:00`.
 - **Notes**: OSWorld-2.1, 98 selected tasks; service exclusions and task 072 filtered out.
 - **Provenance**: [JSON snapshot](/devs/exps/eval/osworld_2/logs/2026-09-25T00-52_f5279f6/run_0.json) records source runs, task replacements, configuration and artifact hashes. This is a consolidation of retained runs across commits; code drifted mid-campaign, as recorded in the source metadata.
 
 ## Results
 
 | Model | Config | Finished | Mean episode return |
+|---|---|---:|---:|
+| `gpt-6-astra` | medium | 98/98 | 0.630220 |
+| `gpt-5.6-sol` | default | 98/98 | 0.438693 |
+| `gpt-5.5` | default | 98/98 | 0.386131 |
+| `Qwen/Qwen3.5-27B` | default | 98/98 | 0.027505 |
+| `Qwen/Qwen3.8-27B` | default | 98/98 | 0.023604 |
+| `Qwen/Qwen3-VL-32B-Instruct` | default | 98/98 | 0.011586 |
+| `Qwen/Qwen3-VL-4B-Instruct` | default | 98/98 | 0.008630 |
+| `Qwen/Qwen3.5-4B` | default | 98/98 | 0.007369 |
+| `inclusionAI/UI-Venus-2-9B` | default | 98/98 | 0.004974 |
+| `ByteDance-Seed/UI-TARS-1.5-7B` | default | 98/98 | 0.004884 |
+| `Qwen/Qwen3.5-9B` | default | 98/98 | 0.004221 |
+| `Qwen/Qwen3-VL-8B-Instruct` | default | 98/98 | 0.002883 |
+| `meituan/EvoCUA-8B-20260105` | default | 98/98 | 0.002474 |
+| ⚠️ `claude-opus-5` | default | _**74/98**_ | _**0.630739**_ |
+| ⚠️ `gemini-3.6-flash` | default | _**0/98**_ | _**—**_ |
+
+Mean episode return |
 |---|---|---:|---:|
 | `gpt-6-astra` | medium | 98/98 | 0.630220 |
 | `Qwen/Qwen3.5-27B` | default | 98/98 | 0.027505 |
@@ -31,7 +49,7 @@
 Mean episode return excludes API/environment errors and includes valid zero rewards.
 Finished counts valid samples; the expected task count remains 98.
 
-Claude Opus 5 is finalized with 74 valid results and 24 API-error exclusions.
+Claude Opus 5 is the retained Max-effort run: 74 valid results and 24 API-error exclusions. Its default YAML now selects Medium; this historical score is not a Medium measurement.
 Tasks 092 and 101 were stopped after repeated API failures; mean steps are 67.81
 over valid results. The partial trajectories and failure evidence remain in the source artifacts.
 
@@ -45,8 +63,8 @@ over valid results. The partial trajectories and failure evidence remain in the 
 | UI-TARS-1.5-7B | [ui_tars_15_v1/osworld_2.yaml](/scripts/configs/ui_tars_15_v1/default/osworld_2.yaml) | 30 steps; loop detection 5 |
 | EvoCUA-8B | [evocua/osworld_2.yaml](/scripts/configs/evocua/default/osworld_2.yaml) | 30 steps; loop detection 5 |
 | UI-Venus-2-9B | [ui_venus_2/osworld_2.yaml](/scripts/configs/ui_venus_2/default/osworld_2.yaml) | 30 steps; loop detection 5; OSWorld-2.1 guest password |
-| GPT-5.5 / GPT-5.6 Sol | [gpt/osworld_2.yaml](/scripts/configs/gpt/default/osworld_2.yaml) | 200 steps; XHigh; 8192 output tokens |
-| Claude Opus 5 | [claude/osworld_2.yaml](/scripts/configs/claude/default/osworld_2.yaml) | 200 steps; max effort; 64000 output tokens |
+| GPT-5.5 / GPT-5.6 Sol | [gpt/osworld_2.yaml](/scripts/configs/gpt/default/osworld_2.yaml) | 200 steps; Medium; 8192 output tokens |
+| Claude Opus 5 | [claude/osworld_2.yaml](/scripts/configs/claude/default/osworld_2.yaml) | 200 steps; recorded Max effort; 64000 output tokens |
 | GPT-6 Astra | [gpt/osworld_2.medium.yaml](/scripts/configs/gpt/default/osworld_2.medium.yaml) | 200 steps; Medium; 8192 output tokens |
 
 Specialist runs retain their 30-step desktop budgets; the committed OSWorld-2.1 YAMLs encode those actual settings. Other unspecified sampling and history parameters inherit the model defaults. API models have loop detection disabled.
