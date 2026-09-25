@@ -1,18 +1,21 @@
 --- a/desktop_env/evaluators/model_client.py
 +++ b/desktop_env/evaluators/model_client.py
-@@ -44,9 +44,11 @@
+@@ -44,9 +44,14 @@
  import logging
  import os
  import shutil
 +from functools import wraps
++from hashlib import sha256
  from typing import Any, Sequence
  
  from desktop_env.evaluators.backends import BackendConfig, create_backend
-+from desktop_env.evaluators.errors import EvaluationInfrastructureError
++from desktop_env.evaluators.errors import (
++    EvaluationInfrastructureError, resolve_evaluation_infrastructure_error,
++)
  
  logger = logging.getLogger("desktopenv.eval_model")
  
-@@ -345,6 +347,25 @@
+@@ -345,6 +350,29 @@
  
  
  
@@ -20,16 +23,20 @@
 +    """Preserve failed calls even when a task catches the exception and scores zero."""
 +    @wraps(fn)
 +    def wrapped(*args, **kwargs):
++        call_key = sha256(json.dumps(
++            [fn.__name__, args, kwargs], sort_keys=True, default=str,
++        ).encode()).hexdigest()
 +        try:
 +            result = fn(*args, **kwargs)
 +            if not result or not result.strip():
 +                raise ValueError("LLM judge returned an empty response")
++            resolve_evaluation_infrastructure_error(call_key)
 +            return result
 +        except (EvaluationInfrastructureError, FileNotFoundError):
 +            raise
 +        except Exception as exc:
 +            raise EvaluationInfrastructureError(
-+                f"LLM judge failed: {exc}", subtype="llm_judge",
++                f"LLM judge failed: {exc}", subtype="llm_judge", call_key=call_key,
 +            ) from exc
 +    return wrapped
 +
@@ -38,7 +45,7 @@
  def generate_text(
      prompt: str,
      image_paths: str | Sequence[str] | None = None,
-@@ -429,6 +450,7 @@
+@@ -429,6 +457,7 @@
      return result
  
  
@@ -74,3 +81,36 @@
  
  
  # ---------------------------------------------------------------------------
+--- a/desktop_env/evaluators/errors.py
++++ b/desktop_env/evaluators/errors.py
+@@ -7,3 +7,3 @@
+-_evaluation_infrastructure_error: ContextVar[
+-    Optional["EvaluationInfrastructureError"]
+-] = ContextVar("evaluation_infrastructure_error", default=None)
++_evaluation_infrastructure_errors: ContextVar[
++    Dict[Optional[str], "EvaluationInfrastructureError"]
++] = ContextVar("evaluation_infrastructure_errors", default={})
+@@ -20,0 +21 @@
++        call_key: Optional[str] = None,
+@@ -25 +26,3 @@
+-        _evaluation_infrastructure_error.set(self)
++        _evaluation_infrastructure_errors.set({
++            **_evaluation_infrastructure_errors.get(), call_key: self,
++        })
+@@ -29 +32,8 @@
+-    _evaluation_infrastructure_error.set(None)
++    _evaluation_infrastructure_errors.set({})
++
++
++def resolve_evaluation_infrastructure_error(call_key: str) -> None:
++    """A successful retry resolves only the matching judge call."""
++    errors = dict(_evaluation_infrastructure_errors.get())
++    errors.pop(call_key, None)
++    _evaluation_infrastructure_errors.set(errors)
+@@ -35,3 +45,3 @@
+-    error = _evaluation_infrastructure_error.get()
+-    _evaluation_infrastructure_error.set(None)
+-    return error
++    errors = _evaluation_infrastructure_errors.get()
++    _evaluation_infrastructure_errors.set({})
++    return next(iter(errors.values()), None)

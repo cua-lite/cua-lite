@@ -1037,6 +1037,7 @@ def test_judge_failures_survive_task_exception_handlers(tmp_path, monkeypatch):
     import subprocess
     import threading
     from functools import wraps
+    from hashlib import sha256
     from PIL import Image
 
     source = Path(os.environ.get("OSWORLD_V2_SRC", Path(m.ENV_DIR) / ".cache" / "OSWorld-V2"))
@@ -1048,6 +1049,8 @@ def test_judge_failures_survive_task_exception_handlers(tmp_path, monkeypatch):
     backend_file = tmp_path / "desktop_env/evaluators/backends/base.py"
     backend_file.parent.mkdir(parents=True)
     backend_file.write_text((source / "desktop_env/evaluators/backends/base.py").read_text())
+    errors_file = tmp_path / "desktop_env/evaluators/errors.py"
+    errors_file.write_text((source / "desktop_env/evaluators/errors.py").read_text())
     patch = Path(c.__file__).parent / "docker/patches/llm-judge-errors.patch"
     subprocess.run(["patch", "-p1", "-i", str(patch)], cwd=tmp_path, check=True, capture_output=True)
 
@@ -1069,11 +1072,11 @@ def test_judge_failures_survive_task_exception_handlers(tmp_path, monkeypatch):
                 assert encoded == path.read_bytes()
 
     scope = {"__name__": "judge_failure_test"}
-    exec((source / "desktop_env/evaluators/errors.py").read_text(), scope)
+    exec(errors_file.read_text(), scope)
     error_type = scope["EvaluationInfrastructureError"]
     backend = SimpleNamespace(generate=lambda *a, **kw: "NO", chat=lambda *a, **kw: "NO")
     scope.update(
-        wraps=wraps, os=os, logger=logging.getLogger(__name__),
+        wraps=wraps, sha256=sha256, json=json, os=os, logger=logging.getLogger(__name__),
         _ENV={"save_raw_dir": "OSWORLD_EVAL_SAVE_RAW_DIR"},
         _build_config=lambda *a, **kw: SimpleNamespace(provider="openai", model="judge"),
         _normalize_images=lambda images: images or [], create_backend=lambda config: backend,
@@ -1123,6 +1126,51 @@ def test_judge_failures_survive_task_exception_handlers(tmp_path, monkeypatch):
         scope["_build_config"] = build_config
         error_type("stale previous request")
         assert scope["evaluate"]()["reward"] == 1.0
+
+    def retrying_task():
+        for attempt in range(3):
+            try:
+                verdict = scope["generate_text"]("same rubric", options={"max_tokens": 1500})
+                return float(verdict == "YES")
+            except Exception:
+                if attempt == 2:
+                    raise
+
+    calls = iter([RuntimeError("transient Azure 502"), "YES"])
+
+    def fail_then_recover(*args, **kwargs):
+        result = next(calls)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    backend.generate = fail_then_recover
+    scope["_env"] = SimpleNamespace(evaluate=retrying_task)
+    assert scope["evaluate"]()["reward"] == 1.0
+
+    def separate_checks():
+        for prompt in ("first rubric", "second rubric"):
+            try:
+                scope["generate_text"](prompt)
+            except Exception:
+                pass
+        return 1.0
+
+    calls = iter([RuntimeError("first rubric failed"), "YES"])
+    backend.generate = fail_then_recover
+    scope["_env"] = SimpleNamespace(evaluate=separate_checks)
+    with pytest.raises(error_type, match="first rubric failed"):
+        scope["evaluate"]()
+
+    def unrelated_infrastructure_failure():
+        error_type("reference download failed", subtype="reference")
+        scope["generate_text"]("successful rubric")
+        return 1.0
+
+    backend.generate = lambda *a, **kw: "YES"
+    scope["_env"] = SimpleNamespace(evaluate=unrelated_infrastructure_failure)
+    with pytest.raises(error_type, match="reference download failed"):
+        scope["evaluate"]()
 
     def missing_output():
         try:
