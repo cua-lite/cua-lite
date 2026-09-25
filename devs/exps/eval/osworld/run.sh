@@ -122,6 +122,7 @@ case "$MODEL" in
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/osworld.yaml ;;
   meituan/EvoCUA-*)                CFG=scripts/configs/evocua/default/osworld.yaml ;;
   gpt-*)                           CFG=scripts/configs/gpt/default/osworld.yaml ;;
+  claude-*)                        CFG=scripts/configs/claude/default/osworld.yaml ;;
   *) echo "unknown model: $MODEL — add a case in $0" >&2; exit 1 ;;
 esac
 

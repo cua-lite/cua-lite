@@ -1,3 +1,8 @@
+## ff3da7c <- 60d5833 (2026-09-20)
+
+- Use the merged Claude Messages adapter; replace the 18 affected
+  mouse-modifier trajectories before reporting the Opus 5 campaign.
+
 ## ba57e79 <- f873f3c  (2026-09-17)
 
 - Evaluate 13 reference models on the 325-task filtered split using default family configs.
