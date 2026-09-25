@@ -7,16 +7,7 @@
 agent_id: "claude"
 agent_kwargs:
   api_kwargs:
-    # Highest level Claude offers (low/medium/high/xhigh/max), paired with a
-    # large max_tokens as Anthropic recommends for xhigh/max.
-    #
-    # thinking_budget is raised WITH it, and that is load-bearing: on the 4.6
-    # generation this row still takes the fixed-budget branch
-    # (thinking:{type:"enabled"}), so the family default of 2048 would cap
-    # thinking there no matter what effort says -- the max_tokens bump alone
-    # would buy response text and nothing else. On 4.7/4.8 the branch is
-    # adaptive and effort alone governs depth, so the budget is inert.
-    effort: "max"
+    effort: "medium"
     max_tokens: 64000
     thinking_budget: 32000
 
