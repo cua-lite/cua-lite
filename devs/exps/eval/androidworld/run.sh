@@ -127,6 +127,8 @@ case "$MODEL" in
   gpt-*)                            CFG=scripts/configs/gpt/default/androidworld.yaml ;;
   Qwen/Qwen3-VL-*-Instruct)        CFG=scripts/configs/qwen3_vl/default/androidworld.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/androidworld.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/androidworld.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/androidworld.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/androidworld.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/androidworld.yaml ;;
   Tongyi-MAI/MAI-UI-*)             CFG=scripts/configs/mai_ui/default/androidworld.yaml ;;
@@ -143,7 +145,7 @@ echo "         config=$CFG"
 HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   --model-id "$MODEL" \
   --env-id androidworld --splits eval \
-  --concurrency 4 \
+  --concurrency "${EVAL_CONCURRENCY:-4}" \
   --env-kwargs '{"step_timeout": 180}' \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"
