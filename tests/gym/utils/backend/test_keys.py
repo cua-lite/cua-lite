@@ -26,11 +26,8 @@ _PYNPUT_VALID = set(K._PYNPUT.values()) | set(_LETTERS_DIGITS) | set(_PUNCT_GLYP
 # pynput's Key enum has f1..f20 only (no f21-f24) and no clear/kp_enter → map-or-RAISE.
 _PYNPUT_UNSUPPORTED = {f"f{i}" for i in range(21, 25)}
 
-# Desktop-only specials: present in the xdotool vocabulary but with no universal
-# browser/pyautogui equivalent (verified: Playwright's layout has no PrintScreen/
-# ContextMenu/Clear/NumpadEnter; pyautogui has no menu/kp_enter). Those backends
-# must map-or-RAISE-loud (never silent); they never appear in browser rollouts.
-_DESKTOP_ONLY = {"menu", "printscreen", "clear", "kp_enter"}
+# Keys with partial backend coverage: each backend must map or raise loudly.
+_DESKTOP_ONLY = {"menu", "printscreen", "clear", "kp_enter", "kp_subtract", "kp_insert", "kp_delete", "kp_decimal", "numlock"}
 
 # Vocabulary valid across ALL backends (common specials + literal chars).
 _COMMON = (
@@ -166,6 +163,32 @@ def test_lone_plus_glyph_projects_to_each_backend():
 def test_canonical_key_chord_projects_per_backend():
     assert K.to_xdotool(["ctrl", "o"]) == ["ctrl", "o"]
     assert K.to_playwright(["ctrl", "a"]) == ["Control", "a"]
+
+
+@pytest.mark.parametrize("raw,canonical,pyautogui", [
+    ("KP_Subtract", "kp_subtract", "subtract"),
+    ("KP_Insert", "kp_insert", "num0"),
+    ("KP_Decimal", "kp_decimal", "decimal"),
+    ("Num_Lock", "numlock", "numlock"),
+    ("Print", "printscreen", "printscreen"),
+])
+def test_observed_x11_keys_preserve_the_physical_key(raw, canonical, pyautogui):
+    keys = normalize_keys([raw])
+    assert keys == [canonical]
+    assert K.to_pyautogui(keys) == [pyautogui]
+    assert K.to_xdotool(keys) == [raw]
+    assert K.to_pyautogui(normalize_keys(["-"])) == ["-"]
+
+
+def test_keypad_delete_reaches_backend_capability_feedback():
+    from lite.gym.utils.backend.model_inputs import project_model_keys
+    from lite.gym.utils.feedback.errors import model_visible_error_detail
+
+    keys = normalize_keys(["KP_Delete"])
+    assert K.to_xdotool(keys) == ["KP_Delete"]
+    with pytest.raises(ValueError) as error:
+        project_model_keys(keys, backend="pyautogui")
+    assert model_visible_error_detail(error.value, fallback="invalid key") == "unsupported key token 'kp_delete'"
 
 
 @pytest.mark.parametrize("backend", ["playwright", "xdotool", "pyautogui", "pynput", "selenium"])
