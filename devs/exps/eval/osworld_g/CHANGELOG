@@ -1,3 +1,7 @@
+## 1996121 ← b13995c  (2026-09-25)
+
+- Align UI-Venus grounding with its official non-thinking, temperature-0, 1024-token setup; rerun the full evaluation. Retain other models with per-row provenance.
+
 ## b13995c ← b1d4b6b  (2026-09-25)
 
 - Set GPT and Claude grounding defaults to Medium; rerun GPT-5.5, GPT-5.6 Sol and Claude Opus 5. Retain other models with per-row provenance.
