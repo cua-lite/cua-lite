@@ -28,15 +28,7 @@
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/osworld_2/run.sh Qwen/Qwen3-VL-8B-Instruct
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/osworld_2/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0       EVAL_ENABLE_THINKING=true ./devs/exps/eval/osworld_2/run.sh Qwen/Qwen3-VL-8B-Thinking
-#   CUDA_VISIBLE_DEVICES=0,1     EVAL_ENABLE_THINKING=true ./devs/exps/eval/osworld_2/run.sh Qwen/Qwen3.8-27B
 #   ./devs/exps/eval/osworld_2/run.sh gpt-5.5         # API model, no GPU
-# Thinking uses the same family default YAML and only overrides
-# --agent-kwargs '{"enable_thinking": true}' on the command line. For
-# Qwen3.8-27B, omitted reasoning_effort means the checkpoint's default xhigh.
-# Thinking runs use __think_on in the artifact slug to avoid resuming a
-# non-thinking rollout for the same model.
-#
 # tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
 # GPU count; serve_sglang.py derives dp_size = visible // tp_size (local HF models only),
 # so the GPUs you expose set the REPLICA count. This script never passes --engine-kwargs,
@@ -66,20 +58,12 @@
 #   - No --env-kwargs step_timeout override: osworld_2's make_kwargs already
 #     set step_timeout=600 + reset_timeout=960 (configs/default.yaml), unlike
 #     androidworld/mobilegym whose specs leave the framework 120s default.
-#   - max_steps: env default 200 (OSWorld-v2.1 official GPT run) — no override.
+#   - max_steps: 200 for general VLM/API configs; 30 for specialist reference configs.
 #     V2 trajectories are far longer than v1's 30-step runs; budget wall-clock
 #     accordingly.
 set -euo pipefail
 
 MODEL="${1:?usage: CUDA_VISIBLE_DEVICES=<gpus> $0 <model-id> [config-path]}"
-case "${EVAL_ENABLE_THINKING:-false}" in
-  true) case "$MODEL" in
-    Qwen/Qwen3-VL-*-Thinking|Qwen/Qwen3.5-*|Qwen/Qwen3.8-*) ;;
-    *) echo "[run.sh] EVAL_ENABLE_THINKING=true needs a Qwen Thinking checkpoint or Qwen3.5/3.8 model" >&2; exit 1 ;;
-  esac ;;
-  false) ;;
-  *) echo "[run.sh] EVAL_ENABLE_THINKING must be true or false" >&2; exit 1 ;;
-esac
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../.." &>/dev/null && pwd)"
 [[ -n "$ROOT" && -d "$ROOT" ]] || { echo "$0: cannot resolve repo root from ${BASH_SOURCE[0]}" >&2; exit 1; }
 cd "$ROOT"
@@ -87,8 +71,8 @@ EVAL_ENV_ID="osworld_2"
 source "$ROOT/devs/exps/eval/utils/runtime_mode.sh"
 
 SLUG="${MODEL//\//_}"
-if [[ "${EVAL_ENABLE_THINKING:-false}" == true ]]; then
-  SLUG="${SLUG}__think_on"
+if [[ -n "${2:-}" ]]; then
+  SLUG="${SLUG}__$(basename -- "$2" .yaml)"
 fi
 ENV_ROOT="$ROOT/.exps/eval/osworld_2"
 
@@ -178,21 +162,17 @@ case "$MODEL" in
   *) echo "unknown model: $MODEL — add a case (and a scripts/configs/<family>/default/osworld_2.yaml) in $0" >&2; exit 1 ;;
 esac
 
+DEFAULT_CFG="$CFG"
 CFG="${2:-$CFG}"
+[[ "${CFG%/*}" == "${DEFAULT_CFG%/*}" && "$CFG" == scripts/configs/*/default/osworld_2*.yaml ]] || { echo "use a versioned OSWorld-2 config under scripts/configs/<family>/default/" >&2; exit 1; }
 [[ -f "$CFG" ]] || { echo "missing config: $CFG" >&2; exit 1; }
 
 CONCURRENCY="${EVAL_CONCURRENCY:-16}"
-EXTRA_ARGS=()
-if [[ "${EVAL_ENABLE_THINKING:-false}" == true ]]; then
-  EXTRA_ARGS+=(--agent-kwargs '{"enable_thinking": true}')
-fi
-
 mkdir -p "$LOG_ROOT"
 echo "[run.sh] $MODEL"
 echo "         commit_dir=$(basename "$COMMIT_DIR")  run_id=$RUN_ID  GPUs=${CUDA_VISIBLE_DEVICES:-?}"
 echo "         log_root=$LOG_ROOT"
 echo "         config=$CFG"
-echo "         enable_thinking=${EVAL_ENABLE_THINKING:-false}"
 
 HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   --model-id "$MODEL" \
@@ -203,5 +183,4 @@ HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   --filter "lambda m: not m.others.get('exclude_reason') and m.others.get('task_id') != '072'" \
   --concurrency "$CONCURRENCY" \
   --config-path "$CFG" \
-  "${EXTRA_ARGS[@]}" \
   --log-root "$LOG_ROOT"
