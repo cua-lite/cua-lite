@@ -1,3 +1,7 @@
+## b1892ef ← 03858be  (2026-09-25)
+
+- Set GPT and Claude grounding defaults to Medium; rerun GPT-5.5, GPT-5.6 Sol and Claude Opus 5. Retain other models with per-row provenance.
+
 ## 4d03e12 <- f873f3c  (2026-09-17)
 
 - Evaluate GPT-5.5, GPT-5.6 Sol, and local models with their default grounding configurations.
