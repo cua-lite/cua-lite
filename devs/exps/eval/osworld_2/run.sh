@@ -71,7 +71,7 @@
 #     accordingly.
 set -euo pipefail
 
-MODEL="${1:?usage: CUDA_VISIBLE_DEVICES=<gpus> $0 <model-id>}"
+MODEL="${1:?usage: CUDA_VISIBLE_DEVICES=<gpus> $0 <model-id> [config-path]}"
 case "${EVAL_ENABLE_THINKING:-false}" in
   true) case "$MODEL" in
     Qwen/Qwen3-VL-*-Thinking|Qwen/Qwen3.5-*|Qwen/Qwen3.8-*) ;;
@@ -110,7 +110,7 @@ PIPELINE_PATHS=(
   devs/exps/eval/utils/campaign_dir.sh
   lite/agents/factory.py lite/infer/serving.py lite/infer/rollout.py
   scripts/rollout.py
-  scripts/configs/*/default/osworld_2.yaml
+  scripts/configs/*/default/osworld_2*.yaml
 )
 shopt -u nullglob
 
@@ -172,8 +172,14 @@ case "$MODEL" in
   Qwen/Qwen3.8-*)                 CFG=scripts/configs/qwen3_8/default/osworld_2.yaml ;;
   gpt-*)                           CFG=scripts/configs/gpt/default/osworld_2.yaml ;;
   claude-*)                        CFG=scripts/configs/claude/default/osworld_2.yaml ;;
+  ByteDance-Seed/UI-TARS-1.5-7B) CFG=scripts/configs/ui_tars_15_v1/default/osworld_2.yaml ;;
+  meituan/EvoCUA-*) CFG=scripts/configs/evocua/default/osworld_2.yaml ;;
+  inclusionAI/UI-Venus-2-*) CFG=scripts/configs/ui_venus_2/default/osworld_2.yaml ;;
   *) echo "unknown model: $MODEL — add a case (and a scripts/configs/<family>/default/osworld_2.yaml) in $0" >&2; exit 1 ;;
 esac
+
+CFG="${2:-$CFG}"
+[[ -f "$CFG" ]] || { echo "missing config: $CFG" >&2; exit 1; }
 
 CONCURRENCY="${EVAL_CONCURRENCY:-16}"
 EXTRA_ARGS=()

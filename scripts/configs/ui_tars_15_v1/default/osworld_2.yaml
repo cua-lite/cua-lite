@@ -1,0 +1,11 @@
+# OSWorld-2.1 reference run: retains the model's 30-step desktop budget.
+agent_id: ui_tars_15_v1
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 0.0
+env_id: osworld_2
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  extra_tools:
+  - terminate
