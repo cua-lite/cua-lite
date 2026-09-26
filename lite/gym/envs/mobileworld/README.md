@@ -2,7 +2,7 @@
 
 `--env-id` `mobileworld`
 
-CUA-Lite wrapper for [MobileWorld](https://github.com/Tongyi-MAI/MobileWorld). 201 upstream tasks (161 registered; 40 `agent-mcp` excluded) across 20 mobile apps in self-contained Docker-in-Docker boxes (rooted Android emulator + self-hosted Mattermost/Mastodon/Mall backends), via `gym.make("mobileworld@<TaskClassName>")` with the mobile action space. See [docs/envs.md](/docs/envs.md) for the env contract.
+CUA-Lite wrapper for [MobileWorld](https://github.com/Tongyi-MAI/MobileWorld). 201 upstream tasks (161 registered; 40 `agent-mcp` excluded), with **117 GUI-only tasks selected by the default eval runner**. The 44 registered user-interaction tasks carry `exclude_reason="ask_user"`. Tasks span 20 mobile apps in self-contained Docker-in-Docker boxes (rooted Android emulator + self-hosted Mattermost/Mastodon/Mall backends), via `gym.make("mobileworld@<TaskClassName>")` with the mobile action space. See [docs/envs.md](/docs/envs.md) for the env contract.
 
 ## Setup
 
@@ -50,7 +50,7 @@ sudo setfacl -m u:$(id -u):rw /dev/kvm           # ACL method (per boot)
 ls -l /dev/kvm                                   # verify: your user has rw
 ```
 
-**Agent-user-interaction tasks** (46 tasks tagged `agent-user-interaction`) need a simulated-user LLM: export the standard `OPENAI_API_KEY` before spawning containers, and set `OPENAI_BASE_URL` only for a custom endpoint. The env forwards them via `docker run -e` as the `USER_AGENT_*` vars upstream expects; the model is the `server_kwargs.user_agent_model` yaml knob (default `gpt-4.1`). Also enable the `ask_user` extra tool (`env_kwargs.extra_tools: [ask_user]`). GUI-only tasks need neither.
+**Agent-user-interaction tasks are filtered out by the default eval runner.** There are 46 upstream tasks tagged `agent-user-interaction`, of which 44 are registered (the other two also require MCP). To explicitly run them with an agent that supports asking the user, omit the exclusion filter and enable `ask_user` in `env_kwargs.extra_tools`. Before starting the env-server, export `USER_AGENT_API_KEY` and `USER_AGENT_BASE_URL` for its OpenAI-compatible simulator endpoint. These take precedence over `OPENAI_API_KEY` and `OPENAI_BASE_URL`, allowing the simulator and evaluated model to use separate services. The env forwards the credentials into each new container; restart the server and recreate its containers after changing them. The model is `server_kwargs.user_agent_model` in the env config (default `gpt-5.6-luna`). GUI-only tasks need neither the tool nor these credentials.
 
 **MCP tasks are not supported** at this stage: the 40 `agent-mcp`-tagged tasks are excluded from registration (`data/tasks.json` still lists all 201).
 
@@ -98,7 +98,17 @@ print(gym.registry.task_ids("mobileworld"))
 # {"eval": ["AcceptMeetingTask", ...]}   # 161 tasks (deterministic → eval split only)
 ```
 
-161 registered tasks (201 upstream − 40 `agent-mcp`): 117 GUI-only + 44 agent-user-interaction. (`agent-user-interaction` tags 46 tasks upstream, but 2 of those are also `agent-mcp` and so are not registered — 117 + 44 = 161, whereas 115 + 46 partitions nothing.) Apps covered: Mail, Messages, Mastodon, Files, Calendar, Mattermost, Taodian (e-commerce), Maps, Chrome, Settings, Camera, etc. Metadata in `env.metadata.others`: `tags` (`lang-en`/`lang-cn`, `agent-user-interaction`), `apps` (the full launchable catalog — the `open_app` enum source), and `task_apps` (the apps this task involves).
+161 registered tasks (201 upstream − 40 `agent-mcp`): 117 GUI-only + 44 agent-user-interaction. Interaction tasks remain registered with `metadata.others.exclude_reason="ask_user"`, independent of the model or enabled tools. The [eval runner](/devs/exps/eval/mobileworld/run.sh) filters them by default, following the OSWorld convention. When invoking `scripts/rollout.py` directly, pass the same filter (model YAMLs configure the agent and environment, not task selection):
+
+```bash
+uv run python scripts/rollout.py \
+  --model-id gpt-5.5 \
+  --config-path scripts/configs/gpt/default/mobileworld.yaml \
+  --splits eval \
+  --filter "lambda m: not m.others.get('exclude_reason')"
+```
+
+Apps covered: Mail, Messages, Mastodon, Files, Calendar, Mattermost, Taodian (e-commerce), Maps, Chrome, Settings, Camera, etc. Other metadata in `env.metadata.others`: `tags` (`lang-en`/`lang-cn`, `agent-user-interaction`), `apps` (the full launchable catalog — the `open_app` enum source), and `task_apps` (the apps this task involves).
 
 ## Evaluation
 

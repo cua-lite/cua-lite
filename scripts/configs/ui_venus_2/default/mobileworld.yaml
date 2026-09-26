@@ -1,11 +1,9 @@
 # UI-Venus-2-9B rollout eval on MobileWorld
-# 161 tasks (201 upstream - 40 agent-mcp) across 20 apps in DinD boxes. This is
-# one of UI-Venus-2's headline benches (GUI-only success rate, 50 steps).
+# 161 registered tasks; the eval runner filters 44 ask_user tasks, leaving
+# 117 GUI-only tasks across 20 apps in DinD boxes (50 steps).
 #
-# NOTE: the 46 agent-user-interaction tasks need the ``ask_user`` extra tool. The
-# mobile grammar's ``CallUser`` is a takeover request, not a mid-episode question
-# with an answer channel, so those tasks are expected to score 0; GUI-only tasks
-# are unaffected.
+# Interaction tasks carry exclude_reason="ask_user". Direct rollout calls
+# should pass --filter "lambda m: not m.others.get('exclude_reason')".
 #
 # Wire format: one ``<think>…</think>\n<action>…</action>`` block per turn, with
 # the task baked into the Mobile system prompt. Coordinates are normalized to

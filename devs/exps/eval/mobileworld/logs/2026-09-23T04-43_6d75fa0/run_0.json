@@ -1,0 +1,507 @@
+{
+  "schema_version": 1,
+  "env": "mobileworld",
+  "commit_dir": "2026-09-23T04-43_6d75fa0",
+  "run_id": "run_0",
+  "commit": {
+    "short_sha": "6d75fa0",
+    "subject": "fix(mobileworld): exclude user-interaction tasks from default eval"
+  },
+  "artifact_root": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0",
+  "snapshot_kind": "retained_run_aggregation",
+  "aggregation_branch_commit": "6d75fa00502a6f6ff7ff1352deb74589e99f1bb8",
+  "result_count": 15,
+  "status_counts": {
+    "complete": 14,
+    "empty": 1
+  },
+  "results": [
+    {
+      "model": "gpt-5.6-sol",
+      "slug": "gpt-5.6-sol",
+      "base_slug": "gpt-5.6-sol",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.8632478632478633,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-5.6-sol/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-5.6-sol",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-5.6-sol__reasoning_medium",
+      "source_summary_sha256": "b74ffe968bf83f6f89fab4cad59fd89b84b621a0594182fa0d464fc71f522621",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-5.6-sol__reasoning_medium/run_info.txt",
+      "source_run_info_sha256": "bc251d9326f83fc919ea520e7575e94d455504b096a86d53e0402621f4d19873",
+      "source_launch_commits": [
+        "bdaac06",
+        "6d75fa0"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "3fbca88412fce21b6d83caa0ad392a6a0b2d48c62e9e195923991a8b468b0f9b",
+      "config_path": "scripts/configs/gpt/default/mobileworld.yaml",
+      "environment_overrides": {
+        "image": "cua-lite/mobileworld:think-user-api-20260919",
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {
+        "reasoning_effort": "medium",
+        "max_output_tokens": 4096,
+        "reasoning_summary": "concise",
+        "chain_previous_response": true,
+        "parallel_tool_calls": false,
+        "detail": "original"
+      },
+      "source_config_sha256_by_commit": {
+        "bdaac06": "96846f7afc25c9f559363ce330d0e5a6f303ae7e48f828ea6b58b6d71e5de3ab",
+        "6d75fa0": "306ec912e72b9e0fe889c27f97af18327389586c3641e8c3edf0c7d3d708ef30"
+      }
+    },
+    {
+      "model": "gpt-6-astra",
+      "slug": "gpt-6-astra",
+      "base_slug": "gpt-6-astra",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.8547008547008547,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-6-astra/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-6-astra",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-6-astra__reasoning_medium",
+      "source_summary_sha256": "2148038c3cc3807f6e87ec027ab950919f2be13346485b33c5e353bbb2261a7f",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-6-astra__reasoning_medium/run_info.txt",
+      "source_run_info_sha256": "8b71a55a54a41898bd3c3d1d4ce7d9bcab09383dde95e41f263a474f127f5129",
+      "source_launch_commits": [
+        "bdaac06"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "d412001f6cc062c9d91d3cfdc055637c719e167d47e351a483513ff8c9a9938a",
+      "config_path": "scripts/configs/gpt/default/mobileworld.yaml",
+      "environment_overrides": {
+        "image": "cua-lite/mobileworld:think-user-api-20260919",
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {
+        "reasoning_effort": "medium",
+        "max_output_tokens": 4096,
+        "reasoning_summary": "concise",
+        "chain_previous_response": true,
+        "parallel_tool_calls": false,
+        "detail": "original"
+      },
+      "source_config_sha256_by_commit": {
+        "bdaac06": "96846f7afc25c9f559363ce330d0e5a6f303ae7e48f828ea6b58b6d71e5de3ab"
+      }
+    },
+    {
+      "model": "gpt-5.5",
+      "slug": "gpt-5.5",
+      "base_slug": "gpt-5.5",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.8034188034188035,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-5.5/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-5.5",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-5.5__reasoning_medium",
+      "source_summary_sha256": "8ec514e73ef46f917ec7d75dfb895f715b11b028183d9da59306525c63f7ecaa",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/gpt-5.5__reasoning_medium/run_info.txt",
+      "source_run_info_sha256": "e40c1f9d1f1ce69f21d616ef21f5d1de9166161610d509b2384bc2b824d56127",
+      "source_launch_commits": [
+        "bdaac06"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "61ce34137de0e11180e539bb638a6926996b45ab2e7c6d9a3a0ef15922a3cb5d",
+      "config_path": "scripts/configs/gpt/default/mobileworld.yaml",
+      "environment_overrides": {
+        "image": "cua-lite/mobileworld:think-user-api-20260919",
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {
+        "reasoning_effort": "medium",
+        "max_output_tokens": 4096,
+        "reasoning_summary": "concise",
+        "chain_previous_response": true,
+        "parallel_tool_calls": false,
+        "detail": "original"
+      },
+      "source_config_sha256_by_commit": {
+        "bdaac06": "96846f7afc25c9f559363ce330d0e5a6f303ae7e48f828ea6b58b6d71e5de3ab"
+      }
+    },
+    {
+      "model": "claude-opus-5",
+      "slug": "claude-opus-5",
+      "base_slug": "claude-opus-5",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.7863247863247863,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/claude-opus-5/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/claude-opus-5",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23_opus5_default/run_0/claude-opus-5",
+      "source_summary_sha256": "f98f5a0d4d9ba9f4a9dd9191ba34ad87c2f529e8f905d2a8e7fc4b796c54bd75",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23_opus5_default/run_0/claude-opus-5/run_info.txt",
+      "source_run_info_sha256": "49cbb87d8573c03aeaf9b6d697356e4e2664e9d49694982f5edc72ed46c81402",
+      "source_launch_commits": [
+        "6d75fa0"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "8f99af7cde14c10fb08dfeeb5ced7eaa14eabaf47e42de2e2c293c688de76cd0",
+      "config_path": "scripts/configs/claude/default/mobileworld.yaml",
+      "environment_overrides": {},
+      "recorded_api_kwargs": {
+        "effort": "medium",
+        "max_tokens": 4096,
+        "thinking_budget": 2048,
+        "prompt_caching": true,
+        "cache_breakpoints": 4,
+        "token_efficient_tools_beta": false
+      },
+      "source_config_sha256_by_commit": {
+        "6d75fa0": "fae867db5043b4e6a503cbafcddd4b7746b6509858a990e47c9454f2ffeeed2c"
+      }
+    },
+    {
+      "model": "inclusionAI/UI-Venus-2-9B",
+      "slug": "inclusionAI_UI-Venus-2-9B",
+      "base_slug": "inclusionAI_UI-Venus-2-9B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.5897435897435898,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/inclusionAI_UI-Venus-2-9B/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/inclusionAI_UI-Venus-2-9B",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/inclusionAI_UI-Venus-2-9B",
+      "source_summary_sha256": "89301a9e57ed93b68aaec63a94422ba6c7296f9a252554ffaa134c39998dd51c",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/inclusionAI_UI-Venus-2-9B/run_info.txt",
+      "source_run_info_sha256": "38253af645ec5a588cd84ecc87d50ae1b046ad9613eb223d10419c7a867080ca",
+      "source_launch_commits": [
+        "f715d7c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "f6ccfcfcde0fcd4d1c3810db272939c43f861459d8989a76211677950e20a473",
+      "config_path": "scripts/configs/ui_venus_2/default/mobileworld.yaml",
+      "environment_overrides": {
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "f715d7c": "9d409bb91665741be8b875e2daff9c6ab37ec66cdc01aa61813e39645941c11f"
+      }
+    },
+    {
+      "model": "Qwen/Qwen3.8-27B",
+      "slug": "Qwen_Qwen3.8-27B",
+      "base_slug": "Qwen_Qwen3.8-27B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.3247863247863248,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.8-27B/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.8-27B",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.8-27B",
+      "source_summary_sha256": "74da4c8268a8167adaa91b6b9ea79e5f8e4fb2279142acb54b22aa0247d06298",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.8-27B/run_info.txt",
+      "source_run_info_sha256": "4252dd7a89601a160af2761d3f0396ac1307d4142a44110b5f0346388a836ae4",
+      "source_launch_commits": [
+        "bdaac06"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "b907a780402463ab18a26ed9aa46244859fe0f4abb31036fcafb097b76bd768f",
+      "config_path": "scripts/configs/qwen3_8/default/mobileworld.yaml",
+      "environment_overrides": {
+        "image": "cua-lite/mobileworld:think-user-api-20260919",
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "bdaac06": "7da9467fd7013720b987b6dd718d6e738832f3378892d48b51d4a19e39f48759"
+      }
+    },
+    {
+      "model": "Tongyi-MAI/MAI-UI-8B",
+      "slug": "Tongyi-MAI_MAI-UI-8B",
+      "base_slug": "Tongyi-MAI_MAI-UI-8B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.29914529914529914,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Tongyi-MAI_MAI-UI-8B/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Tongyi-MAI_MAI-UI-8B",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Tongyi-MAI_MAI-UI-8B",
+      "source_summary_sha256": "6bd3da1784a05da34b28f02799343ab35472840d14432e0648f8931ce2f5ceca",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Tongyi-MAI_MAI-UI-8B/run_info.txt",
+      "source_run_info_sha256": "a377827b7b2b6820d4141d9073aa9b906fcc4fa0cfa2981fe40dc9d3b3055069",
+      "source_launch_commits": [
+        "f715d7c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "9943bbe6fcd3f5d140de85b24efa45a553b33703ce2d5fca7c879f9b72092886",
+      "config_path": "scripts/configs/mai_ui/default/mobileworld.yaml",
+      "environment_overrides": {
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "f715d7c": "8e0391882ba24e45d9f8a592aef968b16f70fe6209c6292ba90b54e2141f88c7"
+      }
+    },
+    {
+      "model": "Qwen/Qwen3-VL-32B-Instruct",
+      "slug": "Qwen_Qwen3-VL-32B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-32B-Instruct",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.1794871794871795,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-32B-Instruct/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-32B-Instruct",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-32B-Instruct",
+      "source_summary_sha256": "8953fc17bcf4fecf185d7e78cc59e7409fcaf596a9db69a54a0fc1d2a504f6d9",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-32B-Instruct/run_info.txt",
+      "source_run_info_sha256": "fe816714974a00890eb031bef762aa0a22af18277b300b65d91a24c49ce52bee",
+      "source_launch_commits": [
+        "bdaac06"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "e0fbc39d86488e4a876ee08420ff65f3441f26ad42560af00b53a2e0ee3cec59",
+      "config_path": "scripts/configs/qwen3_vl/default/mobileworld.yaml",
+      "environment_overrides": {
+        "image": "cua-lite/mobileworld:think-user-api-20260919",
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "bdaac06": "5857a5e33296458280d48f19836f2f28867c7021db72e71d90943c1bc6fe5df6"
+      }
+    },
+    {
+      "model": "Qwen/Qwen3.5-27B",
+      "slug": "Qwen_Qwen3.5-27B",
+      "base_slug": "Qwen_Qwen3.5-27B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.15384615384615385,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-27B/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-27B",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-27B",
+      "source_summary_sha256": "86219a2282a0e73d101923379cb11f959c6306a8b9df79546c9dbd3a7e75ad58",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-27B/run_info.txt",
+      "source_run_info_sha256": "f73efbce37eb5af973a2887e3106be75495b1e4d8f6568a6eaa33da44c2b30e0",
+      "source_launch_commits": [
+        "bdaac06"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "852919c64c72c466ca66d6bca36f2cba249ef5dc6c3dbed66fdf1bdf13d59306",
+      "config_path": "scripts/configs/qwen3_5/default/mobileworld.yaml",
+      "environment_overrides": {
+        "image": "cua-lite/mobileworld:think-user-api-20260919",
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "bdaac06": "5c3cdaeef644a858be410ee6f8322d59db4f4dff56f3913561a38a12cb241c83"
+      }
+    },
+    {
+      "model": "ByteDance-Seed/UI-TARS-1.5-7B",
+      "slug": "ByteDance-Seed_UI-TARS-1.5-7B",
+      "base_slug": "ByteDance-Seed_UI-TARS-1.5-7B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.1111111111111111,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
+      "source_summary_sha256": "1c4bc39d5196482bed6316b7ca27c45e28dfb5031728ff97db63421e630058b0",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/ByteDance-Seed_UI-TARS-1.5-7B/run_info.txt",
+      "source_run_info_sha256": "abb71ee90bac7e33d53ac94e3581812b40e33a3d7f9459656b44ef35ee549466",
+      "source_launch_commits": [
+        "f715d7c"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "ed758f4f9239b4c9260c7b6cbd11e23e7ac985ef6f3d6b51c20c1c83aab92a74",
+      "config_path": "scripts/configs/ui_tars_15_v1/default/mobileworld.yaml",
+      "environment_overrides": {
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "f715d7c": "3c349f904a310bdb993f0872510decc3a40bc641c485eb5bacbc574ab8463b76"
+      }
+    },
+    {
+      "model": "Qwen/Qwen3.5-4B",
+      "slug": "Qwen_Qwen3.5-4B",
+      "base_slug": "Qwen_Qwen3.5-4B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.1111111111111111,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-4B/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-4B",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-4B",
+      "source_summary_sha256": "474f7a856534a2c34366207f529b92eea3d757165c00912f59d029d2a7aece7b",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-4B/run_info.txt",
+      "source_run_info_sha256": "c459261b95ab730df874107988311b7b381d6b816f7b503ba7b7bfba7915b6b2",
+      "source_launch_commits": [
+        "bdaac06"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "9224dd6a5a50629b19227838869e64c5ae38d79d755bc95c71646108568c830d",
+      "config_path": "scripts/configs/qwen3_5/default/mobileworld.yaml",
+      "environment_overrides": {
+        "image": "cua-lite/mobileworld:think-user-api-20260919",
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "bdaac06": "5c3cdaeef644a858be410ee6f8322d59db4f4dff56f3913561a38a12cb241c83"
+      }
+    },
+    {
+      "model": "Qwen/Qwen3.5-9B",
+      "slug": "Qwen_Qwen3.5-9B",
+      "base_slug": "Qwen_Qwen3.5-9B",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.10256410256410256,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-9B/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-9B",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-9B",
+      "source_summary_sha256": "3f4aa3d4985ff4a8cd8dc651787a67a13ded94d176b8f83e3180d215cc226c6c",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3.5-9B/run_info.txt",
+      "source_run_info_sha256": "8e45c20746a71ec28e2d8ad2f703675240d2bd2bfe15c677156cc742342f186e",
+      "source_launch_commits": [
+        "bdaac06"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "7efe6cac74cfac3084532f044a5b70152d8d891102d52fcec0460a3659f7ffeb",
+      "config_path": "scripts/configs/qwen3_5/default/mobileworld.yaml",
+      "environment_overrides": {
+        "image": "cua-lite/mobileworld:think-user-api-20260919",
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "bdaac06": "5c3cdaeef644a858be410ee6f8322d59db4f4dff56f3913561a38a12cb241c83"
+      }
+    },
+    {
+      "model": "Qwen/Qwen3-VL-8B-Instruct",
+      "slug": "Qwen_Qwen3-VL-8B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-8B-Instruct",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.08547008547008547,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-8B-Instruct/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-8B-Instruct",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-8B-Instruct",
+      "source_summary_sha256": "c90bdfda0d62ad0930d245f5a5ff05107e530e800480a63642edb52102ed4383",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-8B-Instruct/run_info.txt",
+      "source_run_info_sha256": "52541bb37d07d746ab443d1da88219dd7688430b8a754df33c93617f869304e5",
+      "source_launch_commits": [
+        "bdaac06"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "d1f3b91f4b650f38f62c76f26c3f9efdb5c80d1418400b4f83f388c951c4bbef",
+      "config_path": "scripts/configs/qwen3_vl/default/mobileworld.yaml",
+      "environment_overrides": {
+        "image": "cua-lite/mobileworld:think-user-api-20260919",
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "bdaac06": "5857a5e33296458280d48f19836f2f28867c7021db72e71d90943c1bc6fe5df6"
+      }
+    },
+    {
+      "model": "Qwen/Qwen3-VL-4B-Instruct",
+      "slug": "Qwen_Qwen3-VL-4B-Instruct",
+      "base_slug": "Qwen_Qwen3-VL-4B-Instruct",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 117,
+      "num_tasks": 117,
+      "num_samples": 117,
+      "mean_episode_return": 0.06837606837606838,
+      "summary_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-4B-Instruct/summary.json",
+      "artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-4B-Instruct",
+      "source_artifact_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-4B-Instruct",
+      "source_summary_sha256": "69c3e341df2f5facac060328995c99f1f170ef4e5ca01d109ddd5d0537aa0f2d",
+      "num_errors": 0,
+      "source_run_info_path": ".exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/Qwen_Qwen3-VL-4B-Instruct/run_info.txt",
+      "source_run_info_sha256": "e855ca6428a2f2a88d5804660931571c204652f989946ae6216bea9099b7d261",
+      "source_launch_commits": [
+        "bdaac06"
+      ],
+      "source_had_uncommitted_changes": false,
+      "sample_records_sha256": "372b3ce22bb8d84b13c34669ff46cbdf9fe9a051ede09f1e2d3e5864a10b212d",
+      "config_path": "scripts/configs/qwen3_vl/default/mobileworld.yaml",
+      "environment_overrides": {
+        "image": "cua-lite/mobileworld:think-user-api-20260919",
+        "step_timeout": 240
+      },
+      "recorded_api_kwargs": {},
+      "source_config_sha256_by_commit": {
+        "bdaac06": "5857a5e33296458280d48f19836f2f28867c7021db72e71d90943c1bc6fe5df6"
+      }
+    },
+    {
+      "model": "gemini-3.6-flash",
+      "slug": "gemini-3.6-flash",
+      "base_slug": "gemini-3.6-flash",
+      "config_id": "default",
+      "status": "empty",
+      "num_valid": 0,
+      "num_tasks": 117,
+      "num_samples": 0,
+      "mean_episode_return": null,
+      "note": "Not started in this campaign."
+    }
+  ],
+  "errors": [],
+  "metric_policy": "Mean episode return over samples without errors; model failures with terminal evaluator rewards remain valid.",
+  "runtime_transport_commit": "9b0f938"
+}
