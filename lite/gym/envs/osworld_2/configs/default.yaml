@@ -1,5 +1,5 @@
 # osworld_2 registration defaults — the single, visible source of every value that
-# would otherwise be a main.py/container.py literal. Official OSWorld-V2 (2.0)
+# would otherwise be a main.py/container.py literal. Official OSWorld-v2.1
 # benchmark on a locally-managed VM-in-Docker container (happysixd/osworld-docker;
 # QEMU/KVM booting the gated v2 disk osworld-v2-ubuntu-x86.qcow2). DEDICATED,
 # non-poolable (one container per trajectory). V2 is a task-model refactor of v1
@@ -19,8 +19,8 @@ env_var_prefix: OSWORLD_2
 
 # Env-wide make defaults, applied via registry.set_env_make_kwargs.
 make_kwargs:
-  step_timeout: 180.0        # per-step cap; v2 evaluators are as heavy as v1's (+ any website/GitLab round-trips)
-  reset_timeout: 600.0       # slow VM cold boot (framework default; explicit for the QEMU boot)
+  step_timeout: 600.0        # includes the action and up to 300s of v2 evaluation
+  reset_timeout: 960.0       # 300s VM boot + 600s task setup + cleanup/transport margin
   loop_detect_terminal_status: success  # loop detection should evaluate state, not submit OSWorld FAIL
 
 env_kwargs:                  # per-instance OSWorldV2Env defaults (overridable per rollout)
@@ -31,11 +31,11 @@ env_kwargs:                  # per-instance OSWorldV2Env defaults (overridable p
   extra_tools: []            # opt-in; available: report_infeasible, response, terminate; off by default
 
 server_kwargs:               # per-deployment container/infra config (deploy-time only)
-  image: "cua-lite/osworld_2:latest"               # DERIVED image (FROM happysixd/osworld-docker + V2 desktop_env + docker/server.py), BUILT by install.sh
+  image: "cua-lite/osworld_2:osworld-v2.1-volume"  # separate from the image used by earlier V2 evals
   qcow2_path: ".cache/osworld-v2-ubuntu-x86.qcow2" # V2 gated qcow2 (relative → <env>/.cache/); provisioned by install.sh
   ram_size: "4G"             # -e RAM_SIZE — OSWorld upstream VM spec (provider default)
   cpu_cores: "4"             # -e CPU_CORES
-  disk_size: "32G"           # -e DISK_SIZE; volume tasks are EXCLUDED + volume_size deferred to None server-side
+  disk_size: "32G"           # default extra data disk; volume tasks size it per task and grow the boot disk's /
   boot_timeout: 300          # guest-server readiness deadline (poll :5000/screenshot), seconds
   screen_width: 1920         # VM-locked (qcow2 native size, not resizable) — per-deploy infra, NOT env_kwargs
   screen_height: 1080
@@ -43,12 +43,8 @@ server_kwargs:               # per-deployment container/infra config (deploy-tim
   # V2-only per-task service gating (per-deploy infra → server_kwargs; drives exclude_reason).
   # NOTE: env_config.load only surfaces env_kwargs/server_kwargs/make_kwargs — a top-level
   # `service_kwargs:` block would be SILENTLY DROPPED, so these live under server_kwargs.
-  website_host_suffix: "web.hku.icu"  # official public OSWorld-web deployment (stateful, per-session cookie-isolated).
-                                      # Enables the stateful-website tasks (39 tagged, ~31 net scored); null → they're excluded. Point elsewhere to self-host.
+  website_host_suffix: null  # self-host Task-Web/OSWorld-web@osworld-v2.1 and set this in a deployment config
   gitlab_url: null           # when null, gitlab tasks are excluded
   gitlab_private_token: null
   user_sim_model: null       # when null, human_in_the_loop tasks are excluded (step loop doesn't drive the sim)
-  eval_model: "gpt-4.1"      # LLM-judge evaluator model (~18 tasks call an LLM at evaluate() via desktop_env
-                             # model_client → OSWORLD_EVAL_MODEL_NAME). gpt-4.1 (not V2's default gpt-4o), same
-                             # as webgym: the gpt-4o deployment 429s at high concurrency; gpt-4.1 is a drop-in
-                             # that doesn't. Needs host OPENAI_API_KEY (+ OPENAI_BASE_URL), auto-threaded in.
+  eval_model: null           # preserve each task's upstream judge model; requires OPENAI_API_KEY

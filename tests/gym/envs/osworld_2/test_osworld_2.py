@@ -13,10 +13,13 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import requests
 
 import lite.gym.envs.osworld_2.main as m
+import lite.gym.envs.osworld_2.container as c
 from lite.core.messages.final import make_no_tool_call_final_actions
 from lite.core.tools import make_tool_call
 from lite.core.tools.calls import tool_call_arguments, tool_call_name
@@ -115,6 +118,7 @@ def test_release_manifest_matches_runtime_constants():
     assert str(release["tasks"]["repo"]) == m._TASKS_REPO
     assert len(m._TASK_IDS) == 108
     assert m._TASK_CLASS_IDENTITY == (f"{m._TASKS_REPO}@{m._HF_REVISION}:{len(m._TASK_IDS)}")
+    assert m._SERVICE_ENV["OSWORLD_BENCHMARK_RELEASE"] == release["hf_revision"]
 
 
 def test_qcow2_gate_checks_size(tmp_path, monkeypatch):
@@ -126,10 +130,208 @@ def test_qcow2_gate_checks_size(tmp_path, monkeypatch):
         m._check_qcow2()
 
 
+def test_unverified_default_assets_fail_before_vm_creation(tmp_path, monkeypatch):
+    monkeypatch.setattr(m, "ENV_DIR", str(tmp_path))
+    assets = tmp_path / ".cache" / "osworld_v2_assets"
+    assets.mkdir(parents=True)
+    monkeypatch.setattr(m, "_ASSET_BASE", str(assets))
+    with pytest.raises(Exception, match="complete gated v2.1 assets are not verified"):
+        m._check_runtime_deps()
+
+
+def test_attached_vm_refuses_dirty_setup_reuse(monkeypatch):
+    import importlib.util
+    import sys
+
+    class SetupError(RuntimeError):
+        pass
+
+    monkeypatch.setitem(sys.modules, "desktop_env.desktop_env", SimpleNamespace(
+        DesktopEnv=type("DesktopEnv", (), {}), EnvironmentSetupError=SetupError,
+    ))
+    for module, name in (("desktop_env.controllers.python", "PythonController"),
+                         ("desktop_env.controllers.setup", "SetupController")):
+        monkeypatch.setitem(sys.modules, module, SimpleNamespace(
+            **{name: lambda **kwargs: SimpleNamespace()},
+        ))
+    path = Path(c.__file__).parent / "docker" / "server.py"
+    spec = importlib.util.spec_from_file_location("osworld2_dirty_reset", path)
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)
+    env = server._attached_desktop_env()
+    assert env.is_environment_used is False
+    env.is_environment_used = True
+    with pytest.raises(SetupError, match="fresh VM"):
+        env._revert_to_snapshot()
+
+
+def test_v21_assets_mounted_for_in_container_task_setup(tmp_path, monkeypatch):
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    call = {}
+    monkeypatch.setattr(c, "docker_run_detached", lambda **kwargs: call.update(kwargs))
+    monkeypatch.setattr(c.OSWorldV2Container, "_register", lambda self: None)
+    monkeypatch.setattr(c.OSWorldV2Container, "_launch_server", lambda self: None)
+    monkeypatch.setattr(c.OSWorldV2Container, "_wait_ready", lambda self: None)
+    container = c.OSWorldV2Container(
+        name="test-osworld_2-001", api_port=23001, task_id="103",
+        qcow2_path="/tmp/disk.qcow2", task_class_dir="/tmp/task_class",
+        asset_dir=str(assets),
+        service_env={"OSWORLD_FILE_BASE_URL": str(assets), "OSWORLD_BENCHMARK_RELEASE": "osworld-v2.1"},
+    )
+
+    container._start_locked()
+
+    assert f"{assets}:{assets}:ro" in call["volumes"]
+    assert "/tmp/task_class/task_103.py:/opt/osworld-v2/evaluation_examples/task_class/task_103.py:ro" in call["volumes"]
+    assert call["env"]["TASK_CLASS_DIR"] == "/opt/osworld-v2/evaluation_examples/task_class"
+    assert call["env"]["OSWORLD_FILE_BASE_URL"] == str(assets)
+    assert call["env"]["OSWORLD_BENCHMARK_RELEASE"] == "osworld-v2.1"
+
+    volume_vm = c.OSWorldV2Container(
+        name="test-osworld_2-082", api_port=23002, task_id="082", volume_size=100,
+    )
+    volume_vm._start_locked()
+    assert call["env"]["DISK_SIZE"] == "100G"
+    assert call["env"]["OSWORLD_VOLUME_SIZE"] == "100"
+
+
+def test_nonstandard_website_port_reaches_generated_port_80_links(monkeypatch):
+    calls = []
+    monkeypatch.setattr(c.socket, "gethostbyname", lambda host: "169.229.219.180")
+    monkeypatch.setattr(c.subprocess, "run", lambda argv, **kwargs: calls.append(argv))
+    monkeypatch.setattr(c, "docker_run_detached", lambda **kwargs: None)
+    monkeypatch.setattr(c.OSWorldV2Container, "_register", lambda self: None)
+    monkeypatch.setattr(c.OSWorldV2Container, "_launch_server", lambda self: None)
+    monkeypatch.setattr(c.OSWorldV2Container, "_wait_ready", lambda self: None)
+    vm = c.OSWorldV2Container(
+        name="test-osworld_2-057", api_port=23001, task_id="057", website=True,
+        service_env={"WEBSITE_HOST_SUFFIX": "169.229.219.180.nip.io:30881"},
+    )
+    vm._start_locked()
+    assert calls[0][-2:] == ["--to-destination", "169.229.219.180:30881"]
+    vm.service_env["WEBSITE_HOST_SUFFIX"] = "web.hku.icu"
+    vm._start_locked()
+    assert len(calls) == 1
+
+
+def test_freecad_reset_rejects_missing_guest_app(monkeypatch, tmp_path):
+    import importlib.util
+    import sys
+
+    path = Path(c.__file__).parent / "docker" / "server.py"
+    spec = importlib.util.spec_from_file_location("osworld2_server_test", path)
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)
+    (tmp_path / "task_103.py").touch()
+    monkeypatch.setattr(server, "_TASK_CLASS_DIR", str(tmp_path))
+    waits = []
+    monkeypatch.setitem(sys.modules, "desktop_env.controllers.setup", SimpleNamespace(
+        SetupController=lambda **kwargs: SimpleNamespace(
+            execute=lambda command, **options: waits.append((command, options))
+        ),
+    ))
+    checks = []
+
+    def check(command, **kwargs):
+        checks.append((command, kwargs))
+        if len(checks) == 1:
+            raise RuntimeError("FreeCAD missing")
+
+    fake_env = SimpleNamespace(
+        reset=lambda **kwargs: None,
+        close=lambda: None,
+        setup_controller=SimpleNamespace(execute=check),
+        controller=SimpleNamespace(get_screenshot=lambda: b"image"),
+    )
+    monkeypatch.setattr(server, "_load_task_from_file", lambda _: {"related_apps": ["freecad"], "instruction": "cad"})
+    monkeypatch.setattr(server, "_attached_desktop_env", lambda: fake_env)
+    monkeypatch.setattr(server, "_encode_screenshot", lambda _: "image")
+    with pytest.raises(RuntimeError, match="FreeCAD missing"):
+        server.reset(server.ResetBody(task_id="103"))
+    assert server.reset(server.ResetBody(task_id="103"))["instruction"] == "cad"
+    assert len(waits) == 2 and all("fuser" in command and options["check"] for command, options in waits)
+    assert all("{CLIENT_PASSWORD}" not in command and server._CLIENT_PASSWORD in command for command, _ in waits)
+    assert checks == [(["which", "freecad"], {"timeout": 10, "check": True})] * 2
+
+
+def test_video_reset_requires_renderer_dependencies(monkeypatch, tmp_path):
+    import importlib.util
+
+    path = Path(c.__file__).parent / "docker" / "server.py"
+    spec = importlib.util.spec_from_file_location("osworld2_video_reset", path)
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)
+    monkeypatch.setattr(server, "_TASK_CLASS_DIR", str(tmp_path))
+    (tmp_path / "task_056.py").touch()
+    monkeypatch.setattr(server, "_load_task_from_file", lambda _: {"instruction": "video"})
+    events = []
+
+    def install(**kwargs):
+        assert all(package in kwargs["command"].split() for package in ("melt", "frei0r-plugins", "xvfb", "xauth"))
+        assert kwargs["check"]
+        events.append("install")
+        if len(events) == 1:
+            raise RuntimeError("package installation failed")
+
+    env = SimpleNamespace(
+        setup_controller=SimpleNamespace(execute=install),
+        controller=SimpleNamespace(get_screenshot=lambda: b"image"),
+        reset=lambda **kwargs: events.append("task setup"),
+        close=lambda: None,
+    )
+    monkeypatch.setattr(server, "_attached_desktop_env", lambda: env)
+    monkeypatch.setattr(server, "_encode_screenshot", lambda _: "image")
+    with pytest.raises(RuntimeError, match="package installation failed"):
+        server.reset(server.ResetBody(task_id="056"))
+    assert events == ["install"]
+    assert server.reset(server.ResetBody(task_id="056"))["instruction"] == "video"
+    assert events == ["install", "install", "task setup"]
+
+
+def test_freecad_scorer_runs_on_four_cpus_with_bounded_allocator(monkeypatch):
+    import os
+    import runpy
+    import sys
+
+    calls = []
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _: set(range(16)))
+    monkeypatch.setattr(os, "sched_setaffinity", lambda _, cpus: calls.append(("cpus", cpus)))
+    monkeypatch.setattr(os, "execv", lambda *args: calls.append(("exec", args)))
+    monkeypatch.setattr(sys, "argv", ["freecad-python", "-c", "import FreeCAD"])
+    monkeypatch.setenv("MALLOC_ARENA_MAX", "8")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")
+
+    runpy.run_path(str(Path(c.__file__).parent / "docker" / "freecad_python.py"), run_name="__main__")
+
+    assert len(calls[0][1]) == 4
+    assert calls[1] == ("exec", ("/opt/cad-score/bin/python", [
+        "/opt/cad-score/bin/python", "-c", "import FreeCAD",
+    ]))
+    assert os.environ["MALLOC_ARENA_MAX"] == "1"
+    assert os.environ["QT_QPA_PLATFORM"] == "offscreen"
+
+
+def test_v21_local_website_probe_falls_back_to_http(monkeypatch):
+    monkeypatch.setattr(m, "_WEBSITE_SUFFIX", "169.229.219.180.nip.io:30881")
+    urls = []
+
+    def get(url, **kwargs):
+        urls.append(url)
+        if url.startswith("https:"):
+            raise requests.exceptions.SSLError("HTTP-only site")
+        return SimpleNamespace(status_code=200)
+
+    monkeypatch.setattr(m.requests, "get", get)
+    m._check_website()
+    assert [url.split("://", 1)[0] for url in urls] == ["https", "http"]
+
+
 @pytest.mark.asyncio
 async def test_direct_reset_runs_full_dependency_gate(monkeypatch):
     env, _calls = _make_env(monkeypatch)
     checks: list[str] = []
+    monkeypatch.setattr(m, "_ASSET_BASE", "https://assets.example.test")
 
     monkeypatch.setattr(m, "_check_kvm", lambda: checks.append("kvm"))
     monkeypatch.setattr(m, "_check_tun", lambda: checks.append("tun"))
@@ -718,15 +920,14 @@ def test_registration_108_tasks_and_hitl_excluded():
         if r:
             excl[r] = excl.get(r, 0) + 1
     # HITL (>=6) is always excluded (capability manifest). The install-time service scan
-    # (_service_deps.json) additionally tags website/gitlab (provisionable), volume/multi_phase
-    # (fidelity limits), and llm_judge (gated on host OPENAI_API_KEY — appears only when the key is
+    # (_service_deps.json) additionally tags website/gitlab (provisionable), multi_phase
+    # (fidelity limit), and llm_judge (gated on host OPENAI_API_KEY — appears only when the key is
     # ABSENT). So the exact set is env-dependent, but HITL is the invariant and only these appear.
     assert excl.get("human_in_the_loop", 0) >= 6
     assert set(excl) <= {
         "human_in_the_loop",
         "website",
         "gitlab",
-        "volume",
         "multi_phase",
         "llm_judge",
     }
@@ -734,7 +935,7 @@ def test_registration_108_tasks_and_hitl_excluded():
 
 
 def test_exclude_reason_precedence():
-    """First-match-wins order: hitl > website > gitlab > llm_judge > multi_phase > volume.
+    """First-match-wins order: hitl > website > gitlab > llm_judge > multi_phase.
 
     The gate config is injected and does not depend on module state or default.yaml/env.
     """
@@ -752,13 +953,13 @@ def test_exclude_reason_precedence():
         _exclude_reason("t", set(), {"gitlab": True, "llm_judge": True}, **CLOSED) == "gitlab"
     )  # gitlab > llm_judge
     assert (
-        _exclude_reason("t", set(), {"llm_judge": True, "volume": True}, **CLOSED) == "llm_judge"
-    )  # llm_judge > volume
+        _exclude_reason("t", set(), {"llm_judge": True, "volume_size": 60}, **CLOSED) == "llm_judge"
+    )
     assert (
-        _exclude_reason("t", set(), {"multi_phase": True, "volume": True}, **CLOSED)
+        _exclude_reason("t", set(), {"multi_phase": True, "volume_size": 60}, **CLOSED)
         == "multi_phase"
     )
-    assert _exclude_reason("t", set(), {"volume": True}, **CLOSED) == "volume"
+    assert _exclude_reason("t", set(), {"volume_size": 60}, **CLOSED) is None
     assert _exclude_reason("t", set(), {}, **CLOSED) is None
     # gates OPEN: provisioned service / key present → NOT excluded
     OPEN = dict(
@@ -776,9 +977,33 @@ def test_metadata_exposes_service_dep_flags():
         registry.task_metadata("osworld_2", i).others
         for i in registry.task_ids("osworld_2", split="eval")
     ]
-    for flag in ("website", "llm_judge", "volume"):
+    for flag in ("website", "llm_judge"):
         assert any(o.get(flag) is True for o in metas), f"no task carries {flag}"
         assert all(o.get(flag) in (True, None) for o in metas)  # never present-and-False
+    sizes = {i: registry.task_metadata("osworld_2", i).others.get("volume_size")
+             for i in registry.task_ids("osworld_2", split="eval")}
+    assert sizes["030"] == 50 and sizes["080"] == 60 and sizes["082"] == 100
+    assert sum(size is not None for size in sizes.values()) == 18  # 023 also needs a user simulator
+    assert registry.task_kwargs("osworld_2", "082")["reset_timeout"] == 1700.0
+    assert registry.env_make_kwargs("osworld_2")["step_timeout"] > 300.0
+    assert registry.task_kwargs("osworld_2", "064")["step_timeout"] > 3600.0
+
+
+@pytest.mark.asyncio
+async def test_task064_evaluation_uses_upstream_replay_timeout(monkeypatch):
+    env, _ = _make_env(monkeypatch, extra_tools=["terminate"])
+    env._config.task_id = "064"
+    rpc = m._rpc
+    timeouts = []
+
+    def capture(base, path, body=None, timeout=None):
+        if path == "/evaluate":
+            timeouts.append(timeout)
+        return rpc(base, path, body, timeout)
+
+    monkeypatch.setattr(m, "_rpc", capture)
+    await env.step([_tc("terminate", {"status": "success"})])
+    assert timeouts == [3600.0]
 
 
 def test_service_env_only_carries_set_knobs():
@@ -801,3 +1026,158 @@ def test_container_name_disjoint_from_v1_and_lite():
     assert "-osworld_2-" in name
     assert "-osworld-" not in name
     assert ".osworld-" not in name
+
+
+def test_judge_failures_survive_task_exception_handlers(tmp_path, monkeypatch):
+    """Exercise the image patch against the pinned upstream checkout, without a VM."""
+    import ast
+    from io import BytesIO
+    import logging
+    import os
+    import subprocess
+    import threading
+    from functools import wraps
+    from hashlib import sha256
+    from PIL import Image
+
+    source = Path(os.environ.get("OSWORLD_V2_SRC", Path(m.ENV_DIR) / ".cache" / "OSWorld-V2"))
+    if not (source / "desktop_env/evaluators/model_client.py").exists():
+        pytest.skip("set OSWORLD_V2_SRC to the pinned OSWorld-V2 checkout")
+    target = tmp_path / "desktop_env/evaluators/model_client.py"
+    target.parent.mkdir(parents=True)
+    target.write_text((source / "desktop_env/evaluators/model_client.py").read_text())
+    backend_file = tmp_path / "desktop_env/evaluators/backends/base.py"
+    backend_file.parent.mkdir(parents=True)
+    backend_file.write_text((source / "desktop_env/evaluators/backends/base.py").read_text())
+    errors_file = tmp_path / "desktop_env/evaluators/errors.py"
+    errors_file.write_text((source / "desktop_env/evaluators/errors.py").read_text())
+    patch = Path(c.__file__).parent / "docker/patches/llm-judge-errors.patch"
+    subprocess.run(["patch", "-p1", "-i", str(patch)], cwd=tmp_path, check=True, capture_output=True)
+
+    encoder = next(n for n in ast.parse(backend_file.read_text()).body
+                   if isinstance(n, ast.FunctionDef) and n.name == "encode_image")
+    image_scope = {"base64": base64, "BytesIO": BytesIO, "Image": Image}
+    exec(compile(ast.Module(body=[encoder], type_ignores=[]), str(backend_file), "exec"), image_scope)
+    for mode, color in (("RGBA", (17, 90, 210, 255)), ("RGBA", (17, 90, 210, 80)),
+                        ("RGB", (17, 90, 210))):
+        path = tmp_path / "judge.png"
+        original = Image.new(mode, (8, 12), color)
+        original.save(path)
+        encoded = base64.b64decode(image_scope["encode_image"](str(path)))
+        with Image.open(BytesIO(encoded)) as decoded:
+            if mode == "RGBA" and color[-1] == 255:
+                assert decoded.mode == "RGB" and decoded.size == original.size
+                assert decoded.tobytes() == original.convert("RGB").tobytes()
+            else:
+                assert encoded == path.read_bytes()
+
+    scope = {"__name__": "judge_failure_test"}
+    exec(errors_file.read_text(), scope)
+    error_type = scope["EvaluationInfrastructureError"]
+    backend = SimpleNamespace(generate=lambda *a, **kw: "NO", chat=lambda *a, **kw: "NO")
+    scope.update(
+        wraps=wraps, sha256=sha256, json=json, os=os, logger=logging.getLogger(__name__),
+        _ENV={"save_raw_dir": "OSWORLD_EVAL_SAVE_RAW_DIR"},
+        _build_config=lambda *a, **kw: SimpleNamespace(provider="openai", model="judge"),
+        _normalize_images=lambda images: images or [], create_backend=lambda config: backend,
+    )
+    monkeypatch.delenv("OSWORLD_EVAL_SAVE_RAW_DIR", raising=False)
+    tree = ast.parse(target.read_text())
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in {
+        "_record_judge_failure", "generate_text", "generate_chat",
+    }]
+    future = ast.parse("from __future__ import annotations").body
+    exec(compile(ast.Module(body=future + nodes, type_ignores=[]), str(target), "exec"), scope)
+
+    import sys
+    monkeypatch.setitem(sys.modules, "desktop_env.evaluators.errors", SimpleNamespace(**scope))
+    server_path = Path(c.__file__).parent / "docker/server.py"
+    evaluate = next(n for n in ast.parse(server_path.read_text()).body
+                    if isinstance(n, ast.FunctionDef) and n.name == "evaluate")
+    evaluate.decorator_list = []
+    scope.update(_lock=threading.Lock(), json=json)
+    exec(compile(ast.Module(body=[evaluate], type_ignores=[]), str(server_path), "exec"), scope)
+
+    def judge_failed(*args, **kwargs):
+        raise RuntimeError("Azure API 401")
+
+    for entry, method, args in (("generate_text", "generate", ("prompt",)),
+                                ("generate_chat", "chat", ([{"role": "user", "content": "prompt"}],))):
+        def task_evaluate():
+            try:
+                return float(scope[entry](*args) == "YES")
+            except Exception:
+                return 0.0
+
+        scope["_env"] = SimpleNamespace(evaluate=task_evaluate)
+        setattr(backend, method, judge_failed)
+        with pytest.raises(error_type, match="Azure API 401"):
+            scope["evaluate"]()
+        setattr(backend, method, lambda *a, **kw: "  ")
+        with pytest.raises(error_type, match="empty response"):
+            scope["evaluate"]()
+        for verdict, reward in (("NO", 0.0), ("YES", 1.0)):
+            setattr(backend, method, lambda *a, **kw: verdict)
+            assert scope["evaluate"]()["reward"] == reward
+        build_config = scope["_build_config"]
+        scope["_build_config"] = judge_failed
+        with pytest.raises(error_type, match="Azure API 401"):
+            scope["evaluate"]()
+        scope["_build_config"] = build_config
+        error_type("stale previous request")
+        assert scope["evaluate"]()["reward"] == 1.0
+
+    def retrying_task():
+        for attempt in range(3):
+            try:
+                verdict = scope["generate_text"]("same rubric", options={"max_tokens": 1500})
+                return float(verdict == "YES")
+            except Exception:
+                if attempt == 2:
+                    raise
+
+    calls = iter([RuntimeError("transient Azure 502"), "YES"])
+
+    def fail_then_recover(*args, **kwargs):
+        result = next(calls)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    backend.generate = fail_then_recover
+    scope["_env"] = SimpleNamespace(evaluate=retrying_task)
+    assert scope["evaluate"]()["reward"] == 1.0
+
+    def separate_checks():
+        for prompt in ("first rubric", "second rubric"):
+            try:
+                scope["generate_text"](prompt)
+            except Exception:
+                pass
+        return 1.0
+
+    calls = iter([RuntimeError("first rubric failed"), "YES"])
+    backend.generate = fail_then_recover
+    scope["_env"] = SimpleNamespace(evaluate=separate_checks)
+    with pytest.raises(error_type, match="first rubric failed"):
+        scope["evaluate"]()
+
+    def unrelated_infrastructure_failure():
+        error_type("reference download failed", subtype="reference")
+        scope["generate_text"]("successful rubric")
+        return 1.0
+
+    backend.generate = lambda *a, **kw: "YES"
+    scope["_env"] = SimpleNamespace(evaluate=unrelated_infrastructure_failure)
+    with pytest.raises(error_type, match="reference download failed"):
+        scope["evaluate"]()
+
+    def missing_output():
+        try:
+            return float(scope["generate_text"]("prompt", [str(tmp_path / "absent.png")]) == "YES")
+        except FileNotFoundError:
+            return 0.0
+
+    scope["_env"] = SimpleNamespace(evaluate=missing_output)
+    assert scope["evaluate"]()["reward"] == 0.0
+    assert scope["consume_evaluation_infrastructure_error"]() is None

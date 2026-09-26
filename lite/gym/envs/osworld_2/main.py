@@ -1,6 +1,6 @@
-"""osworld_2 — CUA-Lite gym wrapper for the OFFICIAL OSWorld-V2 (2.0) benchmark.
+"""osworld_2 — CUA-Lite gym wrapper for the official OSWorld-v2.1 benchmark.
 
-108 capability-graded desktop tasks (release osworld-v2-2026.06.24, ids 001–108) run on a
+108 capability-graded desktop tasks (release osworld-v2.1, ids 001–108) run on a
 locally-managed VM-in-Docker container (`cua-lite/osworld_2`; QEMU/KVM booting the gated v2
 disk osworld-v2-ubuntu-x86.qcow2). DEDICATED, one container per trajectory.
 
@@ -123,6 +123,9 @@ _USER_SIM_MODEL = CFG.server_kwargs["user_sim_model"]
 
 _EVAL_MODEL = CFG.server_kwargs["eval_model"]   # LLM-judge evaluator model override (None → V2 default gpt-4o)
 _HAS_OPENAI_KEY = bool(os.environ.get("OPENAI_API_KEY"))   # gates the ~18 LLM-judge tasks (else they'd mis-score)
+_ASSET_BASE = os.environ.get("OSWORLD_FILE_BASE_URL") or str(
+    Path(ENV_DIR) / ".cache" / "osworld_v2_assets"
+)
 #: Finish tools cannot live in an env's own set, so the union is not optional.
 _KNOWN_STANDALONE_TOOL_NAMES = OsworldTools.get_tool_names() | LiteFinishToolSet.get_tool_names()
 
@@ -140,6 +143,8 @@ _SERVICE_ENV = {k: v for k, v in {
     "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
     "OPENAI_BASE_URL": os.environ.get("OPENAI_BASE_URL"),
     "OSWORLD_EVAL_MODEL_NAME": _EVAL_MODEL,
+    "OSWORLD_BENCHMARK_RELEASE": _RELEASE["hf_revision"],
+    "OSWORLD_FILE_BASE_URL": _ASSET_BASE,
 }.items() if v}
 
 # V2 image sudo password — passed to the in-container server (not used host-side).
@@ -161,9 +166,9 @@ _README = "lite/gym/envs/osworld_2/README.md"
 _INSTALL = "uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh"
 
 # RPC timeouts (blocking HTTP to the in-container eval server).
-_RESET_RPC_TIMEOUT = 300.0   # /reset runs the task's setup (downloads, launch commands)
+_RESET_RPC_TIMEOUT = 600.0   # /reset runs the task's setup (downloads, launch commands)
 _STEP_RPC_TIMEOUT = 180.0
-_EVAL_RPC_TIMEOUT = 180.0
+_EVAL_RPC_TIMEOUT = 300.0   # upstream CAD evaluators allow up to 240s
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="osworld_2-exec")
 atexit.register(lambda: _EXECUTOR.shutdown(wait=False, cancel_futures=True))
@@ -250,7 +255,7 @@ def _check_website() -> None:
     website task's in-container setup fails mid-run. NON-fatal (warn, not raise): only ~31 of the
     scored tasks need it, so a transient website outage must not block the other 51.
 
-    The website is an EXTERNAL always-on SINGLETON (default web.hku.icu) — cua-lite never
+    The website is an EXTERNAL always-on SINGLETON — cua-lite never
     creates/reaps it, so this is a reachability check, not a start. To SELF-HOST, bring the
     OSWorld-web stack up once per env-server here (lazy) or at startup (eager), browsergym-style."""
     if not _WEBSITE_SUFFIX:
@@ -259,15 +264,25 @@ def _check_website() -> None:
     # slow/unreachable deployment can't stall ensure (it runs under the process-wide services lock).
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # verify=False on the internal probe
-    url = f"https://mailhub.{_WEBSITE_SUFFIX}/api/state"
-    try:
-        if requests.get(url, timeout=(3, 3), verify=False).status_code != 200:
-            logger.warning("osworld_2 website %s returned non-200 — website tasks may error at reset", url)
-    except Exception as e:
-        logger.warning("osworld_2 website probe failed (%s: %s) — website tasks may error at reset", url, e)
+    for scheme in ("https", "http"):
+        url = f"{scheme}://mailhub.{_WEBSITE_SUFFIX}/api/state"
+        try:
+            if requests.get(url, timeout=(3, 3), verify=False).status_code == 200:
+                return
+        except Exception:
+            pass
+    logger.warning("osworld_2 website %s unreachable — website tasks may error at reset", url)
 
 
 def _check_runtime_deps() -> None:
+    if _ASSET_BASE and "://" not in _ASSET_BASE and (
+        not os.path.isabs(_ASSET_BASE) or not os.path.isdir(_ASSET_BASE)
+    ):
+        raise _dep_error(f"OSWORLD_FILE_BASE_URL must be an existing absolute directory: {_ASSET_BASE}")
+    if _ASSET_BASE == str(Path(ENV_DIR) / ".cache" / "osworld_v2_assets") and not (
+        Path(_ASSET_BASE) / ".asset_revision"
+    ).is_file():
+        raise _dep_error("complete gated v2.1 assets are not verified; run install.sh provision")
     _check_kvm()
     _check_tun()
     _check_image()
@@ -286,8 +301,8 @@ def _ensure_services(env_id: str) -> None:
 # ---------------------------------------------------------------------------
 @dataclass
 class OSWorldV2Config:
-    """Per-task config. The gated task-class file lives in the container's mounted
-    /task_class; the host passes only the task_id — the in-container server loads the live
+    """Per-task config. The gated task-class file is mounted in the container's
+    evaluation_examples/task_class; the host passes only the task_id — the server loads the live
     BaseTask instance + runs setup/eval."""
 
     task_id: str = ""
@@ -383,9 +398,13 @@ class OSWorldV2Env(LiteBaseEnv, EnvServerResource):
         self._step_count = 0
 
         identity = getattr(self, "identity", None) or EnvIdentity()
+        volume_size = self._config.metadata.get("volume_size")
         factory = OSWorldV2ContainerFactory(
             qcow2_path=_QCOW2, task_class_dir=_TASK_CLASS_DIR, image=_IMAGE,
-            ram_size=_RAM, cpu_cores=_CPU, disk_size=_DISK, boot_timeout=_BOOT_TO,
+            asset_dir=_ASSET_BASE if _ASSET_BASE and "://" not in _ASSET_BASE else "",
+            ram_size=_RAM, cpu_cores=_CPU, disk_size=_DISK, volume_size=volume_size,
+            website=bool(self._config.metadata.get("website")),
+            boot_timeout=_BOOT_TO,
             screen_width=_SCREEN_W, screen_height=_SCREEN_H, client_password=_CLIENT_PASSWORD,
             service_env=_SERVICE_ENV,
             session_id=identity.session_id, token_hash=identity.token_hash,
@@ -423,7 +442,8 @@ class OSWorldV2Env(LiteBaseEnv, EnvServerResource):
         # /reset: the in-container server loads the BaseTask instance + runs its setup.
         res = await loop.run_in_executor(
             _EXECUTOR, _rpc, container.base_url, "/reset",
-            {"task_id": self._config.task_id}, _RESET_RPC_TIMEOUT)
+            {"task_id": self._config.task_id},
+            _RESET_RPC_TIMEOUT + (660.0 if volume_size else 0.0))
         return LiteEnvObservation(image=await png_from_b64_async(res.get("screenshot_b64")),
             text=res.get("instruction", ""),
         )
@@ -625,7 +645,9 @@ class OSWorldV2Env(LiteBaseEnv, EnvServerResource):
         if stop_reason is not None:
             info[STOP_REASON_INFO_KEY] = stop_reason
         if (terminated or truncated) and base is not None:
-            er = await loop.run_in_executor(_EXECUTOR, _rpc, base, "/evaluate", {}, _EVAL_RPC_TIMEOUT)
+            # Upstream task 064 allows 3,180s for three motion-planning replays.
+            eval_timeout = 3600.0 if self._config.task_id == "064" else _EVAL_RPC_TIMEOUT
+            er = await loop.run_in_executor(_EXECUTOR, _rpc, base, "/evaluate", {}, eval_timeout)
             reward = er.get("reward")
             if er.get("payload") is not None:
                 info["evaluate_payload"] = er["payload"]
@@ -699,8 +721,6 @@ def _exclude_reason(task_id: str, hitl_ids: set[str], dep: dict[str, Any], *,
     # the scored set rather than report a wrong reward (see osworld_2 eval-fidelity audit D1/D2):
     if dep.get("multi_phase"):
         return "multi_phase"   # MultiPhaseTask: official runs N phase sub-trajectories; cua-lite runs one → phase-1-only score
-    if dep.get("volume"):
-        return "volume"        # task needs guest-disk expansion (volume_size); deferred (server.py pins it None) → setup differs
     return None
 
 
@@ -736,9 +756,11 @@ def _load_tasks() -> None:
         others: dict[str, Any] = {"capabilities": id_caps.get(tid, [])}
         # Expose the static service dependencies (browsergym-style) so they're filterable +
         # visible, e.g. `--filter "lambda m: m.others.get('website')"` to run just website tasks.
-        for _d in ("website", "gitlab", "volume", "multi_phase", "user_sim", "llm_judge"):
+        for _d in ("website", "gitlab", "multi_phase", "user_sim", "llm_judge"):
             if dep.get(_d) or (_d == "user_sim" and tid in hitl_ids):
                 others[_d] = True
+        if "volume_size" in dep:
+            others["volume_size"] = dep["volume_size"]
         reason = _exclude_reason(tid, hitl_ids, dep,
                                  user_sim_model=_USER_SIM_MODEL, website_suffix=_WEBSITE_SUFFIX,
                                  gitlab_ok=bool(_GITLAB_URL and _GITLAB_TOKEN), has_openai_key=_HAS_OPENAI_KEY)
@@ -752,6 +774,8 @@ def _load_tasks() -> None:
             # Same-source contract: registered copy == the env's
             # builder output; the two sides cannot drift.
             metadata=OSWorldV2Env._task_metadata(config),
+            **({"reset_timeout": 1700.0} if dep.get("volume_size") else {}),
+            **({"step_timeout": 3900.0} if tid == "064" else {}),
         )
 
 

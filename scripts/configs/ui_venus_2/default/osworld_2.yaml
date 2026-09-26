@@ -1,0 +1,17 @@
+# OSWorld-2.1 reference evaluation with a shared 200-step budget.
+agent_id: ui_venus_2
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 0.0
+    top_p: 0.7
+    max_new_tokens: 4096
+  protocol_kwargs:
+    n_history_images: 2
+  sudo_password: osworld-public-evaluation
+env_id: osworld_2
+env_kwargs:
+  max_steps: 200
+  loop_detect: 5
+  extra_tools:
+  - response
+  - terminate

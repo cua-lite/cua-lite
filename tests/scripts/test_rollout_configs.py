@@ -954,6 +954,7 @@ _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/ui_venus_2/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/ui_venus_2/default/lite.osworld.yaml",
     "scripts/configs/ui_venus_2/default/osworld.yaml",
+    "scripts/configs/ui_venus_2/default/osworld_2.yaml",
     "scripts/configs/qwen3_vl/compact/lite.osworld.yaml",
     "scripts/configs/qwen3_vl/default/lite.osworld.bash.yaml",
     "scripts/configs/qwen3_vl/default/lite.osworld.yaml",
@@ -1006,6 +1007,7 @@ _EXPECTED_TERMINATE_CONFIGS = {
     "scripts/configs/evocua/default/osworld.yaml",
     "scripts/configs/ui_venus_2/default/lite.osworld.yaml",
     "scripts/configs/ui_venus_2/default/osworld.yaml",
+    "scripts/configs/ui_venus_2/default/osworld_2.yaml",
     "scripts/configs/qwen3_5/compact/lite.osworld.yaml",
     "scripts/configs/qwen3_8/compact/lite.osworld.yaml",
     "scripts/configs/qwen3_5/default/cua.bench/basic.yaml",
@@ -1050,6 +1052,10 @@ _EXPECTED_TERMINATE_CONFIGS = {
     "scripts/configs/qwen3_8/default/browsergym.webarena/text_only.yaml",
     "scripts/configs/qwen3_8/default/mobilegym.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
+    "scripts/configs/ui_tars_15_v1/default/osworld_2.yaml",
+    "scripts/configs/qwen3_8/default/osworld_2.yaml",
+    "scripts/configs/qwen3_5/default/osworld_2.yaml",
+    "scripts/configs/evocua/default/osworld_2.yaml",
 } | (_BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS | _MOBILE_ANSWER_FINISH_CONFIGS
      | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS | _DESKTOP_USE_RECIPE_CONFIGS
      | _MOBILE_USE_RECIPE_CONFIGS)

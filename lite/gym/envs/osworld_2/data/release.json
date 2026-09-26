@@ -1,11 +1,16 @@
 {
-  "hf_revision": "v2026.06.24",
+  "hf_revision": "osworld-v2.1",
+  "code": {
+    "repository": "https://github.com/xlang-ai/OSWorld-V2.git",
+    "commit": "3d778a3c9a34a079316f70df023b166700445792"
+  },
   "qcow2": {
     "filename": "osworld-v2-ubuntu-x86.qcow2",
     "repo": "xlangai/v2-image",
-    "sha256": "eb737ae70b49849e24af407de6a518439a23de05a8497096a948334ce0a909aa",
+    "sha256": "14b08aa7ba6c023ecb91d46de8df5de32af4d1d6bd75ea925519caf9677fc8b3",
+    "raw_sha256": "28b617987f3edf14edd835069cdde6a6e4708be8e4ae4eb957200d5da335186a",
     "zip": "osworld-v2-ubuntu-x86.qcow2.zip",
-    "size": 27402633216
+    "size": 14891810816
   },
   "tasks": {
     "repo": "xlangai/osworld_v2_tasks"

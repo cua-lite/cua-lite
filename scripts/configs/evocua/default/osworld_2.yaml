@@ -1,0 +1,12 @@
+# OSWorld-2.1 reference evaluation with a shared 200-step budget.
+agent_id: evocua
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 0.01
+    top_p: 0.9
+env_id: osworld_2
+env_kwargs:
+  max_steps: 200
+  loop_detect: 5
+  extra_tools:
+  - terminate

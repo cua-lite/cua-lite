@@ -1,3 +1,11 @@
+## f5279f6 (2026-09-25)
+
+Consolidate 14 reference models on the 98-task OSWorld-2.1 split. Replace the
+listed LLM-judge rollouts with verified Azure-backed reruns, exclude failed API
+attempts from the mean, and retain normal zero rewards. The snapshot records
+per-model source runs, task selections and checksums. Add YAMLs for the actual
+30-step specialist runs and Astra Medium; keep temporary ablations local.
+
 ## 551131f803  (2026-07-17)
 
 Initial standardized snapshot at this commit. The scored set is

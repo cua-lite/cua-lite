@@ -15,11 +15,12 @@ ENV_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 QCOW2="$ENV_DIR/.cache/osworld-v2-ubuntu-x86.qcow2"
 TASK_CLASS_DIR="$ENV_DIR/.cache/task_class"
 VENDOR_DIR="$ENV_DIR/docker/_vendor"
-IMAGE="cua-lite/osworld_2:latest"
+IMAGE="cua-lite/osworld_2:osworld-v2.1-volume"
 
 if [ -e "$QCOW2" ]; then rm -f "$QCOW2" && echo "[uninstall] removed $QCOW2" >&2; else echo "[uninstall] qcow2 already absent." >&2; fi
 if [ -d "$TASK_CLASS_DIR" ]; then rm -rf "$TASK_CLASS_DIR" && echo "[uninstall] removed $TASK_CLASS_DIR" >&2; else echo "[uninstall] task_class/ already absent." >&2; fi
 if [ -d "$VENDOR_DIR" ]; then rm -rf "$VENDOR_DIR" && echo "[uninstall] removed staged V2 source ($VENDOR_DIR)" >&2; fi
+rm -rf "$ENV_DIR/.cache/OSWorld-V2" "$ENV_DIR/.cache/osworld_v2_assets"
 
 if [ "${1:-}" != "keep-image" ]; then
     docker rmi "$IMAGE" >/dev/null 2>&1 && echo "[uninstall] removed image $IMAGE" >&2 || echo "[uninstall] image $IMAGE absent/in-use." >&2
