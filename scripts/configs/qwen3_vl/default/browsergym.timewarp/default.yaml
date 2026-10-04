@@ -1,0 +1,27 @@
+# Qwen3-VL vision+coord rollout eval on cua-lite browsergym.timewarp.
+#
+# Sampling per upstream CLI defaults — targets Qwen3-VL-*-Instruct (non-thinking);
+# see browsergym.miniwob/default.yaml for the per-knob rationale. The adapter's
+# default system prompt is kept: TimeWarp's verifiers normalize the answer, so
+# no answer-format rule is added.
+#
+# Related configs (sync env_kwargs when changing):
+#   - scripts/configs/gpt/default/browsergym.timewarp/default.yaml
+#   - scripts/configs/qwen3_vl/default/browsergym.timewarp/text_only.yaml (AXTree + bid)
+#
+# Prereqs: ``install.sh timewarp`` (lite/gym/envs/browsergym/README.md#timewarp).
+
+agent_id: "qwen3_vl"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0   # Greedy; pair with `-Instruct` variant (OSWorld convention)
+
+env_id: "browsergym.timewarp"
+env_kwargs:
+  max_steps: 30
+  extra_tools: ["response", "terminate", "goto", "back", "forward", "new_tab", "switch_tab", "close_tab"]
+  use_screenshot: true
+  use_ax_tree: false
+  # Vision fast-path: skip BrowserGym's per-step DOM/AXTree extraction (only the
+  # screenshot is used). Safe: coordinate-only action space.
+  skip_dom_extraction: true

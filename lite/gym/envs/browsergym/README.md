@@ -1,25 +1,27 @@
 # BrowserGym
 
-`--env-id` `browsergym.miniwob` · `browsergym.visualwebarena` · `browsergym.webarena`
+`--env-id` `browsergym.miniwob` · `browsergym.visualwebarena` · `browsergym.webarena` · `browsergym.timewarp`
 
-CUA-Lite wrapper for [BrowserGym](https://github.com/ServiceNow/BrowserGym). 1847 tasks across 3 benchmarks (MiniWoB / WebArena / VisualWebArena), via `gym.make("browsergym.<bench>@<task_id>")` with `LiteBrowserActionSpace` + browser `extra_tools` (`back`, `goto`). See [docs/envs.md](/docs/envs.md) for the env contract.
+CUA-Lite wrapper for [BrowserGym](https://github.com/ServiceNow/BrowserGym). 2078 tasks across 4 benchmarks (MiniWoB / WebArena / VisualWebArena / TimeWarp), via `gym.make("browsergym.<bench>@<task_id>")` with `LiteBrowserActionSpace` + browser `extra_tools` (`back`, `goto`). See [docs/envs.md](/docs/envs.md) for the env contract.
 
 | Benchmark | Task ID prefix | Tasks | Infra | Difficulty |
 |---|---|---|---|---|
 | MiniWoB | `browsergym.miniwob@` | 125 | Local HTTP server | Low |
 | WebArena | `browsergym.webarena@` | 812 | 5 Docker containers, ~32 GB RAM, ~60 GB images + ~200 GB OSM assets by default | Medium |
 | VisualWebArena | `browsergym.visualwebarena@` | 910 | WebArena + Classifieds container | Medium |
+| [TimeWarp](https://github.com/sparklabutah/timewarp) | `browsergym.timewarp@` | 231 (103 eval + 128 train) | 1 container (Wiki / News / Shop), ~4 GB RAM; one of 6 UI versions per deployment | Medium |
 
 ## Setup
 
 ```bash
 # One-time: download tars/zip/clone + `docker load` images (required for both modes).
 uv run --no-sync bash lite/gym/envs/browsergym/scripts/install.sh <benchmark>
-# benchmark = webarena (~60 GB images + ~200 GB OSM assets by default) | visualwebarena (webarena + classifieds) | miniwob (no Docker)
+# benchmark = webarena (~60 GB images + ~200 GB OSM assets by default) | visualwebarena (webarena + classifieds) | miniwob (no Docker) | timewarp (builds a ~4 GB image)
 ```
 
 WA/VWA also need a judge key — `export OPENAI_API_KEY="..."` (required
-benchmark-wide; without it `reset()` hard-fails). MiniWoB needs none.
+benchmark-wide; without it `reset()` hard-fails). MiniWoB needs none; TimeWarp
+needs one only for its 2 LLM-judged tasks (see [TimeWarp](#timewarp)).
 
 **Env-server mode (recommended)** — launch [`scripts/serve_env.py`](/scripts/serve_env.py);
 clients set both `CUA_LITE_ENV_SERVER_URL` and `CUA_LITE_ENV_SERVER_TOKEN`.
@@ -165,9 +167,10 @@ import lite.gym as gym
 print(gym.registry.task_ids("browsergym.miniwob"))        # 125 tasks
 print(gym.registry.task_ids("browsergym.webarena"))       # 812 tasks
 print(gym.registry.task_ids("browsergym.visualwebarena")) # 910 tasks
+print(gym.registry.task_ids("browsergym.timewarp"))       # 231 tasks (eval + train)
 ```
 
-Metadata in `env.metadata.others`: `sites`, `mutating`, `depends_on`, `llm_as_a_judge` — see [Filtering tasks](#filtering-tasks-static-task-facts) below.
+Metadata in `env.metadata.others`: `sites`, `mutating`, `depends_on`, `llm_as_a_judge`, `timewarp_version` — see [Filtering tasks](#filtering-tasks-static-task-facts) below.
 
 ## Evaluation
 
@@ -181,6 +184,56 @@ baseline and the read/write handling summarized in
 and isolation tuning live in [`devs/envs/browsergym.md`](/devs/envs/browsergym.md).
 
 One env-var matters regardless of approach: `VWA_CLASSIFIEDS_RESET_TOKEN` (auto-set by `start.sh`) — without it the 22 VWA `require_reset` classifieds tasks can't self-reset. Site URLs (`WA_SHOPPING`, …, `MINIWOB_URL`) are also set by `start.sh` and fail *loudly* if wrong, so they aren't a silent-corruption risk.
+
+## TimeWarp
+
+[TimeWarp](https://github.com/sparklabutah/timewarp) evaluates web agents on
+three self-hosted sites — **Wiki**, **News** and **Shop** — each with **6 UI
+versions** spanning eras of the web. Every task is a question the agent answers
+with `response` (or gives up on with `terminate`, scored as "N/A").
+
+**Setup.** `install.sh timewarp` installs the BrowserGym task package
+(`browsergym-timewarp==0.2.1`) and its nltk data on the host, and builds
+`cua-lite/browsergym.timewarp:latest` — the three sites at a pinned upstream
+commit, with the site data pinned to a Hugging Face revision. Nothing else to
+start: `ensure_services` runs `timewarp-<scope>` (one container per env-server
+scope, ports from `server_kwargs.timewarp_port_range`) and points `TW_WIKI` /
+`TW_NEWS` / `TW_WEBSHOP` at it. The sites load their indexes for ~30 s – a few
+minutes before serving; until then the env answers with a retriable 503.
+
+**UI version** — one per deployment, since upstream reads the site URLs from the
+process environment. It comes from `server_kwargs.timewarp_version` (default
+`1`); `TIMEWARP_VERSION` overrides it. Switching versions recreates the
+container. Evaluate across versions with one run per version:
+
+```bash
+for v in 1 2 3 4 5 6; do
+  TIMEWARP_VERSION=$v uv run python scripts/rollout.py --model-id gpt-5.5 \
+    --env-id browsergym.timewarp --splits eval \
+    --config-path scripts/configs/gpt/default/browsergym.timewarp/default.yaml
+done
+```
+
+Each trajectory records the version in `metadata.others.timewarp_version`.
+With an env-server, start it with `TIMEWARP_VERSION=<v>` (add `--warm-singleton`
+to boot the sites before the first task), and restart it to switch versions.
+
+**Splits.** `eval` is upstream BrowserGym's `test` split (tasks 1-103). `train`
+(104-231) are the tasks TimeWarp ships with human-refined plans (its TimeTraj
+data): their instruction includes the step-by-step plan, as upstream does, so
+use them for teacher rollouts / SFT data rather than for evaluation.
+
+**Instruction.** The three sites do not link to each other and a screenshot
+shows no address bar, so the env appends the three site URLs to every task
+instruction (upstream's AgentLab runs pass the same URLs to the agent). Configs
+should enable `goto` so the agent can open them. Visiting any other site ends the
+episode with reward 0 (upstream's unauthorized-URL check).
+
+**Scoring** is upstream's: deterministic verifiers (`string_match` /
+`number_match` / `list_match`) for 229 tasks, an LLM judge for tasks 32 and 143.
+The judge is GPT (`OPENAI_API_KEY`) unless `TW_JUDGE` selects another (e.g.
+`TW_JUDGE=gemma` with `TW_JUDGE_BASE_URL` for a served open-source judge — see
+upstream's README); a judged task fails at reset when its judge is not configured.
 
 ## Action Space
 
@@ -241,8 +294,9 @@ is merely cold-booting is retried via **503 + Retry-After**, not pre-excluded
 
 | `others` key | Benches | Meaning |
 |---|---|---|
-| `sites` (`list[str]`) | WA / VWA | WA sites the task touches (`"shopping"`, `"map"`, `"gitlab"`, `"reddit"`, …). Static, from the task json. |
-| `llm_as_a_judge` (`bool`) | WA / VWA | `True` iff the evaluator uses `string_match.fuzzy_match` (needs an external LLM judge — cua-lite default `gpt-4.1` via `llm_judge_model`; upstream hard-codes `gpt-4-1106-preview`). Runs by default — reset hard-fails if `OPENAI_API_KEY` is unset (no silent reward-0). Static. |
+| `sites` (`list[str]`) | WA / VWA / TimeWarp | Sites the task touches (WA: `"shopping"`, `"map"`, `"gitlab"`, `"reddit"`, …; TimeWarp: `"wiki"`, `"news"`, `"webshop"`). Static, from the task json. |
+| `llm_as_a_judge` (`bool`) | WA / VWA / TimeWarp | WA/VWA: `True` iff the evaluator uses `string_match.fuzzy_match` (needs an external LLM judge — cua-lite default `gpt-4.1` via `llm_judge_model`; upstream hard-codes `gpt-4-1106-preview`). Runs by default — reset hard-fails if `OPENAI_API_KEY` is unset (no silent reward-0). TimeWarp: `True` for the 2 tasks whose `eval_types` include `llm_judge`. Static. |
+| `timewarp_version` (`int`) | TimeWarp | The UI version (1-6) the serving deployment runs. Recorded so runs on different versions stay distinguishable. |
 | `mutating` (`bool`) | WA / VWA | `True` iff the task writes persisted backend state (`isolation.is_mutating`). Use this for the WA/VWA operator split described in [WA/VWA runtime](#wavwa-runtime). Static. |
 | `depends_on` (`list[str]`) | WA / VWA | Curated run-order parents (BrowserGym metadata) — orders the write pass so an earlier writer's residue can't false-satisfy a later task. Static. |
 
@@ -287,6 +341,8 @@ lite/gym/envs/browsergym/
 ├── __init__.py     # package marker; runtime main.py is lazy-loaded by the registry
 ├── main.py         # BrowserGymEnv + task registration + _wa_vwa_task_facts
 ├── configs/        # default.yaml (env_kwargs + server_kwargs + make_kwargs.cursor) + isolation.yaml (strict)
+├── docker/timewarp/ # TimeWarp sites image (Dockerfile, entrypoint, upstream patches)
+├── image_spec.py   # freshness spec for the TimeWarp image
 ├── isolation.py    # shared-backend conflict-key / mutating policy + isolation server_kwargs reader
 └── scripts/        # install.sh / start.sh / cleanup.sh / uninstall.sh
 
@@ -313,6 +369,7 @@ MINIWOB_URL=http://localhost:7560/miniwob/ uv run pytest tests/gym/envs/browserg
 | Classifieds container occasionally fails its DB-init race | VisualWebArena | `start.sh` waits for `classifieds_db` `mysqladmin ping` (30 × 2 s) before running `mysql -e 'source osclass_craigslist.sql'`. On failure (`docker logs classifieds_db`) re-run `start.sh visualwebarena` — `start_classifieds` returns its sentinel correctly so configure runs even when WA is already up. Persistent failures: set `VWA_CLASSIFIEDS=http://...` to a working host. |
 | WA `homepage` Flask (`localhost:$HOMEPAGE_PORT`, default `4399`, serves `static/input_images/`) | WebArena / VisualWebArena | `install.sh` sparse-checks the `webarena-homepage/` subtree (~180 MB of input PNGs) into `$BROWSERGYM_CACHE`; `start.sh` launches it via `flask run --port $HOMEPAGE_PORT` (NOT `python app.py`, whose hardcoded `app.run(4399)` ignores the port), so `HOMEPAGE_PORT` is honored. `cleanup.sh` and env-server cleanup stop it by scoped `flask run … --port <HOMEPAGE_PORT>` match. |
 | Reset timeouts at 32+ concurrent envs | MiniWoB | Reduce `--concurrency` to 16, or use a faster HTTP server (nginx) |
+| All episodes share the Shop's `abc` session | TimeWarp | Upstream behavior (`TW_WEBSHOP=…/abc`); tasks are read-only Q&A, so concurrent episodes do not interfere. |
 
 </details>
 
@@ -347,6 +404,18 @@ Please cite BrowserGym and the benchmark(s) you run alongside [CUA-Lite](/README
   publisher = {OpenReview.net},
   year      = {2024},
   url       = {https://openreview.net/forum?id=oKn9c6ytLx}
+}
+
+@inproceedings{ishmam2026timewarp,
+  title         = {{TimeWarp}: Evaluating Web Agents by Revisiting the Past},
+  author        = {Ishmam, Md Farhan and Marino, Kenneth},
+  booktitle     = {Fortieth Conference on Neural Information Processing Systems Evaluations and Datasets Track},
+  year          = {2026},
+  note          = {To appear},
+  eprint        = {2603.04949},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  url           = {https://arxiv.org/abs/2603.04949}
 }
 
 @inproceedings{koh2024visualwebarena,

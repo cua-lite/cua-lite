@@ -25,6 +25,7 @@ Runtime invalid/unsupported feedback is returned from `step()` as paired current
 | VisualWebArena | 7–8 Docker containers (adds Classifieds) | `VWA_*` env vars |
 | WorkArena | ServiceNow SaaS instance | External account required |
 | WebLINX | Static traces | Single-step prediction only |
+| TimeWarp | 1 container (`cua-lite/browsergym.timewarp`: Wiki / News / Shop Flask sites, one UI version) | Built by `install.sh timewarp`; `TW_*` set by the env |
 
 ## Implementation Priority
 
@@ -37,6 +38,7 @@ Work in priority order, but support as many benchmarks as possible — do not sk
 | **P1** | VisualWebArena | Medium | Same as WebArena + Classifieds. Adds multimodal tasks (images). |
 | **P3** | WorkArena | High | Requires ServiceNow SaaS account — integrate if credentials are available, skip if not. |
 | **P4** | WebLINX | Low but limited | `max_steps=1`, action prediction only, not interactive. Lowest priority but trivial to add. |
+| **Done** | TimeWarp | Medium | Read-only Q&A over 3 self-hosted sites × 6 UI versions; registration + one container. |
 
 ## Design Decisions
 
@@ -98,6 +100,46 @@ BrowserGym and Playwright are synchronous APIs; CUA-Lite envs are async. The wra
 ### Optional dep
 
 `browsergym` package. WebArena tasks additionally need Docker services running and `WA_*` / `VWA_*` env vars set.
+
+## TimeWarp
+
+Upstream: [sparklabutah/timewarp](https://github.com/sparklabutah/timewarp)
+(sites + `browsergym-timewarp` task package, pinned at `e3b2b6d` / `0.2.1`).
+
+- **One UI version per process.** Upstream `TimeWarpInstance` reads `TW_WIKI` /
+  `TW_NEWS` / `TW_WEBSHOP` from `os.environ` when a task is constructed, so two
+  versions cannot share one Python process without changing upstream. The
+  version is deployment config (`server_kwargs.timewarp_version`,
+  `TIMEWARP_VERSION`) and is recorded as `metadata.others.timewarp_version`.
+  Per-task versions would need upstream to accept injected site URLs.
+- **Container.** `docker/timewarp/` runs the three upstream Flask apps as
+  `run_all_env.sh <version>` does. Two patches: Wiki/News bind `0.0.0.0`, and the
+  Shop builds its lazy search engine before opening its port (otherwise
+  concurrent first requests — e.g. readiness probes — each start an init).
+  `start.sh` reuses `timewarp-<scope>` only when its version label and image ID
+  match, so a version switch or rebuild recreates it.
+- **Registration** reads `browsergym/timewarp/data/test.raw.json` without
+  importing the package (its `__init__` downloads nltk data when missing); the
+  import happens on the first reset. Splits follow BrowserGym's `timewarp.csv`,
+  which `browsergym-experiments==0.14.3` does not ship yet: tasks with
+  `additional_instructions` (TimeTraj plans) are `train`, the rest `eval`.
+- **Action set.** `browsergym-core==0.14.3` predates the upstream `timewarp`
+  action subset; the text+bid config spells it as
+  `["bid", "chat", "infeas", "nav", "tab"]` narrowed by `extra_tools`.
+- **Scoring** is upstream's evaluator. The two `llm_judge` tasks (32, 143)
+  resolve their judge at reset (`resolve_judge`) so a missing key fails there
+  instead of inside `validate()`.
+
+Verification (arm64 macOS host, Docker Desktop): gold answers from each task's
+`fuzzy_match` score 1.0 and a non-answer 0.0 through `gym.make` on Wiki (1),
+News (33), Shop (54) and a three-site task (84); coordinate `click` / `type` /
+`key` / `scroll`, `goto`, `back`, `new_tab`, `switch_tab`, `response` and
+`terminate` were checked on the live sites, and a version switch (1 → 5)
+recreated the container. Offline, with upstream's verifiers: 214 of the 229
+deterministic tasks accept their gold and reject a non-answer; 15 negative-answer
+tasks (45, 51, 62, 66, 80, 89, 124, 125, 127, 146, 157, 161, 167, 174, 189)
+also accept "I could not find it." because their `must_include` lists any
+"not …" phrasing.
 
 ## Verification
 

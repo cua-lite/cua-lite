@@ -1,0 +1,10 @@
+--- a/env/webshop/web_agent_site/app.py	2026-10-04 05:19:23
++++ b/env/webshop/web_agent_site/app.py	2026-10-04 05:19:23
+@@ -611,4 +611,7 @@
+         print(f"Open your browser and go to: http://localhost:{port}")
+         print("="*60 + "\n")
+         
++        # Build the lazy search engine before the port opens, so concurrent
++        # first requests cannot each start their own initialization.
++        app.test_client().get('/abc')
+         app.run(host='0.0.0.0', port=port, use_reloader=False)

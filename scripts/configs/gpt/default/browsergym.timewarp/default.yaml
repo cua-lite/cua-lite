@@ -1,0 +1,33 @@
+# GPT vision+coord rollout eval on cua-lite browsergym.timewarp.
+#
+# Routing: env declares ``platform="browser"``, ``task_type="use"``, so ``make``
+# composes ``gpt@browser@use`` — the same computer-use agent class as the
+# WebArena / OSWorld rollouts; only env_kwargs differ.
+#
+# TimeWarp tasks are questions answered with ``response``; its verifiers
+# normalize the answer (case, punctuation, number formats), so no answer-format
+# system prompt is needed. The env appends the Wiki / News / Shop URLs to every
+# instruction; ``goto`` is how the agent reaches them.
+#
+# Related configs (sync env_kwargs when changing):
+#   - scripts/configs/claude/default/browsergym.timewarp/default.yaml
+#   - scripts/configs/qwen3_vl/default/browsergym.timewarp/default.yaml
+#
+# Prereqs: ``install.sh timewarp`` (lite/gym/envs/browsergym/README.md#timewarp)
+# + ``OPENAI_API_KEY``. TIMEWARP_VERSION (1-6) picks the UI version served.
+
+agent_id: "gpt"
+agent_kwargs:
+  api_kwargs:
+    reasoning_effort: "medium"
+    max_output_tokens: 4096
+
+env_id: "browsergym.timewarp"
+env_kwargs:
+  max_steps: 30
+  extra_tools: ["response", "terminate", "goto", "back", "forward", "new_tab", "switch_tab", "close_tab"]
+  use_screenshot: true
+  use_ax_tree: false
+  # Vision fast-path: skip BrowserGym's per-step DOM/AXTree extraction (only the
+  # screenshot is used). Safe: coordinate-only action space.
+  skip_dom_extraction: true

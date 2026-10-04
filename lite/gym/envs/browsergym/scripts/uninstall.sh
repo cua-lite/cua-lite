@@ -11,6 +11,7 @@ set -euo pipefail
 #   webarena         — remove webarena Docker images + tar/zim files
 #   visualwebarena   — all webarena artifacts + Classifieds zip/unpack dir
 #   miniwob          — delete the cloned miniwob-plusplus directory
+#   timewarp         — remove the cua-lite/browsergym.timewarp image
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 ENV_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -52,6 +53,7 @@ Benchmarks:
   webarena         remove webarena images + tar files
   visualwebarena   webarena artifacts + classifieds
   miniwob          delete cloned miniwob-plusplus at \$MINIWOB_CLONE_DIR
+  timewarp         remove the cua-lite/browsergym.timewarp image
 
 This is destructive — images and tar files (multi-GB) are deleted.
 USAGE
@@ -74,6 +76,11 @@ case "${1:-}" in
         else
             echo "$MINIWOB_CLONE_DIR does not exist — nothing to remove."
         fi
+        ;;
+    timewarp)
+        docker image rm cua-lite/browsergym.timewarp:latest 2>/dev/null \
+            || echo "  kept cua-lite/browsergym.timewarp:latest (absent, or a container still references it)"
+        echo "TimeWarp uninstalled."
         ;;
     ""|-h|--help)
         usage

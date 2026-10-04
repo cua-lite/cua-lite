@@ -181,5 +181,5 @@ class TestRegistration:
 
     def test_benchmark_viewports_complete(self):
         # Sanity: viewport map covers all benchmarks we register.
-        for bench in ("miniwob", "webarena", "visualwebarena"):
+        for bench in ("miniwob", "webarena", "visualwebarena", "timewarp"):
             assert bench in _BENCHMARK_VIEWPORTS

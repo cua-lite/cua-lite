@@ -1,6 +1,7 @@
 # uv override file for the browsergym env install (passed via `uv pip install --override`).
 #
-# browsergym==0.14.3 -> browsergym-webarena -> libwebarena -> text-generation, and
+# browsergym==0.14.3 (and browsergym-timewarp) -> browsergym-webarena -> libwebarena
+# -> text-generation, and
 # text-generation caps `huggingface-hub<1.0` — but only for HF's TGI *baseline
 # agents*, which cua-lite never runs (we drive browsergym with our own agent). That
 # stale cap is unsatisfiable with the model stack's `transformers>=5` (needs

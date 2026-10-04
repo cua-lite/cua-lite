@@ -122,6 +122,7 @@ def test_all_env_local_image_specs_are_discoverable():
     assert set(discovered) == {
         "androidlab",
         "androidworld",
+        "browsergym",
         "lite.cuagym",
         "lite.cuaworld",
         "lite.demo",

@@ -1,0 +1,17 @@
+# Runtime imports of TimeWarp's three sites (env/wiki, env/news, env/webshop).
+# Versions are constrained at build time by TimeWarp's environment.yml (see
+# Dockerfile); torch is installed separately from the CPU index.
+#
+# python-Levenshtein is intentionally absent: it is GPL-2.0, and its only use
+# is speeding up thefuzz inside the Shop's own purchase reward, which TimeWarp
+# tasks never score.
+cleantext
+flask
+mwparserfromhell
+pyserini
+python-dotenv
+rank-bm25
+rich
+spacy
+thefuzz
+tqdm

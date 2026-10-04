@@ -1,8 +1,8 @@
 """BrowserGym — CUA-Lite gym wrapper for BrowserGym benchmarks.
 
-Wraps BrowserGym's web benchmarks (MiniWoB, WebArena, VisualWebArena) as
-CUA-Lite gym environments using coordinate-based actions only, exposed
-through LiteBrowserActionSpace ([0, 1000] coordinates).
+Wraps BrowserGym's web benchmarks (MiniWoB, WebArena, VisualWebArena,
+TimeWarp) as CUA-Lite gym environments using coordinate-based actions only,
+exposed through LiteBrowserActionSpace ([0, 1000] coordinates).
 
 BrowserGym provides the Playwright browser, task setup, and evaluation;
 this wrapper translates CUA-Lite actions to Playwright calls and captures
@@ -13,6 +13,8 @@ Prerequisites:
   - For MiniWoB: set MINIWOB_URL env var
   - For WebArena: Docker services running + WA_* env vars
   - For VisualWebArena: Docker services + VWA_* env vars
+  - For TimeWarp: the cua-lite/browsergym.timewarp image; the env starts it for
+    one UI version (TIMEWARP_VERSION, 1-6) and sets TW_* itself
 
 Config: ``configs/default.yaml`` has ``env_kwargs: {}`` (every constructor field
 is per-benchmark table-baked, a uniform default, a debug knob, or rejected) — the
@@ -233,6 +235,9 @@ _MINIWOB_PORT_RANGE: tuple[int, int] = tuple(_SK["miniwob_port_range"])  # type:
 _WIKIPEDIA_PATH = _SK["wikipedia_path"]
 _CLASSIFIEDS_RESET_TOKEN = _SK["classifieds_reset_token"]
 _LLM_JUDGE_MODEL = _SK["llm_judge_model"]
+# TimeWarp UI version served (TIMEWARP_VERSION wins) + its host-port band.
+_TIMEWARP_VERSION_DEFAULT = _SK["timewarp_version"]
+_TIMEWARP_PORT_RANGE: tuple[int, int] = tuple(_SK["timewarp_port_range"])  # type: ignore[assignment]
 # ============================================================================
 
 # Re-export so the env-server's restore dispatch finds the hook at the
@@ -797,12 +802,12 @@ class BrowserGymConfig:
     # hint fields below in ``_task_kwargs`` (explicit keys here win).
     task_kwargs: dict[str, Any] = field(default_factory=dict)
 
-    # ─── WebArena/VWA closed-world goal hints — flat yaml knobs ───────────────
+    # ─── WebArena/VWA/TimeWarp closed-world goal hints — flat yaml knobs ──────
     # Forwarded into the browsergym task at make-time (``_task_kwargs``),
     # NOT baked at registration, so a config flips them per run like any ObsFlag
     # (``env_kwargs: {with_homepage_hint: false}``). Benchmark-guarded: WA accepts
-    # both, VWA accepts only ``with_na_hint`` (its task __init__ has no homepage
-    # param — passing it TypeErrors), miniwob accepts neither.
+    # both, VWA and TimeWarp accept only ``with_na_hint`` (their task __init__ has
+    # no homepage param — passing it TypeErrors), miniwob accepts neither.
     #
     # with_homepage_hint (default OFF — browsergym-faithful; opt in per-run via
     # ``env_kwargs: {with_homepage_hint: true}``): appends the $WA_HOMEPAGE
@@ -932,9 +937,12 @@ _BENCHMARK_VIEWPORTS: dict[str, tuple[int, int]] = {
     #          viewport (webarena/task.py, visualwebarena/task.py) and we pass NO
     #          viewport override, so the screenshot stays 1280×720; denormalizing
     #          [0,1000] against 1920×1080 would scale every click ~1.5× off-page.
+    # timewarp: GenericTimeWarpTask hard-codes the same 1280×720 viewport at
+    #          scale_factor 1.0 (browsergym/timewarp/task.py).
     "miniwob": (498, 321),
     "webarena": (1280, 720),
     "visualwebarena": (1280, 720),
+    "timewarp": (1280, 720),
 }
 
 # ---------------------------------------------------------------------------
@@ -1086,7 +1094,8 @@ class BrowserGymEnv(LiteBaseEnv):
           STATIC WA/VWA task facts (``sites``/``llm_as_a_judge``/``mutating``/
           ``depends_on`` — see ``_wa_vwa_task_facts``; callers compose their own
           runtime filters, the env never bakes a deploy-dependent
-          exclude_reason) and the shared-backend isolation gate's
+          exclude_reason), the TimeWarp facts (``sites``/``llm_as_a_judge`` plus
+          the served ``timewarp_version``), and the shared-backend isolation gate's
           ``conflict_keys`` (server-mode-only opt-in contract, see
           lite/gym/remote/conflict.py; keyed OFF by default → () → gate no-op,
           populated under BROWSERGYM_CONFIG=isolation — policy in isolation.py).
@@ -1117,6 +1126,15 @@ class BrowserGymEnv(LiteBaseEnv):
                 # list(...): task_depends_on returns the module-cached list —
                 # sever the registered/live others from it.
                 others["depends_on"] = list(deps)
+        if benchmark == "timewarp":
+            # TimeWarp tasks are read-only Q&A, so there is nothing to isolate.
+            # ``timewarp_version`` is the UI version this deployment serves
+            # (one per process) — the fact that tells two runs of a task apart.
+            config = _timewarp_task_configs()[bgym_task_id]
+            others["sites"] = sorted(config["sites"])
+            if "llm_judge" in config["eval"]["eval_types"]:
+                others["llm_as_a_judge"] = True
+            others["timewarp_version"] = _timewarp_version()
         conflict_keys, _gate_mutating = isolation.conflict_keys_and_mutating(
             benchmark, bgym_task_id
         )
@@ -1183,6 +1201,29 @@ class BrowserGymEnv(LiteBaseEnv):
             return self._fake_reset()
 
         _check_env_vars(self._config.benchmark)
+        if self._config.benchmark == "timewarp":
+            # An ``llm_judge`` task resolves its judge only inside validate(),
+            # where a missing key can only end the episode without a reward.
+            # Resolve it here with upstream evaluator_router's precedence
+            # (TW_JUDGE > task eval.llm_model > GPT default) so it fails at reset.
+            task_eval = _timewarp_task_configs()[self._config.bgym_task_id]["eval"]
+            if "llm_judge" in task_eval["eval_types"]:
+                from browsergym.timewarp.evaluators import resolve_judge
+                try:
+                    resolve_judge(
+                        os.environ.get("TW_JUDGE") or task_eval.get("llm_model"),
+                        os.environ.get("TW_JUDGE_BASE_URL") or task_eval.get("llm_base_url"),
+                    )
+                except ValueError as e:
+                    from lite.gym.errors import EnvDepsMissingError
+                    raise EnvDepsMissingError(
+                        what=f"browsergym.timewarp LLM judge unavailable: {e}",
+                        install=(
+                            "export OPENAI_API_KEY=... (GPT judge), or serve the "
+                            "open-source judge and export TW_JUDGE=gemma"
+                        ),
+                        see=_README,
+                    ) from e
 
         def _create_and_reset():
             import gymnasium as gym
@@ -1235,6 +1276,12 @@ class BrowserGymEnv(LiteBaseEnv):
                 # gymnasium registry (so the ``gym.make`` below resolves) and
                 # installs the judge-model override. Idempotent.
                 _ensure_visualwebarena_imported()
+                _hint_kwargs = {"with_na_hint": self._config.with_na_hint}
+            elif self._config.benchmark == "timewarp":
+                # Deferred like VWA: registration reads the task json without
+                # importing the package (_timewarp_task_configs); this import
+                # registers ``timewarp.<n>`` in BrowserGym's gymnasium registry.
+                import browsergym.timewarp  # noqa: F401
                 _hint_kwargs = {"with_na_hint": self._config.with_na_hint}
             _task_kwargs = {**_hint_kwargs, **self._config.task_kwargs}
 
@@ -1316,6 +1363,18 @@ class BrowserGymEnv(LiteBaseEnv):
         # the latest real BrowserGym observation available after reset.
         self._last_obs = obs
         self._instruction = _extract_instruction(obs)
+        if self._config.benchmark == "timewarp":
+            # The three sites do not link to each other and a screenshot shows
+            # no address bar, so list them — upstream's AgentLab benchmark puts
+            # the same URLs in the agent's extra instructions. validate() scores
+            # 0 for any page outside them.
+            self._instruction += (
+                "\n\nThe TimeWarp websites are:\n"
+                f"- Wiki: {os.environ['TW_WIKI']}\n"
+                f"- News: {os.environ['TW_NEWS']}\n"
+                f"- Shop: {os.environ['TW_WEBSHOP']}\n"
+                "Only visit these websites; external websites are not available."
+            )
         # Screenshot only when requested. Default (use_screenshot=True) keeps
         # today's behavior; text-only configs (`use_screenshot=False, use_ax_tree=True`)
         # null the PNG and rely on the AXTree text from _build_obs_text.
@@ -2143,6 +2202,16 @@ _DEFAULT_ENV_VARS: dict[str, dict[str, str]] = {
     },
 }
 
+# TimeWarp sites served by the ``timewarp-<scope>`` container. Per site: (host-port
+# env var start.sh publishes, container port, URL env var upstream
+# ``TimeWarpInstance`` reads, URL path). The env owns the TW_* URLs — they always
+# follow the published host ports (``_ensure_timewarp``).
+_TIMEWARP_SITES: tuple[tuple[str, int, str, str], ...] = (
+    ("TIMEWARP_WIKI_PORT", 5000, "TW_WIKI", ""),
+    ("TIMEWARP_NEWS_PORT", 5001, "TW_NEWS", ""),
+    ("TIMEWARP_WEBSHOP_PORT", 5002, "TW_WEBSHOP", "/abc"),
+)
+
 _REQUIRED_ENV_VARS: dict[str, list[str]] = {
     bench: list(defaults.keys()) for bench, defaults in _DEFAULT_ENV_VARS.items()
 }
@@ -2155,6 +2224,10 @@ _REQUIRED_ENV_VARS: dict[str, list[str]] = {
 # ``openai_utils`` binds ``os.environ["OPENAI_API_KEY"]`` by name.
 _REQUIRED_ENV_VARS["webarena"].append("OPENAI_API_KEY")
 _REQUIRED_ENV_VARS["visualwebarena"].append("OPENAI_API_KEY")
+# TimeWarp's site URLs have no static default: ``_ensure_timewarp`` sets them from
+# the container's published ports. Its LLM judge is checked per task at reset —
+# only 2 of 231 tasks use it.
+_REQUIRED_ENV_VARS["timewarp"] = [url_var for _, _, url_var, _ in _TIMEWARP_SITES]
 
 def _check_env_vars(benchmark: str) -> None:
     """Raise a clear error if required env vars for a benchmark are missing."""
@@ -2312,10 +2385,12 @@ def _wa_down_sites(benchmark: str) -> list[str]:
 
 def _service_up(benchmark: str) -> bool:
     """Readiness probe for a benchmark's backend(s). WA/VWA → the full local-stack
-    check (:func:`_wa_stack_up`); miniwob → its single needle probe. ``True`` for an
-    unknown/probe-less benchmark."""
+    check (:func:`_wa_stack_up`); timewarp → its three sites (:func:`_timewarp_up`);
+    miniwob → its single needle probe. ``True`` for an unknown/probe-less benchmark."""
     if benchmark in ("webarena", "visualwebarena"):
         return _wa_stack_up(benchmark)
+    if benchmark == "timewarp":
+        return _timewarp_up()
     specs = _PROBE_SPECS.get(benchmark, [])
     if not specs:
         return True
@@ -2843,6 +2918,118 @@ _WA_CONTAINER_BASES: tuple[str, ...] = (
 )
 
 
+# ── TimeWarp: one container per env-server scope, serving ONE UI version ─────
+# ``timewarp-<scope>`` (start.sh) runs the Wiki, News and Shop sites listed in
+# ``_TIMEWARP_SITES`` for ``_timewarp_version()``.
+
+
+def _timewarp_container() -> str:
+    return f"timewarp-{_resolve_env_server_port()}"
+
+
+def _timewarp_published_ports() -> dict[str, int] | None:
+    """Host ports THIS scope's TimeWarp container publishes, keyed by the
+    ``_TIMEWARP_SITES`` port env var; None when it is not running or docker
+    cannot say (fail closed, like ``_own_stack_published_port``)."""
+    ports: dict[str, int] = {}
+    for port_var, container_port, _url_var, _path in _TIMEWARP_SITES:
+        try:
+            r = subprocess.run(
+                ["docker", "port", _timewarp_container(), f"{container_port}/tcp"],
+                capture_output=True, text=True, timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if r.returncode != 0 or not r.stdout.strip():
+            return None
+        ports[port_var] = int(r.stdout.splitlines()[0].rsplit(":", 1)[1])
+    return ports
+
+
+def _timewarp_up() -> bool:
+    """All three sites answer 200 at their TW_* URLs. Each site opens its port
+    only after its index has loaded (the Shop also after its search-engine
+    warm-up), so 200 means ready."""
+    for _port_var, _container_port, url_var, _path in _TIMEWARP_SITES:
+        url = os.environ.get(url_var)
+        if not url:
+            return False
+        try:
+            with urllib.request.urlopen(url, timeout=3) as r:
+                if r.status != 200:
+                    return False
+        except (urllib.error.URLError, OSError, TimeoutError):
+            return False
+    return True
+
+
+def _ensure_timewarp() -> None:
+    """Bring up (or adopt) THIS scope's TimeWarp container for the configured
+    UI version: fresh-image gate → host ports → idempotent ``start.sh timewarp``
+    (recreates the container on a version change and waits, bounded, for the
+    sites) → TW_* from the published ports → probe. A still-booting (or not yet
+    inspectable) stack is a retriable 503."""
+    from lite.gym.errors import CapacityExhausted, EnvDepsMissingError
+    from lite.gym.utils.backend.docker import require_image_present
+    from lite.gym.utils.backend.freshness import image_for
+    from lite.gym.utils.backend.ports import allocate_ports
+
+    version = _timewarp_version()
+    require_image_present(image_for("browsergym.timewarp"))
+
+    # Host ports start.sh publishes IF it (re)creates the container: an operator
+    # TIMEWARP_*_PORT pin, else the ports this scope's container already
+    # publishes (a version switch keeps them), else free ports from the band.
+    start_env = {**os.environ, "TIMEWARP_VERSION": str(version)}
+    current = _timewarp_published_ports() or {}
+    unresolved: list[str] = []
+    for port_var, _container_port, _url_var, _path in _TIMEWARP_SITES:
+        if port_var in start_env:
+            continue
+        if port_var in current:
+            start_env[port_var] = str(current[port_var])
+        else:
+            unresolved.append(port_var)
+    if unresolved:
+        lo, hi = _TIMEWARP_PORT_RANGE
+        picked = allocate_ports(n=len(unresolved), range_start=lo, range_end=hi + 1)
+        start_env.update(zip(unresolved, map(str, picked)))
+
+    try:
+        subprocess.run(
+            ["bash", str(_BG_SCRIPTS_DIR / "start.sh"), "timewarp"],
+            cwd=str(_BG_REPO_ROOT), env=start_env,
+            capture_output=True, text=True, timeout=180, check=True,
+        )
+    except subprocess.TimeoutExpired:
+        pass  # the container keeps booting; the probe below decides
+    except subprocess.CalledProcessError as e:
+        raise EnvDepsMissingError(
+            what=(
+                "browsergym.timewarp container failed to start: "
+                f"{(e.stderr or '').strip()[-400:]}"
+            ),
+            install="uv run --no-sync bash lite/gym/envs/browsergym/scripts/install.sh timewarp",
+            see=_README,
+        )
+
+    # TW_* follow the ports the running container actually publishes — a
+    # reused container keeps its own, whatever start_env asked for.
+    published = _timewarp_published_ports()
+    if published is not None:
+        for port_var, _container_port, url_var, path in _TIMEWARP_SITES:
+            os.environ[url_var] = f"http://localhost:{published[port_var]}{path}"
+    if not _timewarp_up():
+        raise CapacityExhausted(
+            what=(
+                f"browsergym.timewarp warming: {_timewarp_container()} (UI version "
+                f"{version}) is still loading its site indexes. Retry."
+            ),
+            retry_after_s=15.0,
+            layer="env_internal",
+        )
+
+
 def _ensure_services(env_id: str) -> None:
     """Registry hook: bring up this benchmark's auxiliary service.
 
@@ -2862,6 +3049,11 @@ def _ensure_services(env_id: str) -> None:
         # reuse-or-start path (registry + conflict-avoiding port pick). Handle it
         # entirely here and short-circuit the generic start.sh flow below.
         _ensure_miniwob_singleton()
+        _services_started.add(benchmark)
+        return
+    if benchmark == "timewarp":
+        # One scoped container for one UI version; its own lifecycle path.
+        _ensure_timewarp()
         _services_started.add(benchmark)
         return
     if benchmark in ("webarena", "visualwebarena"):
@@ -3138,6 +3330,35 @@ def _wa_vwa_task_facts(benchmark: str, bgym_task_id: str) -> tuple[list[str], bo
     return sites, llm_judge, mutating
 
 
+@functools.cache
+def _timewarp_task_configs() -> dict[str, dict[str, Any]]:
+    """Raw TimeWarp task configs keyed by BrowserGym id (``timewarp.<n>``).
+
+    Read from the installed ``browsergym-timewarp`` package data without
+    importing the package, whose ``__init__`` downloads nltk data when it is
+    missing — a registry probe must not touch the network. Site URLs are still
+    ``__WIKI__``-style placeholders here; only static facts are read.
+    Raises ``FileNotFoundError`` when the package is not installed.
+    """
+    import importlib.util
+
+    spec = importlib.util.find_spec("browsergym")
+    for location in (spec.submodule_search_locations or []) if spec else []:
+        path = Path(location) / "timewarp" / "data" / "test.raw.json"
+        if path.is_file():
+            return {f"timewarp.{t['task_id']}": t for t in json.loads(path.read_text())}
+    raise FileNotFoundError("browsergym-timewarp not installed")
+
+
+def _timewarp_version() -> int:
+    """The TimeWarp UI version (1-6) this process serves: ``TIMEWARP_VERSION``,
+    else ``server_kwargs.timewarp_version``."""
+    raw = os.environ.get("TIMEWARP_VERSION", str(_TIMEWARP_VERSION_DEFAULT))
+    if raw not in ("1", "2", "3", "4", "5", "6"):
+        raise ValueError(f"TIMEWARP_VERSION must be one of 1-6, got {raw!r}")
+    return int(raw)
+
+
 def _register_benchmark(
     benchmark: str,
     bgym_task_ids: list[str],
@@ -3214,7 +3435,7 @@ def _load_tasks() -> None:
 
     Lazy: fired by ``BrowserGymServices.register_tasks`` on the first catalog
     probe (``task_ids``) or ``make()`` for ANY browsergym leaf — NOT at module
-    import. It registers ALL benchmarks (~21s: miniwob + WA + VWA discovery), so
+    import. It registers ALL benchmarks (~21s: miniwob + WA + VWA + TimeWarp discovery), so
     paying it at import would tax every startup (rollout / eval / env-server) AND
     every pytest collection. Idempotent: the first call registers every leaf;
     later leaf probes find them already in ``_splits``."""
@@ -3222,7 +3443,7 @@ def _load_tasks() -> None:
     if _tasks_registered:
         return
 
-    # MiniWoB is single-page → only nav tools (back/goto), no tab. Other three
+    # MiniWoB is single-page → only nav tools (back/goto), no tab. The others
     # are multi-tab benchmarks → include "tab" in the action subset so
     # canonical new_tab/switch_tab/close_tab are exposed.
     _SUBSETS_NO_TAB = ("coord", "chat", "infeas", "nav")
@@ -3302,6 +3523,28 @@ def _load_tasks() -> None:
         logger.debug("Skipping VisualWebArena (browsergym.visualwebarena not installed)")
     except Exception as e:
         logger.warning("Failed to register VisualWebArena tasks: %s", e)
+
+    # --- TimeWarp ---
+    # Ids and splits come from the package's task json, read WITHOUT importing
+    # ``browsergym.timewarp`` (see _timewarp_task_configs). The split is upstream
+    # BrowserGym's ``timewarp.csv``: tasks carrying a human-refined plan
+    # (``additional_instructions``, TimeWarp's TimeTraj data) are "train"; the
+    # rest are its "test" split, registered here as "eval".
+    try:
+        configs = _timewarp_task_configs()
+        for split, has_plan in (("eval", False), ("train", True)):
+            _register_benchmark(
+                "timewarp",
+                [tid for tid, c in configs.items() if ("additional_instructions" in c) == has_plan],
+                split=split,
+                max_steps=30,
+                action_subsets=_SUBSETS_WITH_TAB,
+            )
+        logger.debug("Registered %d TimeWarp tasks", len(configs))
+    except FileNotFoundError:
+        logger.debug("Skipping TimeWarp (browsergym-timewarp not installed)")
+    except Exception as e:
+        logger.warning("Failed to register TimeWarp tasks: %s", e)
 
     _tasks_registered = True
 
@@ -3618,10 +3861,11 @@ class BrowserGymServices(EnvServices):
     containers:
 
       * ``shutdown`` (normal exit, AFTER every per-instance close) → docker
-        stop/rm THIS env-server's WA container set. miniwob is NOT touched (it
-        is a host-shared singleton — see _ensure_miniwob_singleton).
+        stop/rm THIS env-server's WA container set and its ``timewarp-<scope>``
+        container. miniwob is NOT touched (it is a host-shared singleton — see
+        _ensure_miniwob_singleton).
       * ``reap(boot=True)`` (one-shot restart recovery, before serving) → clean
-        THIS env-server's OWN leftover WA containers, in case a prior run died
+        THIS env-server's OWN leftover WA/TimeWarp containers, in case a prior run died
         abnormally. miniwob is NOT touched. ``reap`` on a STEADY tick is a NO-OP
         (the WA stack is a fixed resource — reaping it would kill the live
         backend).
@@ -3636,7 +3880,7 @@ class BrowserGymServices(EnvServices):
     tests)."""
 
     def register_tasks(self, env_id: str) -> None:
-        # Register the benchmark catalog (miniwob + WA + VWA discovery) lazily —
+        # Register the benchmark catalog (miniwob + WA + VWA + TimeWarp discovery) lazily —
         # cheap relative to ensure() (which boots the miniwob HTTP / WA docker
         # backends), and fired by a bare task_ids() probe WITHOUT booting them.
         _load_tasks()
@@ -3673,6 +3917,9 @@ class BrowserGymServices(EnvServices):
         # resources regardless of which leaf benchmarks were used.
         server_port = str(scope.server_port) if scope.server_port is not None else "default"
         n = _wa_stop_scoped(server_port)
+        # THIS server's TimeWarp container, scoped by the same server_port.
+        from lite.gym.utils.backend.docker import docker_rm_f
+        n += docker_rm_f(f"timewarp-{server_port}", timeout=60.0, label="browsergym.timewarp")
         # Also reap THIS server's homepage Flask (a host PROCESS, not a container —
         # _wa_stop_scoped only handles containers). It is scoped by its auto-picked
         # HOMEPAGE_PORT (set into os.environ by _auto_pick_webarena_ports at ensure).
@@ -3685,7 +3932,7 @@ class BrowserGymServices(EnvServices):
         # killing it would tear down another live server's miniwob mid-episode.
         # A true host teardown is scripts/cleanup.sh, not per-server shutdown.
         if n or killed_hp:
-            logger.info("browsergym shutdown: removed %d WA containers%s (scope %s)",
+            logger.info("browsergym shutdown: removed %d WA/TimeWarp containers%s (scope %s)",
                         n, f" + homepage Flask (port {hp})" if killed_hp else "", server_port)
 
     # live_ids inherited from base (→ None: "no external world to reconcile"). The WA/VWA
@@ -3702,6 +3949,8 @@ class BrowserGymServices(EnvServices):
             return 0
         server_port = str(scope.server_port) if scope.server_port is not None else "default"
         n = _wa_stop_scoped(server_port)
+        from lite.gym.utils.backend.docker import docker_rm_f
+        n += docker_rm_f(f"timewarp-{server_port}", timeout=60.0, label="browsergym.timewarp")
         # Reclaim the classifieds compose DB VOLUME too: _wa_stop_scoped's
         # docker-rm-by-name leaves the *_db_data volume behind, so without this a
         # restart would re-create classifieds against a DIRTY DB (silent VWA
@@ -3715,8 +3964,8 @@ class BrowserGymServices(EnvServices):
         # singleton (see _ensure_miniwob_singleton + shutdown). Boot-recovery on
         # one server must not kill the miniwob a co-resident server is serving.
         if n or killed_hp or cf_vol:
-            logger.info("browsergym boot-reap: cleaned %d leftover WA containers%s%s (scope %s)",
-                        n, " + homepage Flask" if killed_hp else "",
+            logger.info("browsergym boot-reap: cleaned %d leftover WA/TimeWarp containers%s%s"
+                        " (scope %s)", n, " + homepage Flask" if killed_hp else "",
                         " + classifieds volume" if cf_vol else "", server_port)
         return n
 

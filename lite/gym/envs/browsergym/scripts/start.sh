@@ -1,13 +1,13 @@
 #!/bin/bash
 # Start long-lived browsergym benchmark services (WebArena / VisualWebArena /
-# MiniWoB). Idempotent: re-running against already-up services is a no-op.
+# MiniWoB / TimeWarp). Idempotent: re-running against already-up services is a no-op.
 #
 # Usage:
 #   source lite/gym/envs/browsergym/scripts/start.sh <benchmark>   # URLs persist in caller's shell
 #   bash   lite/gym/envs/browsergym/scripts/start.sh <benchmark>   # services start but exports die with subshell
 #
 # The tier-1 contract (see docs/envs.md): this script starts services and
-# exports `MINIWOB_URL` / `WA_*` / `VWA_*` via real `export` statements. For
+# exports `MINIWOB_URL` / `WA_*` / `VWA_*` / `TW_*` via real `export` statements. For
 # those to reach your shell, `source` this script rather than `bash`-running
 # it. The env server can `source` this internally on its own startup;
 # interactive users activate the venv first and then source, or set the URL
@@ -18,6 +18,8 @@
 #                      Map, Homepage
 #   visualwebarena   — all webarena services + Map + Classifieds
 #   miniwob          — serve cloned miniwob-plusplus HTML via `python3 -m http.server`
+#   timewarp         — run the cua-lite/browsergym.timewarp container (Wiki, News,
+#                      Shop) for one UI version (TIMEWARP_VERSION, 1-6)
 #
 # Map startup requires the OpenStreetMap assets installed by install.sh. To keep
 # non-map tasks usable on lighter setups, missing map assets are reported and the
@@ -33,6 +35,12 @@
 #                         Normally set by main.py _ensure_miniwob_singleton (the
 #                         host-wide shared-singleton resolver) before this runs;
 #                         the 7560 default is for a bare standalone invocation.
+#   TIMEWARP_VERSION      TimeWarp UI version to serve, 1-6 (default: 1).
+#   TIMEWARP_{WIKI,NEWS,WEBSHOP}_PORT
+#                         TimeWarp host ports (default: 6200/6201/6202). Normally
+#                         set by main.py _auto_pick_timewarp_ports before this runs.
+#   TIMEWARP_START_TIMEOUT_S
+#                         how long to wait for the TimeWarp sites (default: 150).
 
 set -euo pipefail
 
@@ -740,6 +748,90 @@ start_homepage_flask() {
     return 1 2>/dev/null || exit 1
 }
 
+# ─── TimeWarp ────────────────────────────────────────────────────────────────
+# One cua-lite/browsergym.timewarp container per env-server scope
+# (``timewarp-<scope>``) serves the Wiki / News / Shop sites for ONE UI version.
+# The version rides on a container label, so asking for another version (or
+# rebuilding the image) recreates the container — on the host ports main.py
+# passes — instead of reusing the old UI. Ports are published on loopback only:
+# the browser runs on this host.
+TIMEWARP_IMAGE="cua-lite/browsergym.timewarp:latest"
+TIMEWARP_VERSION="${TIMEWARP_VERSION:-1}"
+TIMEWARP_WIKI_PORT="${TIMEWARP_WIKI_PORT:-6200}"
+TIMEWARP_NEWS_PORT="${TIMEWARP_NEWS_PORT:-6201}"
+TIMEWARP_WEBSHOP_PORT="${TIMEWARP_WEBSHOP_PORT:-6202}"
+
+_timewarp_alive() {
+    # Each site opens its port only after its index has loaded, so 200 = ready.
+    local url
+    for url in "http://localhost:${TIMEWARP_WIKI_PORT}/" \
+               "http://localhost:${TIMEWARP_NEWS_PORT}/" \
+               "http://localhost:${TIMEWARP_WEBSHOP_PORT}/abc"; do
+        curl -sf --max-time 3 -o /dev/null "$url" || return 1
+    done
+}
+
+start_timewarp() {
+    local name="timewarp-${SERVER_PORT}"
+    if ! [[ "$TIMEWARP_VERSION" =~ ^[1-6]$ ]]; then
+        echo "error: TIMEWARP_VERSION must be 1-6, got '${TIMEWARP_VERSION}'" >&2
+        return 1
+    fi
+    if ! docker image inspect "$TIMEWARP_IMAGE" >/dev/null 2>&1; then
+        echo "error: $TIMEWARP_IMAGE not built" >&2
+        echo "       run: uv run --no-sync bash lite/gym/envs/browsergym/scripts/install.sh timewarp" >&2
+        return 1
+    fi
+    # Reuse a running container only if it serves this version from the CURRENT
+    # image build; a version switch or an image rebuild recreates it.
+    local running="" want
+    if container_running "$name"; then
+        running="$(docker inspect -f '{{index .Config.Labels "lite.timewarp.version"}} {{.Image}}' "$name")"
+    fi
+    want="${TIMEWARP_VERSION} $(docker image inspect -f '{{.Id}}' "$TIMEWARP_IMAGE")"
+    if [ "$running" = "$want" ]; then
+        echo "  $name already serving UI version ${TIMEWARP_VERSION} — skip"
+    else
+        docker rm -fv "$name" >/dev/null 2>&1 || true
+        docker run -d --init --name "$name" \
+            --label "lite.timewarp.version=${TIMEWARP_VERSION}" \
+            -e "TIMEWARP_VERSION=${TIMEWARP_VERSION}" \
+            -p "127.0.0.1:${TIMEWARP_WIKI_PORT}:5000" \
+            -p "127.0.0.1:${TIMEWARP_NEWS_PORT}:5001" \
+            -p "127.0.0.1:${TIMEWARP_WEBSHOP_PORT}:5002" \
+            "$TIMEWARP_IMAGE" >/dev/null || {
+            echo "error: docker run $name failed" >&2
+            return 1
+        }
+        echo "  started $name (UI version ${TIMEWARP_VERSION})"
+    fi
+    # A reused container keeps the ports it was started with.
+    TIMEWARP_WIKI_PORT="$(docker port "$name" 5000/tcp | head -1 | sed 's/.*://')"
+    TIMEWARP_NEWS_PORT="$(docker port "$name" 5001/tcp | head -1 | sed 's/.*://')"
+    TIMEWARP_WEBSHOP_PORT="$(docker port "$name" 5002/tcp | head -1 | sed 's/.*://')"
+
+    local deadline=$((SECONDS + ${TIMEWARP_START_TIMEOUT_S:-150}))
+    until _timewarp_alive; do
+        if ! container_running "$name"; then
+            echo "error: $name exited while starting; last logs:" >&2
+            docker logs --tail 40 "$name" >&2 || true
+            return 1
+        fi
+        if (( SECONDS >= deadline )); then
+            echo "  $name still loading its site indexes; callers retry until it serves"
+            return 0
+        fi
+        sleep 3
+    done
+    echo "  TimeWarp UI version ${TIMEWARP_VERSION}: wiki :${TIMEWARP_WIKI_PORT}, news :${TIMEWARP_NEWS_PORT}, shop :${TIMEWARP_WEBSHOP_PORT}"
+}
+
+export_timewarp_env() {
+    export TW_WIKI="http://localhost:${TIMEWARP_WIKI_PORT}"
+    export TW_NEWS="http://localhost:${TIMEWARP_NEWS_PORT}"
+    export TW_WEBSHOP="http://localhost:${TIMEWARP_WEBSHOP_PORT}/abc"
+}
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 usage() {
     cat <<USAGE
@@ -749,8 +841,9 @@ Benchmarks:
   webarena         start Shopping, Shopping Admin, Forum, GitLab, Wikipedia, Map
   visualwebarena   all webarena services + Map + Classifieds
   miniwob          serve miniwob-plusplus HTML via python3 -m http.server
+  timewarp         run the TimeWarp sites for TIMEWARP_VERSION (1-6, default 1)
 
-Exports MINIWOB_URL / WA_* / VWA_* on success. Use \`source\` to keep the
+Exports MINIWOB_URL / WA_* / VWA_* / TW_* on success. Use \`source\` to keep the
 exports in your shell; \`bash\` starts services only (exports die with the
 subshell).
 USAGE
@@ -802,6 +895,10 @@ case "${1:-}" in
     miniwob)
         start_miniwob_server
         export_miniwob_env
+        ;;
+    timewarp)
+        start_timewarp || { return 1 2>/dev/null || exit 1; }
+        export_timewarp_env
         ;;
     ""|-h|--help)
         usage
