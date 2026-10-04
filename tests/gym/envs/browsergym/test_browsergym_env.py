@@ -19,6 +19,7 @@ from lite.gym.envs.browsergym.main import (
     BrowserGymEnv,
     _tools_for_subsets,
 )
+from lite.gym.errors import is_retryable
 from tests.gym.envs.browsergym._support import (
     _BROWSERGYM_T2_MODE_CONFIGS,
     _decode_png_size,
@@ -538,7 +539,7 @@ async def test_terminal_tool_does_not_pair_later_unexecuted_sibling():
     try:
         await env.reset()
 
-        async def _fake_execute(_code: str) -> dict[str, Any]:
+        async def _fake_execute(_code: str, **_kwargs: Any) -> dict[str, Any]:
             env._terminated = True
             return {
                 "reward": 1.0,
@@ -1284,6 +1285,114 @@ async def test_backend_execution_exception_sets_tool_result_error():
         await env.close()
 
 
+class _FakeValidatingBgymEnv:
+    """Stands in for BrowserGym's ``env.step``, which catches the action code's
+    own exception into ``last_action_error`` but runs ``task.validate()`` (in
+    ``post_step``) OUTSIDE that try/except. Here ``validate`` either returns a
+    ``(reward, done)`` verdict or raises ``validate_error`` -- the evaluator
+    failing (LLM-judge API error, malformed eval spec)."""
+
+    def __init__(
+        self,
+        *,
+        validate_error: Exception | None = None,
+        verdict: tuple[float, bool] = (0.0, False),
+    ) -> None:
+        self.validate_error = validate_error
+        self.verdict = verdict
+        self.actions: list[str] = []
+
+    def step(self, action: str) -> tuple[dict[str, Any], float, bool, bool, dict]:
+        self.actions.append(action)
+        if self.validate_error is not None:
+            raise self.validate_error
+        reward, done = self.verdict
+        return _fake_bgym_step_obs(), reward, done, False, {}
+
+    def close(self) -> None:
+        pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "arguments", "bgym_call"),
+    [
+        ("response", {"text": "42"}, "send_msg_to_user("),
+        ("terminate", {"status": "success"}, "send_msg_to_user("),
+        ("terminate", {"status": "failure", "reason": "blocked"}, "report_infeasible("),
+    ],
+)
+async def test_finish_call_validation_failure_raises_instead_of_reward_zero(
+    name: str,
+    arguments: dict[str, Any],
+    bgym_call: str,
+):
+    """A finish call's ``task.validate()`` IS the reward verdict. When it raises,
+    the step must ERR (retryable) rather than return ``terminated=True,
+    reward=None``, which the agent loop scores as episode_return 0.0."""
+    env = _make_fake(max_steps=50, use_screenshot=False)
+    try:
+        await env.reset()
+        env._env = _FakeValidatingBgymEnv(
+            validate_error=ValueError("malformed eval spec: missing reference_answers"),
+        )
+
+        with pytest.raises(ValueError, match="malformed eval spec") as excinfo:
+            await env.step([make_tool_call(name, arguments, call_id=f"call_{name}")])
+
+        assert is_retryable(excinfo.value)
+        assert len(env._env.actions) == 1
+        assert env._env.actions[0].startswith(bgym_call)
+    finally:
+        await env.close()
+
+
+@pytest.mark.asyncio
+async def test_non_finish_validation_failure_stays_model_visible_feedback():
+    """The same ``env.step`` exception on an ordinary action is NOT a reward
+    verdict: the model gets execution-failure feedback and the episode goes on."""
+    env = _make_fake(max_steps=50, use_screenshot=False)
+    try:
+        await env.reset()
+        env._env = _FakeValidatingBgymEnv(validate_error=RuntimeError("judge API 503"))
+
+        r = await env.step(
+            [
+                make_tool_call(
+                    "computer",
+                    {"actions": [{"action": "click", "coordinate": [500, 500]}]},
+                    call_id="call_action",
+                ),
+            ]
+        )
+
+        assert r.terminated is False
+        assert r.truncated is False
+        assert r.reward is None
+        assert r.results[0].tool_call_id == "call_action"
+        assert r.results[0].error == "click failed: execution failed"
+        assert r.results[0].metadata == {"is_error": True}
+    finally:
+        await env.close()
+
+
+@pytest.mark.asyncio
+async def test_finish_call_evaluator_verdict_of_zero_is_scored():
+    """A verdict the evaluator genuinely reached -- here a wrong answer, 0.0 --
+    is a real reward, not an error."""
+    env = _make_fake(max_steps=50, use_screenshot=False)
+    try:
+        await env.reset()
+        env._env = _FakeValidatingBgymEnv(verdict=(0.0, True))
+
+        r = await env.step([make_tool_call("response", {"text": "wrong"}, call_id="call_r")])
+
+        assert r.terminated is True
+        assert r.reward == 0.0
+    finally:
+        await env.close()
+
+
 @pytest.mark.asyncio
 async def test_malformed_drag_returns_current_feedback_without_execution():
     env = _make_fake(max_steps=50, use_screenshot=False)
@@ -1474,7 +1583,7 @@ async def test_active_canonical_terminal_tools_execute_with_canonical_schema(
         assert {"response", "terminate"} <= schema_names
         assert not (schema_names & {"answer", "send_msg_to_user", "report_infeasible"})
 
-        async def fake_execute(_code: str) -> dict[str, Any]:
+        async def fake_execute(_code: str, **_kwargs: Any) -> dict[str, Any]:
             env._terminated = True
             return {
                 "reward": 1.0,

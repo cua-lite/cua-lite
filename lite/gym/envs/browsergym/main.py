@@ -1509,7 +1509,10 @@ class BrowserGymEnv(LiteBaseEnv):
                     code = f'report_infeasible("{_escape(reason)}")'
                 else:
                     code = f'send_msg_to_user("{_escape(reason or "Task completed")}")'
-                last_obs = await self._execute_bgym_action(code)
+                # ``finish=True``: this step's ``task.validate()`` is the reward
+                # verdict, so an evaluator failure ERRs the step instead of
+                # ending the episode with reward None (scored as 0).
+                last_obs = await self._execute_bgym_action(code, finish=True)
                 await record_action_frame(last_obs)
                 last_result_call_id = result_call_id
                 last_result_action_name = name
@@ -1529,7 +1532,7 @@ class BrowserGymEnv(LiteBaseEnv):
                 terminated = True
                 text = args.get("text", "")
                 code = f'send_msg_to_user("{_escape(text)}")'
-                last_obs = await self._execute_bgym_action(code)
+                last_obs = await self._execute_bgym_action(code, finish=True)
                 await record_action_frame(last_obs)
                 last_result_call_id = result_call_id
                 last_result_action_name = name
@@ -1748,8 +1751,20 @@ class BrowserGymEnv(LiteBaseEnv):
     # Internal: action execution
     # -----------------------------------------------------------------------
 
-    async def _execute_bgym_action(self, code: str) -> dict[str, Any] | None:
-        """Execute a BrowserGym action string and return merged obs+reward dict."""
+    async def _execute_bgym_action(
+        self, code: str, *, finish: bool = False,
+    ) -> dict[str, Any] | None:
+        """Execute a BrowserGym action string and return merged obs+reward dict.
+
+        BrowserGym catches the action code's own exception into
+        ``last_action_error``, so anything ``env.step`` RAISES comes from its
+        ``post_step``: a dead page, or ``task.validate()``. For an ordinary
+        action that is model-visible feedback (``None`` +
+        ``_last_action_execution_error``). For a ``finish`` call
+        (``send_msg_to_user`` / ``report_infeasible``) ``validate()`` runs the
+        evaluator on the agent's answer, so the exception propagates: a
+        non-verdict must never be coalesced into reward 0.
+        """
         if self._env is None:
             self._last_action_execution_error = "BrowserGym env is None"
             return None
@@ -1765,6 +1780,8 @@ class BrowserGymEnv(LiteBaseEnv):
             result["bg_terminated"] = bg_terminated
             return result
         except Exception as e:
+            if finish:
+                raise
             logger.warning("BrowserGym action failed: %s — code: %s", e, code[:200])
             self._last_action_execution_error = str(e)
             return None
