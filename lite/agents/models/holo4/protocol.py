@@ -9,10 +9,10 @@ from lite.agents.core.protocol import BaseProtocol
 from lite.core import LiteMessage
 from lite.core.messages import (
     ASSISTANT_ROLE,
+    IMAGE_PART,
     TEXT_PART,
     USER_ROLE,
     group_into_turns,
-    message_has_image,
     peel_system_message,
 )
 
@@ -27,6 +27,10 @@ class Holo4HistoryProtocol(BaseProtocol, key="holo4.history"):
 
     max_n_images: int = 4
 
+    def __post_init__(self) -> None:
+        if self.max_n_images < 0:
+            raise ValueError("max_n_images must be non-negative")
+
     def process_messages(
         self,
         messages: list[LiteMessage],
@@ -35,25 +39,55 @@ class Holo4HistoryProtocol(BaseProtocol, key="holo4.history"):
         if not messages:
             return []
         messages = copy.deepcopy(messages)
-        if self.max_n_images <= 0:
-            return messages
+
+        for message in messages:
+            if message.get("role") == ASSISTANT_ROLE:
+                message.pop("raw_response", None)
+                message.pop("reasoning_content", None)
 
         system_message, content = peel_system_message(messages)
         turns = group_into_turns(content)
-        image_turns = [
-            i
-            for i, turn in enumerate(turns)
-            if any(message_has_image(message) for message in turn["observations"])
-        ]
-        if len(image_turns) <= self.max_n_images:
+        image_locations: list[tuple[int, int, int]] = []
+        for turn_index, turn in enumerate(turns):
+            for observation_index, observation in enumerate(turn["observations"]):
+                parts = observation.get("content")
+                if not isinstance(parts, list):
+                    continue
+                image_locations.extend(
+                    (turn_index, observation_index, part_index)
+                    for part_index, part in enumerate(parts)
+                    if isinstance(part, dict) and part.get("type") == IMAGE_PART
+                )
+
+        if self.max_n_images > 0 and len(image_locations) <= self.max_n_images:
             return messages
 
-        compact_before = image_turns[-self.max_n_images]
+        kept_images = set(image_locations[-self.max_n_images :]) if self.max_n_images else set()
+        compact_before = (
+            min((location[0] for location in kept_images), default=len(turns))
+            if self.max_n_images
+            else 0
+        )
         compacted: list[LiteMessage] = []
         instruction_kept = False
         for i, turn in enumerate(turns):
             if i >= compact_before:
-                compacted.extend(turn["observations"])
+                for observation_index, observation in enumerate(turn["observations"]):
+                    parts = observation.get("content")
+                    if not isinstance(parts, list):
+                        compacted.append(observation)
+                        continue
+                    visible_parts = [
+                        part
+                        for part_index, part in enumerate(parts)
+                        if not isinstance(part, dict)
+                        or part.get("type") != IMAGE_PART
+                        or (i, observation_index, part_index) in kept_images
+                    ]
+                    if visible_parts:
+                        visible_observation = copy.deepcopy(observation)
+                        visible_observation["content"] = visible_parts
+                        compacted.append(visible_observation)
                 if turn["assistant"] is not None:
                     compacted.append(turn["assistant"])
                 continue

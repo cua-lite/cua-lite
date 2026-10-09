@@ -13,6 +13,9 @@ from lite.agents.models.holo4.action_space import (
 )
 from lite.agents.models.holo4.protocol import Holo4HistoryProtocol
 from lite.agents.models.qwen3_5.adapter import Qwen3_5BaseAdapter
+from lite.agents.types import AgentMessage, AgentStep
+from lite.core import LiteMessage, LiteSample
+from lite.core.messages import SYSTEM_ROLE, TEXT_PART
 from lite.core.tools.calls import tool_call_name
 from lite.core.tools.extra_tools import BASH_TOOL_NAME
 from lite.core.tools.schemas import make_tool_schema, tool_schema_name
@@ -88,6 +91,60 @@ class Holo4BaseAdapter(
             else:
                 schemas.append(copy.deepcopy(extra_schema))
         return schemas
+
+    def render_step(
+        self,
+        sample: LiteSample,
+        k: int,
+        processed,
+        **kwargs,
+    ) -> AgentStep:
+        """Render a step with one model-visible system message.
+
+        The Qwen renderer always creates the Holo/tool system message. A
+        trajectory may also carry a task-provided system message, which Holo4
+        templates only accept when merged into that first message.
+        """
+        rendered = super().render_step(sample, k, processed, **kwargs)
+        system_messages = [message for message in rendered if message.get("role") == SYSTEM_ROLE]
+        if len(system_messages) <= 1:
+            return rendered
+
+        content: list[dict[str, Any]] = []
+        for message in system_messages:
+            message_content = message.get("content")
+            if isinstance(message_content, str):
+                if message_content:
+                    content.append({"type": TEXT_PART, "text": message_content})
+            elif isinstance(message_content, list):
+                content.extend(copy.deepcopy(message_content))
+
+        first_system_index = next(
+            index for index, message in enumerate(rendered) if message.get("role") == SYSTEM_ROLE
+        )
+        merged_system = copy.deepcopy(rendered[first_system_index])
+        merged_system["content"] = content
+        return [
+            merged_system,
+            *(message for message in rendered if message.get("role") != SYSTEM_ROLE),
+        ]
+
+    def convert_message_to_agent(
+        self,
+        message: LiteMessage,
+        **kwargs,
+    ) -> AgentMessage:
+        """Replay canonical assistant fields, never opaque Holo output.
+
+        Holo4's raw completion contains private reasoning and template control
+        tokens. Replaying it would bypass canonical tool-call/text rendering
+        and produces malformed thinking blocks on Holo4-27B.
+        """
+        if message.get("role") == "assistant":
+            message = copy.deepcopy(message)
+            message.pop("raw_response", None)
+            message.pop("reasoning_content", None)
+        return super().convert_message_to_agent(message, **kwargs)
 
     def _tool_calls_to_agent_ordered(
         self,

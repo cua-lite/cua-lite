@@ -255,7 +255,9 @@ class Holo4DesktopActionSpace(
                 result.append(projected_extra)
                 continue
             if tool_call_name(tool_call) != LITE_COMPUTER_ACTION_BATCH_TOOL_NAME:
-                continue
+                raise ValueError(
+                    f"unsupported canonical desktop tool {tool_call_name(tool_call)!r}"
+                )
             for child in unpack_action_batch_call(tool_call):
                 name = child["name"]
                 arguments = child["arguments"]
@@ -343,7 +345,6 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         text="Text to write.",
         x="Horizontal coordinate normalized to [0, 1000].",
         y="Vertical coordinate normalized to [0, 1000].",
-        overwrite="Whether to replace the current field contents.",
         enter="Whether to press Enter after writing.",
     )
     def mobile_write(
@@ -351,7 +352,6 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         text: str,
         x: int,
         y: int,
-        overwrite: bool = True,
         enter: bool = False,
     ) -> dict[str, Any]:
         """Focus a visible mobile field and write text into it."""
@@ -425,7 +425,6 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         y_touch="Starting vertical coordinate normalized to [0, 1000].",
         x_lift="Ending horizontal coordinate normalized to [0, 1000].",
         y_lift="Ending vertical coordinate normalized to [0, 1000].",
-        duration="Drag duration in milliseconds.",
     )
     def mobile_drag(
         element: str,
@@ -433,7 +432,6 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         y_touch: int,
         x_lift: int,
         y_lift: int,
-        duration: int = 1000,
     ) -> dict[str, Any]:
         """Drag a visible mobile element."""
         return LiteMobileActionSet.drag(
@@ -521,7 +519,9 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
                 result.append(projected_extra)
                 continue
             if tool_call_name(tool_call) != LITE_MOBILE_ACTION_BATCH_TOOL_NAME:
-                continue
+                raise ValueError(
+                    f"unsupported canonical mobile tool {tool_call_name(tool_call)!r}"
+                )
             children = unpack_action_batch_call(tool_call)
             child_index = 0
             while child_index < len(children):
@@ -547,7 +547,6 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
                                 "text": next_child["arguments"]["text"],
                                 "x": coordinate[0],
                                 "y": coordinate[1],
-                                "overwrite": True,
                                 "enter": press_enter,
                             },
                         }
@@ -574,7 +573,6 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
                                 "text": arguments["text"],
                                 "x": 500,
                                 "y": 500,
-                                "overwrite": True,
                                 "enter": False,
                             },
                         }
@@ -600,7 +598,6 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
                                 "element": "screen coordinate",
                                 "x": coordinate[0],
                                 "y": coordinate[1],
-                                "duration": round((arguments.get("duration") or 1.0) * 1000),
                             },
                         }
                     )
@@ -615,7 +612,6 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
                                 "y_touch": start[1],
                                 "x_lift": coordinate[0],
                                 "y_lift": coordinate[1],
-                                "duration": round((arguments.get("duration") or 1.0) * 1000),
                             },
                         }
                     )

@@ -13,7 +13,7 @@ from lite.agents.core.protocol import ProtocolRegistry
 from lite.agents.factory import LOCAL_AGENTS
 from lite.agents.models.holo4.adapter import Holo4DesktopUseAdapter
 from lite.agents.models.holo4.agent import Holo4BaseAgent
-from lite.core import LiteCUAMetadata
+from lite.core import LiteCUAMetadata, LiteSample
 from lite.core.messages.final import pop_model_output_error
 from lite.core.tools.calls import tool_call_arguments, tool_call_name
 from lite.core.tools.extra_tools import LiteFinishToolSet, LiteShellToolSet
@@ -175,3 +175,57 @@ def test_agent_forwards_explicit_reasoning_effort() -> None:
         preserve_thinking=False,
         reasoning_effort="medium",
     )
+
+
+def test_render_step_merges_task_system_with_holo_system() -> None:
+    adapter = Holo4DesktopUseAdapter(metadata=_metadata())
+    sample = LiteSample(
+        metadata=LiteCUAMetadata(dims=("desktop", "use")),
+        messages=[
+            {"role": "system", "content": "Task-specific policy."},
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "Inspect the page."}],
+            },
+        ],
+    )
+
+    rendered = adapter.render_step(sample, 1, [])
+
+    assert [message["role"] for message in rendered].count("system") == 1
+    assert rendered[0]["role"] == "system"
+    system_text = "\n".join(part["text"] for part in rendered[0]["content"])
+    assert "Task-specific policy." in system_text
+    assert "You are Holo, a computer-use agent." in system_text
+
+
+def test_holo_replay_uses_canonical_text_and_tool_calls() -> None:
+    adapter = Holo4DesktopUseAdapter(metadata=_metadata())
+    message = {
+        "role": "assistant",
+        "content": [{"type": "text", "text": "I will inspect the page."}],
+        "reasoning_content": "private reasoning",
+        "raw_response": {
+            "adapter_key": adapter._registry_key,
+            "text": "<think>private reasoning</think>\n<孤立模板标记>",
+        },
+        "tool_calls": [
+            {
+                "id": "call_0",
+                "type": "function",
+                "function": {
+                    "name": "custom_lookup",
+                    "arguments": {"query": "visible page"},
+                },
+            }
+        ],
+    }
+
+    rendered = adapter.convert_message_to_agent(message)
+
+    assert "private reasoning" not in rendered["content"][0]["text"]
+    assert "<孤立模板标记>" not in rendered["content"][0]["text"]
+    assert "I will inspect the page." in rendered["content"][0]["text"]
+    assert "<tool_call>" in rendered["content"][0]["text"]
+    assert "raw_response" not in rendered
+    assert "reasoning_content" not in rendered

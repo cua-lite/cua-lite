@@ -53,6 +53,14 @@ def test_mobile_schema_is_the_holo_flat_surface() -> None:
         "mobile_hide_keyboard",
         "mobile_go_to_all_apps",
     }
+    write_properties = tool_schema_parameters(
+        Holo4MobileActionSpace.get_tool_schema("mobile_write")
+    )["properties"]
+    drag_properties = tool_schema_parameters(
+        Holo4MobileActionSpace.get_tool_schema("mobile_drag")
+    )["properties"]
+    assert "overwrite" not in write_properties
+    assert "duration" not in drag_properties
 
 
 def test_valid_actions_filter_uses_canonical_action_names() -> None:
@@ -131,7 +139,6 @@ def test_mobile_calls_lower_to_canonical_actions() -> None:
                     "text": "Ada",
                     "x": 500,
                     "y": 300,
-                    "overwrite": True,
                     "enter": True,
                 },
             },
@@ -161,7 +168,6 @@ def test_mobile_calls_lower_to_canonical_actions() -> None:
                 "text": "Ada",
                 "x": 500,
                 "y": 300,
-                "overwrite": True,
                 "enter": True,
             },
         },
@@ -171,7 +177,6 @@ def test_mobile_calls_lower_to_canonical_actions() -> None:
                 "element": "screen coordinate",
                 "x": 200,
                 "y": 400,
-                "duration": 2000,
             },
         },
     ]
@@ -198,10 +203,15 @@ def test_canonical_finish_and_shell_render_with_holo_names() -> None:
     ]
 
 
-def test_unknown_canonical_tool_is_ignored_on_render() -> None:
-    assert (
+def test_unknown_canonical_desktop_tool_fails_on_render() -> None:
+    with pytest.raises(ValueError, match="unsupported canonical desktop tool"):
         Holo4DesktopActionSpace().convert_tool_calls_to_agent(
             [make_tool_call("totally_bogus_action", {"foo": 1})]
         )
-        == []
-    )
+
+
+def test_unknown_canonical_mobile_tool_fails_on_render() -> None:
+    with pytest.raises(ValueError, match="unsupported canonical mobile tool"):
+        Holo4MobileActionSpace().convert_tool_calls_to_agent(
+            [make_tool_call("totally_bogus_action", {"foo": 1})]
+        )
