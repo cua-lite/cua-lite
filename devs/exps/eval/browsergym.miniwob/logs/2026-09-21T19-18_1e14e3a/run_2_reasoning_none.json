@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "env": "browsergym.miniwob",
+  "commit_dir": "2026-09-21T19-18_1e14e3a",
+  "run_id": "run_2_reasoning_none",
+  "commit": {
+    "short_sha": "1e14e3a",
+    "subject": "Allow MiniWoB GPT reasoning effort override"
+  },
+  "artifact_root": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_2_reasoning_none",
+  "result_count": 2,
+  "status_counts": {
+    "complete": 2,
+    "partial": 0,
+    "empty": 0
+  },
+  "runtime": {
+    "env_server_url_present": false,
+    "env_server_token_present": false
+  },
+  "results": [
+    {
+      "model": "gpt-5.6-sol",
+      "slug": "gpt-5.6-sol__reasoning_none",
+      "base_slug": "gpt-5.6-sol",
+      "config_id": "reasoning_none",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.768,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_2_reasoning_none/gpt-5.6-sol__reasoning_none/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_2_reasoning_none/gpt-5.6-sol__reasoning_none"
+    },
+    {
+      "model": "gpt-5.5",
+      "slug": "gpt-5.5__reasoning_none",
+      "base_slug": "gpt-5.5",
+      "config_id": "reasoning_none",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.728,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_2_reasoning_none/gpt-5.5__reasoning_none/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_2_reasoning_none/gpt-5.5__reasoning_none"
+    }
+  ]
+}
