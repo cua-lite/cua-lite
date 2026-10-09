@@ -1,3 +1,16 @@
+## 168f251 ← a5d419c  (2026-09-23)
+
+Added the Claude WebArena arm. `scripts/configs/claude/default/browsergym.webarena/default.yaml`
+grew an answer prompt (`90db8c8`) that was then retuned (`168f251`), so Claude
+numbers from before `168f251` are not comparable with it; no other family's
+config changed. `run.sh` gained `EVAL_REASONING_EFFORT` (gpt-* only),
+`EVAL_AGENT_KWARGS`, and `EVAL_ENV_KWARGS` pass-throughs, and accepts
+`EVAL_ENABLE_THINKING` for Qwen3.8 (`b2ea303`) — all inert unless set. The
+read/write split prompt data moved to `lite/gym/envs/browsergym/data/`
+(`1b87d83`) and its `problem` column became a placeholder (`5cb1752`); the
+rollout resolves the real intent from `metadata.env_key` at reset, so this does
+not move numbers and `9f4d467` rows stay comparable with `168f251`.
+
 ## Unreleased
 
 Changed the runner from the full 812 instantiated intents to the 241 exact

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "env": "browsergym.webarena",
+  "commit_dir": "2026-09-23T20-45_168f251",
+  "run_id": "run_0",
+  "commit": {
+    "short_sha": "168f251",
+    "subject": "Tune Claude WebArena prompt"
+  },
+  "artifact_root": ".exps/eval/browsergym.webarena/2026-09-23T20-45_168f251/run_0",
+  "result_count": 1,
+  "status_counts": {
+    "complete": 0,
+    "partial": 1,
+    "empty": 0
+  },
+  "runtime": {
+    "env_server_url_present": false,
+    "env_server_token_present": false
+  },
+  "results": [
+    {
+      "model": "claude-opus-5",
+      "slug": "claude-opus-5",
+      "base_slug": "claude-opus-5",
+      "config_id": "default",
+      "status": "partial",
+      "num_valid": 240,
+      "num_tasks": 241,
+      "num_samples": 241,
+      "mean_episode_return": 0.5166666666666667,
+      "summary_path": ".exps/eval/browsergym.webarena/2026-09-23T20-45_168f251/run_0/claude-opus-5/summary.json",
+      "artifact_path": ".exps/eval/browsergym.webarena/2026-09-23T20-45_168f251/run_0/claude-opus-5"
+    }
+  ]
+}
