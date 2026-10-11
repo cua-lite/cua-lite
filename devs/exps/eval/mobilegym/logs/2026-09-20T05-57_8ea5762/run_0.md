@@ -25,11 +25,9 @@
 | `Qwen/Qwen3-VL-4B-Instruct` | 256/256 | 0.1367 |
 | `ByteDance-Seed/UI-TARS-1.5-7B` | 256/256 | 0.1328 |
 | ⚠️ `claude-opus-5` | _**255/256**_ | _**0.7020**_ |
-| ⚠️ `gemini-3.6-flash` | _**0/256**_ | _**—**_ |
 
 ## Highlights
 
-- Gemini 3.6 Flash was not started in this campaign.
 - Claude Opus 5 has 255/256 valid tasks; one API error is excluded from the mean (179/255 = 0.7020). The error and original trajectory logs are retained.
 
 ## Experiment specification

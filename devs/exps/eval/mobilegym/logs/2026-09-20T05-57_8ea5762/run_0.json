@@ -9,11 +9,10 @@
   },
   "artifact_root": ".exps/eval/mobilegym/2026-09-20T05-57_8ea5762/run_0",
   "snapshot_kind": "retained_run_aggregation",
-  "result_count": 15,
+  "result_count": 14,
   "status_counts": {
     "complete": 13,
-    "partial": 1,
-    "empty": 1
+    "partial": 1
   },
   "results": [
     {
@@ -362,18 +361,6 @@
       "error_task_ids": [
         "crossapp_content.RedbookAuthorTopCollectToWechat"
       ]
-    },
-    {
-      "model": "gemini-3.6-flash",
-      "slug": "gemini-3.6-flash",
-      "base_slug": "gemini-3.6-flash",
-      "config_id": "default",
-      "status": "empty",
-      "num_valid": 0,
-      "num_tasks": 256,
-      "num_samples": 0,
-      "mean_episode_return": null,
-      "note": "Not started in this campaign."
     }
   ],
   "errors": [],
