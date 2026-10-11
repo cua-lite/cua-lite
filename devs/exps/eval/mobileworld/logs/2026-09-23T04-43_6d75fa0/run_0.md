@@ -25,11 +25,9 @@
 | `Qwen/Qwen3.5-9B` | 117/117 | 0.1026 |
 | `Qwen/Qwen3-VL-8B-Instruct` | 117/117 | 0.0855 |
 | `Qwen/Qwen3-VL-4B-Instruct` | 117/117 | 0.0684 |
-| ⚠️ `gemini-3.6-flash` | _**0/117**_ | _**—**_ |
 
 ## Highlights
 
-- Gemini 3.6 Flash was not started in this campaign.
 
 ## Experiment specification
 
