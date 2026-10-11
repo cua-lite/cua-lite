@@ -4,7 +4,7 @@
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/` (gitignored).
 - **Started**: `2026-09-09 PDT`.
-- **Last updated**: `2026-09-25 00:43 PDT`.
+- **Last updated**: `2026-10-10 21:29 PDT`.
 - **Notes**: `eval`, 138 tasks after the `exclude_reason` filter. Task concurrency up to 30 per model and 60 total; Docker creation concurrency 10.
 
 ## Results
@@ -14,6 +14,7 @@
 | `claude-opus-5` | 138/138 | 0.723965 |
 | `gpt-5.6-sol` | 138/138 | 0.700250 |
 | `gpt-5.5` | 138/138 | 0.665688 |
+| `gpt-6-astra` | 138/138 | 0.629762 |
 | `inclusionAI/UI-Venus-2-9B` | 138/138 | 0.412795 |
 | `Qwen/Qwen3.8-27B` | 138/138 | 0.369995 |
 | `Qwen/Qwen3.5-27B` | 138/138 | 0.254053 |
@@ -24,15 +25,10 @@
 | `Qwen/Qwen3.5-9B` | 138/138 | 0.130864 |
 | `Qwen/Qwen3.5-4B` | 138/138 | 0.116372 |
 | `Qwen/Qwen3-VL-4B-Instruct` | 138/138 | 0.094637 |
-| ⚠️ `gpt-6-astra` | _**137/138**_ | _**0.634359**_ |
 
 Mean episode return uses valid sample summaries only. API/environment errors
 are excluded from the mean; normal zero rewards and scored model-format failures
 remain included. Finished counts retain the full filtered task total.
-
-## Highlights
-
-- GPT-6 Astra: 137/138; one unsupported-key exception remains excluded.
 
 ## Experiment Specification
 

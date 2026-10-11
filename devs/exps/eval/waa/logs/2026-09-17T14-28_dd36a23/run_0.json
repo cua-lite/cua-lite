@@ -249,21 +249,21 @@
       "slug": "gpt-6-astra",
       "base_slug": "gpt-6-astra",
       "config_id": "default",
-      "status": "partial",
-      "num_valid": 137,
+      "status": "complete",
+      "num_valid": 138,
       "num_tasks": 138,
       "num_samples": 138,
-      "mean_episode_return": 0.6343586502581665,
+      "mean_episode_return": 0.6297618484447015,
       "summary_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-6-astra/summary.json",
       "artifact_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-6-astra",
       "config_path": "scripts/configs/gpt/default/waa.yaml",
-      "summary_sha256": "a40590f638a79decd3bc43f287d26d8550adcf60f176d00dbc6ff1649a3a3c6b",
+      "summary_sha256": "291d6c4bbc1741bde369fcf11d6b8b8f9eb1499095069df183eb415f03450264",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-6-astra/run_info.txt",
-      "num_invalid": 1,
-      "mean_turns": 8.087591240875913
+      "num_invalid": 0,
+      "mean_turns": 8.152173913043478
     }
   ],
-  "last_updated": "2026-09-25 00:43 PDT",
+  "last_updated": "2026-10-10 21:29 PDT",
   "aggregation": "Mean episode return over samples with error == null; API/environment errors are excluded. Normal zero rewards and scored parse failures remain included.",
   "provenance_note": "The top-level commit identifies this report. Original commands and launch revisions are retained in the raw artifacts."
 }
