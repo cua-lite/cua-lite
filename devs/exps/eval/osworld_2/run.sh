@@ -40,8 +40,8 @@
 #     (accept the v2-image, osworld_v2_tasks, and osworld_v2_assets_gated HF gates).
 #   - OPENAI_API_KEY exported where the env MODULE IMPORTS (env-server launch,
 #     or this shell in direct mode); set OPENAI_BASE_URL only for a custom endpoint.
-#     The ~18 llm_judge tasks call an LLM at evaluate() (server_kwargs.eval_model,
-#     upstream default gpt-4o). Without the key they register with
+#     LLM-judge tasks call their upstream model at evaluate(), unless overridden
+#     by server_kwargs.eval_model. Without the key they register with
 #     exclude_reason="llm_judge" and the filter below silently drops them.
 #
 # Env shape (see lite/gym/envs/osworld_2/README.md):
@@ -49,16 +49,13 @@
 #     DEDICATED QEMU/KVM VM-in-Docker container (no snapshot reuse — one
 #     container per trajectory, cold boot ~30-90 s).
 #   - The SCORED count is service-dependent: exclude_reason gates tasks whose
-#     service isn't provisioned. With the v2.1 self-hosted website and working
-#     gpt-4o judge, 99 are available; task 072 is additionally skipped below
-#     pending a full rollout check (98 selected). Without the judge key
-#     another 15 are dropped. GitLab and
-#     human_in_the_loop stay excluded until provisioned. Record num_tasks
-#     from summary.json.
+#     service isn't provisioned. Simulated-user tasks are filtered by default.
+#     Task 072 is additionally skipped pending a full rollout check.
+#     Record the actual selected count from summary.json.
 #   - No --env-kwargs step_timeout override: osworld_2's make_kwargs already
 #     set step_timeout=600 + reset_timeout=960 (configs/default.yaml), unlike
 #     androidworld/mobilegym whose specs leave the framework 120s default.
-#   - max_steps: 200 for general VLM/API configs; 30 for specialist reference configs.
+#   - max_steps: 200 for all reference model configs.
 #     V2 trajectories are far longer than v1's 30-step runs; budget wall-clock
 #     accordingly.
 set -euo pipefail
@@ -106,13 +103,11 @@ if [ -n "$DIRTY" ]; then
   exit 1
 fi
 
-# Pre-flight: the LLM-judge key. Non-fatal, but without it the ~18 llm_judge
-# tasks are excluded AT REGISTRATION (on the env-server host), shrinking the
-# scored set from 99 to 82 — and a later mop-up with the key would need an
-# env-server restart to re-register them.
+# Judge tasks are excluded at registration without a key on the env-server.
+# Restart that server after configuring credentials to register them again.
 if [ -z "${OPENAI_API_KEY:-}" ]; then
   echo "[run.sh] WARNING: OPENAI_API_KEY unset in this shell — if it's also unset where the" >&2
-  echo "  env-server was launched, the ~18 llm_judge tasks are excluded (99 → 82 scored)." >&2
+  echo "  env-server was launched, LLM-judge tasks are excluded." >&2
   sleep 5
 fi
 
@@ -180,7 +175,7 @@ HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   `# Filter drops service-gated tasks (llm_judge without OPENAI_API_KEY,` \
   `# gitlab, human_in_the_loop — whatever this deployment left` \
   `# unprovisioned); task 072 remains separately held out.` \
-  --filter "lambda m: not m.others.get('exclude_reason') and m.others.get('task_id') != '072'" \
+  --filter "lambda m: not m.others.get('exclude_reason') and not m.others.get('user_sim') and m.others.get('task_id') != '072'" \
   --concurrency "$CONCURRENCY" \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"

@@ -15,7 +15,7 @@ For per-environment setup, see [docs/envs.md#installation](/docs/envs.md#install
 - **Desktop**
   - [OSWorld / Lite.OSWorld](#osworld--liteosworld)
   - [WindowsAgentArena](#windowsagentarena)
-  - [OSWorld-2](#osworld-2)
+  - [OSWorld 2.1](#osworld-21)
   - [CUABench (basic, KiCad, workflows)](#cuabench-basic-kicad-workflows)
 - **Browser**
   - [WebGym](#webgym)
@@ -127,20 +127,20 @@ uv run python scripts/rollout.py \
 A correct `report_infeasible` action scores `1` on an infeasible task and `0`
 on a feasible task.
 
-## OSWorld-2
+## OSWorld 2.1
 
-[`osworld_2`](/lite/gym/envs/osworld_2/README.md) is **OSWorld-V2** — 108 capability-graded tasks, a separate benchmark from v1 with **float / partial-credit** scoring. **82 scored** by default (needs a host `OPENAI_API_KEY` for the ~18 LLM-judge tasks); **200-step** budget. Full service/exclusion details are in the [README](/lite/gym/envs/osworld_2/README.md).
+[`osworld_2`](/lite/gym/envs/osworld_2/README.md) is **OSWorld 2.1** — 108 capability-graded tasks, a separate benchmark from v1 with **float / partial-credit** scoring and a **200-step** budget. The default runner excludes simulated-user and multi-phase tasks; the selected count also depends on provisioned services, including `OPENAI_API_KEY` for LLM judges. Full service/exclusion details are in the [README](/lite/gym/envs/osworld_2/README.md).
 
 **Setup:** see [`lite/gym/envs/osworld_2/README.md`](/lite/gym/envs/osworld_2/README.md).
 
 ```bash
-# OSWorld-V2 (osworld_2) — harder, capability-graded; 200-step budget set by the config.
+# OSWorld 2.1 (osworld_2) — capability-graded; 200-step budget set by the config.
 # gpt / qwen3_vl / claude osworld_2 configs all exist (each with max_steps=200).
 uv run python scripts/rollout.py \
   --model-id {gpt-5.5,Qwen/Qwen3-VL-8B-Instruct} \
   --env-id osworld_2 \
   --splits eval \
-  --filter "lambda m: not m.others.get('exclude_reason')" \
+  --filter "lambda m: not m.others.get('exclude_reason') and not m.others.get('user_sim')" \
   --config-path scripts/configs/{gpt,qwen3_vl}/default/osworld_2.yaml
 ```
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -932,6 +933,27 @@ def test_registration_108_tasks_and_hitl_excluded():
         "llm_judge",
     }
     assert all(registry.task_metadata("osworld_2", i).others.get("capabilities") for i in ids)
+
+
+def test_default_runner_filters_simulated_user_tasks():
+    from lite.gym.registry import registry
+
+    root = Path(__file__).resolve().parents[4]
+    script = (root / "devs/exps/eval/osworld_2/run.sh").read_text()
+    predicate = eval(re.search(r'--filter "([^"]+)"', script).group(1))
+    conversations = [
+        registry.task_metadata("osworld_2", task_id)
+        for task_id in registry.task_ids("osworld_2", split="eval")
+        if registry.task_metadata("osworld_2", task_id).others.get("user_sim")
+    ]
+    assert len(conversations) == 7
+    for metadata in conversations:
+        # Provisioning a simulator must not opt the default runner into these tasks.
+        others = dict(metadata.others)
+        others.pop("exclude_reason", None)
+        assert not predicate(SimpleNamespace(others=others))
+    assert predicate(SimpleNamespace(others={"task_id": "001"}))
+    assert not predicate(SimpleNamespace(others={"exclude_reason": "multi_phase"}))
 
 
 def test_exclude_reason_precedence():

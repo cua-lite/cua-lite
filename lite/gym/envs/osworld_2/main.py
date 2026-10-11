@@ -121,7 +121,7 @@ _GITLAB_URL = CFG.server_kwargs["gitlab_url"]
 _GITLAB_TOKEN = CFG.server_kwargs["gitlab_private_token"]
 _USER_SIM_MODEL = CFG.server_kwargs["user_sim_model"]
 
-_EVAL_MODEL = CFG.server_kwargs["eval_model"]   # LLM-judge evaluator model override (None → V2 default gpt-4o)
+_EVAL_MODEL = CFG.server_kwargs["eval_model"]   # None preserves each task's upstream judge model.
 _HAS_OPENAI_KEY = bool(os.environ.get("OPENAI_API_KEY"))   # gates the ~18 LLM-judge tasks (else they'd mis-score)
 _ASSET_BASE = os.environ.get("OSWORLD_FILE_BASE_URL") or str(
     Path(ENV_DIR) / ".cache" / "osworld_v2_assets"

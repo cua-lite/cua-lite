@@ -1,8 +1,10 @@
-# OSWorld-V2
+# OSWorld 2.1
 
 `--env-id` `osworld_2`
 
 CUA-Lite wrapper for [OSWorld-v2.1](https://github.com/xlang-ai/OSWorld-V2/releases/tag/osworld-v2.1). Its 108 capability-graded desktop tasks (`001`–`108`) run via `gym.make("osworld_2@<id>")` in VM-in-Docker, scored by the unmodified upstream evaluators. The matching code, tasks, gated assets, website, and VM image are pinned in the [official release manifest](https://github.com/xlang-ai/OSWorld-V2/blob/osworld-v2.1/benchmark_releases/osworld-v2.1.json).
+
+Runtime patches improve judge error handling and image compatibility without changing task definitions or scoring semantics.
 
 OSWorld-V2 uses the same VM-in-Docker runtime shape as [`osworld`](/lite/gym/envs/osworld/README.md) v1. Its tasks come from gated Hugging Face task classes and may return structured evaluator scores. See [docs/envs.md](/docs/envs.md) for the env contract.
 
@@ -97,13 +99,12 @@ threaded into every container as an `-e` var (via `service_env`) so the in-conta
 reach the service:
 | knob | when unset | when set |
 |---|---|---|
-| `user_sim_model` | the 7 simulated-user conversation tasks are excluded | reserved; the conversation bridge is not implemented |
 | `website_host_suffix` | website tasks excluded | included when the matching v2.1 site is self-hosted |
 | `gitlab_url` + `gitlab_private_token` | gitlab-backed tasks excluded | included |
 
 **LLM-judge evaluators.** ~18 tasks call an LLM at `evaluate()` (desktop_env `model_client`), so they need a host **`OPENAI_API_KEY`** (+ optional `OPENAI_BASE_URL`), auto-threaded into each container. Without the key they'd 500/mis-score, so they're **excluded** (`exclude_reason: "llm_judge"`) unless it's set. With `eval_model: null`, each task keeps its upstream judge model (for example, task 075 requests `gpt-5.4`); `eval_model` can override it for a separate experiment.
 
-**Coverage limits.** Matching upstream files do not imply that every interaction protocol is implemented. The current wrapper does not support the seven simulated-user conversation tasks or the multi-phase task. GitLab tasks require the GitLab URL/token; website tasks require the stack above. Check `exclude_reason` and record the selected task IDs/count when reporting a run. Task 029's known setup timeout is also documented in the official v2.1 release; do not patch it silently.
+**Task selection.** The default eval runner excludes the seven simulated-user conversation tasks and the multi-phase task. GitLab tasks require the GitLab URL/token; website tasks require the stack above. Task 029's known setup timeout is also documented in the official v2.1 release.
 
 **Task 056 rendering.** Reset installs `melt`, `frei0r-plugins`, `xvfb`, and `xauth` before task setup. The pinned official VM bundles Shotcut as an AppImage but lacks the command-line renderer searched by the upstream evaluator. Installation failures abort reset; the task and scoring code remain unchanged.
 
@@ -114,7 +115,7 @@ import lite.gym as gym
 print(len(gym.registry.task_ids("osworld_2")))   # 108
 ```
 
-108 tasks across **10 overlapping capabilities** (not app-domains): `conflict_disambiguation`, `cross_source_reasoning`, `dynamic_environment`, `human_in_the_loop`, `implicit_state_inference`, `multi_item_state_tracking`, `multimodal_editing`, `streaming_interaction`, `tutorial_following`, `visual_spatial_precision`. Metadata identity lives in `env.metadata.others["task_id"]` / `env.metadata.others["env_id"]`; `env.metadata.others` also carries `capabilities` (a task is usually in several), the static service-dependency flags (`website`/`gitlab`/`multi_phase`/`user_sim`/`llm_judge`), the requested `volume_size` in GiB where present, and `exclude_reason` on service-gated tasks. The **scored count depends on provisioned services, supported interaction protocols, and the run's task filter**; report the actual selected task IDs/count. Provisioning every service does not enable the unsupported conversation or multi-phase tasks. Use the matching v2.1 website and judge credentials when reporting the available scored tasks. `google_auth`/`blocked` from v1 are dropped (V2 needs no Google accounts; the v1 uuid blocklist is unrelated to the v2 `001–108` id space).
+108 tasks across **10 overlapping capabilities** (not app-domains): `conflict_disambiguation`, `cross_source_reasoning`, `dynamic_environment`, `human_in_the_loop`, `implicit_state_inference`, `multi_item_state_tracking`, `multimodal_editing`, `streaming_interaction`, `tutorial_following`, `visual_spatial_precision`. Metadata identity lives in `env.metadata.others["task_id"]` / `env.metadata.others["env_id"]`; `env.metadata.others` also carries `capabilities` (a task is usually in several), the static service-dependency flags (`website`/`gitlab`/`multi_phase`/`user_sim`/`llm_judge`), the requested `volume_size` in GiB where present, and `exclude_reason` on service-gated tasks. The **scored count depends on provisioned services and the run's task filter**; report the actual selected task IDs/count. `google_auth`/`blocked` from v1 are dropped (V2 needs no Google accounts; the v1 uuid blocklist is unrelated to the v2 `001–108` id space).
 
 ## Evaluation
 
