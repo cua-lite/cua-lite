@@ -8,11 +8,10 @@
     "subject": "eval(osworld_2): record the reference rollout configurations"
   },
   "artifact_root": ".exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0",
-  "result_count": 15,
+  "result_count": 14,
   "status_counts": {
     "complete": 13,
-    "partial": 1,
-    "empty": 1
+    "partial": 1
   },
   "runtime": {
     "host": "gpublaze",
@@ -2388,19 +2387,6 @@
       },
       "finalized": true,
       "avg_steps": 67.8108108108108
-    },
-    {
-      "model": "gemini-3.6-flash",
-      "slug": "gemini-3.6-flash",
-      "base_slug": "gemini-3.6-flash",
-      "config_id": "default",
-      "status": "empty",
-      "num_valid": 0,
-      "num_tasks": 98,
-      "num_samples": 0,
-      "mean_episode_return": null,
-      "artifact_path": ".exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/gemini-3.6-flash",
-      "summary_path": null
     }
   ],
   "eligible_task_ids": [
