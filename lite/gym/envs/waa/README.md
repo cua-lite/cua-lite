@@ -133,9 +133,11 @@ Thirteen tasks in each split use WAA's original `infeasible` evaluator — valid
 
 Task definitions derive from WindowsAgentArena and retain its MIT license; see `data/NOTICE`.
 
+`report_infeasible` remains available as an opt-in tool; the default eval runner excludes infeasible tasks.
+
 ## Evaluation
 
-Runs **only at episode end** (`terminate` / `response` / `max_steps`) via WAA's original evaluator for the task, which inspects real Windows guest state and returns a reward in `[0, 1]`. Most evaluators are binary, while similarity-based evaluators can return partial credit. `terminate(failure)` and a `response` containing `[INFEASIBLE]` submit `FAIL` to the evaluator; otherwise `DONE`. The integration preserves WAA's upstream setup and evaluator code unchanged — WAA does not publish golden action scripts, so the `trajectory` strings in task JSON are metadata, not solutions.
+Runs **only at episode end** (`terminate` / `response` / `report_infeasible` / `max_steps`) via WAA's original evaluator for the task, which inspects real Windows guest state and returns a reward in `[0, 1]`. Most evaluators are binary, while similarity-based evaluators can return partial credit. `terminate(failure)`, `report_infeasible`, and a `response` containing `[INFEASIBLE]` submit `FAIL` to the evaluator; otherwise `DONE`. The integration preserves WAA's upstream setup and evaluator code unchanged — WAA does not publish golden action scripts, so the `trajectory` strings in task JSON are metadata, not solutions.
 
 <details>
 <summary>Architecture & background</summary>
