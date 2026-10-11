@@ -27,14 +27,12 @@
 | `Qwen/Qwen3.5-4B` | default | 510/510 | 0.629412 |
 | `ByteDance-Seed/UI-TARS-1.5-7B` | default | 510/510 | 0.605882 |
 | `meituan/EvoCUA-8B-20260105` | default | 510/510 | 0.572549 |
-| ⚠️ `gemini-3.6-flash` | default | _**0/510**_ | _**—**_ |
 
 Mean episode return excludes API errors and includes valid zero-reward predictions.
 Finished counts valid samples; incomplete rows retain the full task count.
 
 ## Highlights
 
-- gemini-3.6-flash: not started.
 
 ## Experiment Specification
 

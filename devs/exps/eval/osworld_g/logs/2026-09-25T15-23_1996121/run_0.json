@@ -8,10 +8,9 @@
     "subject": "eval(osworld_g): use official non-thinking Venus grounding settings"
   },
   "artifact_root": ".exps/eval/osworld_g/2026-09-25T15-23_1996121/run_0",
-  "result_count": 16,
+  "result_count": 15,
   "status_counts": {
-    "complete": 15,
-    "empty": 1
+    "complete": 15
   },
   "scoring": "Mean episode return over samples with error == null; API errors are excluded and ordinary zero-reward predictions remain included.",
   "results": [
@@ -525,18 +524,6 @@
         "step_timeout": 180
       },
       "breakdown_path": ".exps/eval/osworld_g/2026-09-25T15-23_1996121/run_0/meituan_EvoCUA-8B-20260105/breakdown.json"
-    },
-    {
-      "model": "gemini-3.6-flash",
-      "slug": "gemini-3.6-flash",
-      "base_slug": "gemini-3.6-flash",
-      "config_id": "default",
-      "status": "empty",
-      "num_valid": 0,
-      "num_tasks": 510,
-      "num_samples": 0,
-      "mean_episode_return": null,
-      "note": "No run was launched in this campaign."
     }
   ],
   "last_updated": "2026-09-25 15:33 PDT",
