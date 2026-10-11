@@ -1,11 +1,11 @@
 # osworld @ 2026-09-17T14-28_a50cc31 - run_0
 
-- **Commit**: `a50cc31` - OSWorld reference models.
+- **Report revision**: `a50cc31`.
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/` (gitignored).
 - **Started**: `2026-09-14 PDT`.
 - **Last updated**: `2026-09-25 00:43 PDT`.
-- **Notes**: Official OSWorld `eval`, 325 tasks after the `exclude_reason` filter. Up to 30 task workers; Docker creation concurrency 10. Consolidated sources; Claude code drifted mid-campaign (see Provenance).
+- **Notes**: Official OSWorld `eval`, 325 tasks after the `exclude_reason` filter. Up to 30 task workers; Docker creation concurrency 10.
 
 ## Results
 
@@ -83,14 +83,4 @@ ID and config selection to resume. Set concurrency to the host and API quota.
 
 ## Provenance
 
-The paired [JSON snapshot](/devs/exps/eval/osworld/logs/2026-09-17T14-28_a50cc31/run_0.json)
-records each model ID, YAML, raw summary path, summary SHA-256, and launch-log
-path. Raw launch logs retain the actual commands and recorded revisions.
-
-Claude artifacts are in `.exps/eval/osworld/probe_20260918/run_3/claude-opus-5/`;
-this directory contains the full filtered campaign despite its original name.
-The snapshot artifact root links to this retained directory; `source_artifact_path`
-in JSON records the original location.
-Code drifted mid-campaign: the launch log records initial local Claude patches
-and the later merged implementation. `resume_20260920.json` identifies replaced
-trajectories; all 18 mouse-modifier repair tasks now have valid summaries.
+The paired [JSON snapshot](/devs/exps/eval/osworld/logs/2026-09-17T14-28_a50cc31/run_0.json) records source paths, configurations and summary hashes. Original launch records remain in the raw artifacts.
