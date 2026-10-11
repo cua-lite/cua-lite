@@ -1,6 +1,6 @@
 # screenspot_pro @ 2026-09-25T15-23_9a9935f - run_0
 
-- **Commit**: `9a9935f` - Official non-thinking UI-Venus grounding defaults.
+- **Report revision**: `9a9935f`.
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/` (gitignored).
 - **Started**: `2026-09-25 PDT`.
