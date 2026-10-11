@@ -6,7 +6,7 @@
     "short_sha": "dd36a23"
   },
   "artifact_root": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0",
-  "result_count": 15,
+  "result_count": 14,
   "results": [
     {
       "model": "claude-opus-5",
@@ -261,18 +261,6 @@
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-6-astra/run_info.txt",
       "num_invalid": 1,
       "mean_turns": 8.087591240875913
-    },
-    {
-      "model": "gemini-3.6-flash",
-      "slug": "gemini-3.6-flash",
-      "base_slug": "gemini-3.6-flash",
-      "config_id": "default",
-      "status": "empty",
-      "num_valid": 0,
-      "num_tasks": 138,
-      "num_samples": 0,
-      "mean_episode_return": null,
-      "reason": "Not started; no recorded campaign."
     }
   ],
   "last_updated": "2026-09-25 00:43 PDT",

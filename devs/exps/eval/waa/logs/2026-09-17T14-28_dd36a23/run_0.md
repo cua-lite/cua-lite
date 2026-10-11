@@ -25,7 +25,6 @@
 | `Qwen/Qwen3.5-4B` | 138/138 | 0.116372 |
 | `Qwen/Qwen3-VL-4B-Instruct` | 138/138 | 0.094637 |
 | ⚠️ `gpt-6-astra` | _**137/138**_ | _**0.634359**_ |
-| ⚠️ `gemini-3.6-flash` | _**0/138**_ | _**—**_ |
 
 Mean episode return uses valid sample summaries only. API/environment errors
 are excluded from the mean; normal zero rewards and scored model-format failures
@@ -34,7 +33,6 @@ remain included. Finished counts retain the full filtered task total.
 ## Highlights
 
 - GPT-6 Astra: 137/138; one unsupported-key exception remains excluded.
-- Gemini 3.6 Flash: not started; no recorded campaign.
 
 ## Experiment Specification
 
