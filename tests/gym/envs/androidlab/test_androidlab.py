@@ -566,22 +566,19 @@ def llm_judge_client(monkeypatch):
 @pytest.mark.parametrize("text,finish_reason,expected", [
     ("[True]", "stop", True),
     ("[False]", "stop", False),
-    ("", "stop", None),
-    ("[True] [False]", "stop", None),
-    ("[True]", "length", None),
+    ("[True] because the answer matches.", "stop", True),
+    ("", "stop", False),
+    ("[True] [False]", "stop", False),
+    ("[True]", "length", True),
 ])
-def test_llm_judge_response_validation(llm_judge_client, text, finish_reason, expected):
+def test_llm_judge_preserves_upstream_response_semantics(llm_judge_client, text, finish_reason, expected):
     from android_lab.evaluation.task import SingleTask
 
     llm_judge_client.return_value = SimpleNamespace(choices=[SimpleNamespace(
         finish_reason=finish_reason, message=SimpleNamespace(content=text),
     )])
     judge = SingleTask()
-    if expected is None:
-        with pytest.raises(ValueError):
-            judge._llm_judge("question", "answer", "ground truth")
-    else:
-        assert judge._llm_judge("question", "answer", "ground truth") is expected
+    assert judge._llm_judge("question", "answer", "ground truth") is expected
     assert llm_judge_client.call_args.kwargs["model"] == "gpt-4o-mini"
     assert llm_judge_client.call_args.kwargs["max_tokens"] == 16
     assert llm_judge_client.call_args.kwargs["temperature"] == 0.0

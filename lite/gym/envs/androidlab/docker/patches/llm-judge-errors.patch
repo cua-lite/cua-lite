@@ -7,14 +7,14 @@
 -else ``OPENAI_API_KEY`` (+ ``OPENAI_BASE_URL``) → OpenAI; else False
 -(reward=0, no crash). Model is ``gpt-4o-mini`` on both paths (matches
 -upstream); override via ``self.args.judge_model``.
-+else ``OPENAI_API_KEY`` (+ ``OPENAI_BASE_URL``) → OpenAI. Missing credentials,
-+API failures, and invalid judge responses raise instead of awarding zero.
++else ``OPENAI_API_KEY`` (+ ``OPENAI_BASE_URL``) → OpenAI. Missing credentials
++and API failures raise instead of awarding zero.
 +Model is ``gpt-4o-mini`` on both paths (matches upstream); override via
 +``self.args.judge_model``.
  """
  from __future__ import annotations
 
-@@ -53,54 +54,50 @@
+@@ -53,54 +54,45 @@
              return False
          if self.final_ground_truth is None:
              return False
@@ -89,13 +89,8 @@
 +            messages=[{"role": "user", "content": prompt}],
 +            max_tokens=16, temperature=0.0,
 +        )
-+        choice = r.choices[0]
-+        if choice.finish_reason != "stop":
-+            raise ValueError(f"LLM judge did not finish: {choice.finish_reason}")
-+        out = (choice.message.content or "").strip()
-+        if out not in ("[True]", "True", "[False]", "False"):
-+            raise ValueError(f"Invalid LLM judge response: {out!r}")
-+        return out in ("[True]", "True")
++        out = r.choices[0].message.content or ""
++        return "True" in out and "False" not in out
 
      def judge_page(self, xml_compressed_tree) -> bool:
          return True
