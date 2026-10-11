@@ -125,6 +125,7 @@ fi
 # model-family → rollout config
 case "$MODEL" in
   gpt-*)                            CFG=scripts/configs/gpt/default/androidworld.yaml ;;
+  claude-*)                         CFG=scripts/configs/claude/default/androidworld.yaml ;;
   Qwen/Qwen3-VL-*-Instruct)        CFG=scripts/configs/qwen3_vl/default/androidworld.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/androidworld.yaml ;;
   Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/androidworld.yaml ;;
