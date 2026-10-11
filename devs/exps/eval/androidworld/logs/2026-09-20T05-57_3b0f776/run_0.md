@@ -1,11 +1,11 @@
 # androidworld @ 2026-09-20T05-57_3b0f776 · run_0
 
-- **Commit**: `3b0f776` — Merge remote-tracking branch 'origin/dev' into eval/androidworld
+- **Report revision**: `3b0f776`.
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB; API models use no local GPU.
 - **Artifacts**: `.exps/eval/androidworld/2026-09-20T05-57_3b0f776/run_0/`
 - **Started**: `2026-09-12 PDT`
 - **Last updated**: `2026-09-25 00:43 PDT`
-- **Notes**: This snapshot aggregates retained reference runs; it is not a new rollout. The paired JSON records each original artifact path, launch commits, configuration and source hashes. Canonical artifact entries link to those retained runs. Claude code drifted during the campaign; launch-time dirty state and subsequent commits remain recorded in `run_info.txt`.
+- **Notes**: Consolidated reference results; source paths, configurations and summary hashes are recorded in the paired JSON. Original launch records remain in the raw artifacts.
 
 ## Results
 

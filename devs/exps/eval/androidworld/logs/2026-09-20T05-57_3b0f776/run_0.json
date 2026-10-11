@@ -33,9 +33,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-17T06-00_baa4ceb/run_0/gpt-6-astra__medium/run_info.txt",
       "source_run_info_sha256": "c0ed40fd2b5a250ee757fb0fa56c00d9b6ca3f9d87de664a4c0c7f909d7c30e3",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "a987821f60a619b40ed97e05d005f0a8986f316d33874303166f7f8470e6a10c",
       "config_path": "scripts/configs/gpt/default/androidworld.yaml",
@@ -65,10 +62,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/probe_20260919/run_1/claude-opus-5/run_info.txt",
       "source_run_info_sha256": "c24d3825bfe13dc1aa30972d168d818f4b7f95f68db71ccd66a628977c48bae9",
-      "source_launch_commits": [
-        "baa4ceb",
-        "3b0f776"
-      ],
       "source_had_uncommitted_changes": true,
       "sample_records_sha256": "20a5a264fc0a92120e1509bb485671c94bd99bd2b9c3d508ac8bfe5fd35559bb",
       "config_path": "scripts/configs/claude/default/androidworld.yaml",
@@ -103,9 +96,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-17T06-00_baa4ceb/run_0/gpt-5.5__medium/run_info.txt",
       "source_run_info_sha256": "5a7dade811145174a5b75ebc1dc300003db045a106b7e65802e73d33f046a467",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "df99259c6b423649680cb90b8c2faab3dbb329f95de824227e581bb9c8d8456d",
       "config_path": "scripts/configs/gpt/default/androidworld.yaml",
@@ -139,9 +129,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-17T06-00_baa4ceb/run_0/gpt-5.6-sol__medium/run_info.txt",
       "source_run_info_sha256": "22f1a7b0a05835524277753f94acfbfbe6382ac37b61273e6f5588025bd89f21",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "b337a1267c47e14ad58ae19220dc4c26292c71cbe88416fc71a780208eef8df3",
       "config_path": "scripts/configs/gpt/default/androidworld.yaml",
@@ -175,9 +162,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-15T11-33_baa4ceb/run_0/Qwen_Qwen3.5-27B/run_info.txt",
       "source_run_info_sha256": "e717e2409df64e72e5c2416eca14668bd3486c2f0627a3949eed131a8a84badf",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "8d74e7348a0f480df59fc9c80a9b18350b6836c5b0957edc4c0bdf578a6f4261",
       "config_path": "scripts/configs/qwen3_5/default/androidworld.yaml",
@@ -204,9 +188,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-15T11-33_baa4ceb/run_0/Qwen_Qwen3.8-27B/run_info.txt",
       "source_run_info_sha256": "063e5ad404c09ce143867dbedde923be177112afe6e4b44681b2b89196894ab9",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "fdefc5fffcd42b2290547bb8fb9cb9b9cb47cbf9de93cafe9ab1a36fd659609c",
       "config_path": "scripts/configs/qwen3_8/default/androidworld.yaml",
@@ -233,9 +214,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-15T11-33_baa4ceb/run_0/Qwen_Qwen3-VL-32B-Instruct/run_info.txt",
       "source_run_info_sha256": "836882e166f742ca3f35ce586234d2b7e8a90d16b4f38766e3b8c083743856be",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "857344cdea13cb5e4b4f9735ee5d0add13b464cb91f58afeb98bb5582e4d3759",
       "config_path": "scripts/configs/qwen3_vl/default/androidworld.yaml",
@@ -262,9 +240,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-15T11-33_baa4ceb/run_0/Qwen_Qwen3.5-9B/run_info.txt",
       "source_run_info_sha256": "708a3b0b7c37bcb81a54ad6d76149eaef8dcdcafa1a981167e3cf830d8d52887",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "1d567609a12c4c7dce9f011510925a169e4511bb2a7bab6aff50561e7a036915",
       "config_path": "scripts/configs/qwen3_5/default/androidworld.yaml",
@@ -291,9 +266,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-15T11-33_baa4ceb/run_0/inclusionAI_UI-Venus-2-9B/run_info.txt",
       "source_run_info_sha256": "6913cf21ff0563330b6679d7284d14489ec9db0c60b84b29479ec9d42287caa3",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "8304d8e3566464ecfe1c667ea33e903e2562cf2637ad253e71e4bce413cc394e",
       "config_path": "scripts/configs/ui_venus_2/default/androidworld.yaml",
@@ -320,9 +292,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-15T11-33_baa4ceb/run_0/Tongyi-MAI_MAI-UI-8B/run_info.txt",
       "source_run_info_sha256": "5c6ed15b46e40543849e0983263f7b9dd332cfae529d1b379b22d98b269fd9f8",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "ea86260f5d59205f4b463cce1069a3dd37ea90b8f4a2f2dec5f700a58d8337dd",
       "config_path": "scripts/configs/mai_ui/default/androidworld.yaml",
@@ -349,9 +318,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-15T11-33_baa4ceb/run_0/Qwen_Qwen3.5-4B/run_info.txt",
       "source_run_info_sha256": "54c313512f7f7239f486d5c4dc239398bb7546c930cb8cc6f15f400b08f3a583",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "be7eb60129b9d5dbc41965e0ef3da1f5406d54b3449e5bb8e98d4a0e317068a5",
       "config_path": "scripts/configs/qwen3_5/default/androidworld.yaml",
@@ -378,9 +344,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3-VL-8B-Instruct/run_info.txt",
       "source_run_info_sha256": "c74d302054789daa524deba0433b03b61523cdffcad1e8d204b047befa59d9eb",
-      "source_launch_commits": [
-        "dd6c13d"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "6894836ce6c30843dc2275e75fcd80ec96587c77a09eaf91d1748f5158f51681",
       "config_path": "scripts/configs/qwen3_vl/default/androidworld.yaml",
@@ -407,9 +370,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3-VL-4B-Instruct/run_info.txt",
       "source_run_info_sha256": "a484c0943585390817cff7aae7b14ab75169eebcab3f23b09c5432c1f17ad51b",
-      "source_launch_commits": [
-        "dd6c13d"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "80cbdc223f1d372014252c89d6115ffba7afaeffa0991a2b58b02f45ed3db6de",
       "config_path": "scripts/configs/qwen3_vl/default/androidworld.yaml",
@@ -436,9 +396,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/androidworld/2026-09-15T11-33_baa4ceb/run_0/ByteDance-Seed_UI-TARS-1.5-7B/run_info.txt",
       "source_run_info_sha256": "19991686a6ef77218d4ac0fab0387fe59f7455f04538781ed01585ad59f22b4d",
-      "source_launch_commits": [
-        "baa4ceb"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "36a7e241153170f677455284007fe6daaa09abd1af656ad59ecf67999abda6dd",
       "config_path": "scripts/configs/ui_tars_15_v1/default/androidworld.yaml",
@@ -462,5 +419,6 @@
     }
   ],
   "errors": [],
-  "metric_policy": "Mean episode return over samples without errors; model failures with terminal evaluator rewards remain valid."
+  "metric_policy": "Mean episode return over samples without errors; model failures with terminal evaluator rewards remain valid.",
+  "provenance_note": "The top-level commit identifies this report. Original commands and launch revisions are retained in the raw artifacts."
 }
