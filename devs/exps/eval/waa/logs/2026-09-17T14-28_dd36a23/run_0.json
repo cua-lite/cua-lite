@@ -23,15 +23,8 @@
       "config_path": "scripts/configs/claude/default/waa.yaml",
       "summary_sha256": "0792ab24c525a8e078901122527de532de13c436d2d8eaa41e82b0cc89b83d35",
       "run_info_path": ".exps/eval/waa/probe_20260918/run_1/claude-opus-5/run_info.txt",
-      "recorded_commits": [
-        "72c4277",
-        "a60028f"
-      ],
       "num_invalid": 0,
       "mean_turns": 9.528985507246377,
-      "code_drifted_mid_campaign": true,
-      "repair_manifest_path": ".exps/eval/waa/probe_20260918/run_1/claude-opus-5/resume_20260920.json",
-      "modifier_repair_tasks": 8,
       "source_artifact_path": ".exps/eval/waa/probe_20260918/run_1/claude-opus-5",
       "source_summary_path": ".exps/eval/waa/probe_20260918/run_1/claude-opus-5/summary.json"
     },
@@ -50,9 +43,6 @@
       "config_path": "scripts/configs/gpt/default/waa.yaml",
       "summary_sha256": "fdbdf9a941d53401e27f640a0ead173de658f85c03720f7587921ad92248f24c",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-5.6-sol/run_info.txt",
-      "recorded_commits": [
-        "71c037b"
-      ],
       "num_invalid": 0,
       "mean_turns": 11.079710144927537
     },
@@ -71,9 +61,6 @@
       "config_path": "scripts/configs/gpt/default/waa.yaml",
       "summary_sha256": "3615e6b088e4c36dd59aa2f9be7f9e0c39a9ba38b78d8b640c406068ba680b98",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-5.5/run_info.txt",
-      "recorded_commits": [
-        "325a6bc"
-      ],
       "num_invalid": 0,
       "mean_turns": 13.282608695652174
     },
@@ -92,9 +79,6 @@
       "config_path": "scripts/configs/ui_venus_2/default/waa.yaml",
       "summary_sha256": "2c57ddd4122afc9b2a9ea3f307f09f9a4c9a426b5ec4e7e87fa9086ff7cd6964",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/inclusionAI_UI-Venus-2-9B/run_info.txt",
-      "recorded_commits": [
-        "545e830"
-      ],
       "num_invalid": 0,
       "mean_turns": 16.28985507246377
     },
@@ -113,9 +97,6 @@
       "config_path": "scripts/configs/qwen3_8/default/waa.yaml",
       "summary_sha256": "b290983744fb1592e224e79a7c7bfb5d054e5a99e4917b2b0f6d46ec334f3352",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.8-27B/run_info.txt",
-      "recorded_commits": [
-        "65a61c4"
-      ],
       "num_invalid": 0,
       "mean_turns": 19.6231884057971
     },
@@ -134,9 +115,6 @@
       "config_path": "scripts/configs/qwen3_5/default/waa.yaml",
       "summary_sha256": "87dace099e31f7f5e78fc02869f61ecbeccefcfb6e56d83fb7143069e816b007",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.5-27B/run_info.txt",
-      "recorded_commits": [
-        "f27eeaf"
-      ],
       "num_invalid": 0,
       "mean_turns": 19.89855072463768
     },
@@ -155,9 +133,6 @@
       "config_path": "scripts/configs/qwen3_vl/default/waa.yaml",
       "summary_sha256": "ede96346e70ed7d1997733e509c735520e551ccc4fab1c1c7b9d08d53a1ee1dc",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3-VL-32B-Instruct/run_info.txt",
-      "recorded_commits": [
-        "545e830"
-      ],
       "num_invalid": 0,
       "mean_turns": 18.833333333333332
     },
@@ -176,9 +151,6 @@
       "config_path": "scripts/configs/ui_tars_15_v1/default/waa.yaml",
       "summary_sha256": "f5eda057d4757e6cbdde6538fa923158df27e6b5b399382097148a57d7a763df",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/ByteDance-Seed_UI-TARS-1.5-7B/run_info.txt",
-      "recorded_commits": [
-        "545e830"
-      ],
       "num_invalid": 0,
       "mean_turns": 21.463768115942027
     },
@@ -197,10 +169,6 @@
       "config_path": "scripts/configs/evocua/default/waa.yaml",
       "summary_sha256": "b0c77486e8e7ceb75e427b2e683c8ec9b8e0f6bdf06504738f9ebbe13713f984",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/meituan_EvoCUA-8B-20260105/run_info.txt",
-      "recorded_commits": [
-        "4155bc7",
-        "545e830"
-      ],
       "num_invalid": 0,
       "mean_turns": 17.18840579710145
     },
@@ -219,9 +187,6 @@
       "config_path": "scripts/configs/qwen3_vl/default/waa.yaml",
       "summary_sha256": "39bea55f5e5c997ab285ab9dd3c985da65d34ebf00ee65ced3203571130f803c",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3-VL-8B-Instruct/run_info.txt",
-      "recorded_commits": [
-        "d2f721b"
-      ],
       "num_invalid": 0,
       "mean_turns": 15.514492753623188
     },
@@ -240,9 +205,6 @@
       "config_path": "scripts/configs/qwen3_5/default/waa.yaml",
       "summary_sha256": "37cc6464f0b119bb1cab1e244aded1fea5ee4d99515a1e5ef11fce3348c1fddb",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.5-9B/run_info.txt",
-      "recorded_commits": [
-        "545e830"
-      ],
       "num_invalid": 0,
       "mean_turns": 19.333333333333332
     },
@@ -261,10 +223,6 @@
       "config_path": "scripts/configs/qwen3_5/default/waa.yaml",
       "summary_sha256": "610e55150434cccce4850cd8415d5fa727ab16fde3d6698eb15fb13971303c14",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3.5-4B/run_info.txt",
-      "recorded_commits": [
-        "25f6aa7",
-        "645a66b"
-      ],
       "num_invalid": 0,
       "mean_turns": 17.152173913043477
     },
@@ -283,10 +241,6 @@
       "config_path": "scripts/configs/qwen3_vl/default/waa.yaml",
       "summary_sha256": "ee080402329d6fd648376c16db2ea5aa3116a3a5e43b76e81a8e91562535c8f0",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/Qwen_Qwen3-VL-4B-Instruct/run_info.txt",
-      "recorded_commits": [
-        "25f6aa7",
-        "645a66b"
-      ],
       "num_invalid": 0,
       "mean_turns": 17.391304347826086
     },
@@ -305,10 +259,6 @@
       "config_path": "scripts/configs/gpt/default/waa.yaml",
       "summary_sha256": "a40590f638a79decd3bc43f287d26d8550adcf60f176d00dbc6ff1649a3a3c6b",
       "run_info_path": ".exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/gpt-6-astra/run_info.txt",
-      "recorded_commits": [
-        "71c037b",
-        "a60028f"
-      ],
       "num_invalid": 1,
       "mean_turns": 8.087591240875913
     },
@@ -327,5 +277,5 @@
   ],
   "last_updated": "2026-09-25 00:43 PDT",
   "aggregation": "Mean episode return over samples with error == null; API/environment errors are excluded. Normal zero rewards and scored parse failures remain included.",
-  "provenance_note": "Consolidated reference results. Each row points to its retained raw summary and launch log; the snapshot directory is not a claim that every trajectory ran at one code revision."
+  "provenance_note": "The top-level commit identifies this report. Original commands and launch revisions are retained in the raw artifacts."
 }

@@ -1,11 +1,11 @@
 # waa @ 2026-09-17T14-28_dd36a23 - run_0
 
-- **Commit**: `dd36a23` - WAA reference runner and model configurations.
+- **Report revision**: `dd36a23`.
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/` (gitignored).
 - **Started**: `2026-09-09 PDT`.
 - **Last updated**: `2026-09-25 00:43 PDT`.
-- **Notes**: `eval`, 138 tasks after the `exclude_reason` filter. Task concurrency up to 30 per model and 60 total; Docker creation concurrency 10. Consolidated sources; Claude code drifted mid-campaign (see Provenance).
+- **Notes**: `eval`, 138 tasks after the `exclude_reason` filter. Task concurrency up to 30 per model and 60 total; Docker creation concurrency 10.
 
 ## Results
 
@@ -77,13 +77,5 @@ ID and config selection to resume, with total task concurrency at most 60.
 ## Provenance
 
 The paired [JSON snapshot](/devs/exps/eval/waa/logs/2026-09-17T14-28_dd36a23/run_0.json)
-records each model ID, YAML, raw summary path, summary SHA-256, and launch-log
-path. Raw launch logs retain the actual commands and recorded revisions.
-
-Claude artifacts are in `.exps/eval/waa/probe_20260918/run_1/claude-opus-5/`;
-this directory contains the full filtered campaign despite its original name.
-The snapshot artifact root links to this retained directory; `source_artifact_path`
-in JSON records the original location.
-Code drifted mid-campaign: the launch log records initial local Claude patches
-and the later merged implementation. `resume_20260920.json` identifies replaced
-trajectories; all 8 mouse-modifier repair tasks now have valid summaries.
+records each model ID, YAML, raw summary path and summary SHA-256.
+Original commands and launch revisions remain in the retained raw artifacts.
