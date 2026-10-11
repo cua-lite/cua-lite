@@ -27,7 +27,6 @@
 | `ByteDance-Seed/UI-TARS-1.5-7B` | default | 1581/1581 | 0.497786 |
 | `meituan/EvoCUA-8B-20260105` | default | 1581/1581 | 0.435168 |
 | ⚠️ `gpt-5.5` | default | _**1570/1581**_ | _**0.744586**_ |
-| ⚠️ `gemini-3.6-flash` | default | _**0/1581**_ | _**—**_ |
 
 Mean episode return excludes API errors and includes valid zero-reward predictions.
 Finished counts valid samples; incomplete rows retain the full task count.
@@ -35,7 +34,6 @@ Finished counts valid samples; incomplete rows retain the full task count.
 ## Highlights
 
 - gpt-5.5: 11 API errors excluded; default screenshot resolution retained.
-- gemini-3.6-flash: not started.
 
 ## Experiment Specification
 

@@ -8,11 +8,10 @@
     "subject": "eval(screenspot_pro): use official non-thinking Venus grounding settings"
   },
   "artifact_root": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0",
-  "result_count": 16,
+  "result_count": 15,
   "status_counts": {
     "complete": 14,
-    "partial": 1,
-    "empty": 1
+    "partial": 1
   },
   "scoring": "Mean episode return over samples with error == null; API errors are excluded and ordinary zero-reward predictions remain included.",
   "results": [
@@ -531,18 +530,6 @@
         "retained_source_artifact_path": ".exps/eval/screenspot_pro/2026-09-25T13-37_b1892ef/run_0/gpt-5.5"
       },
       "breakdown_path": ".exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/gpt-5.5/breakdown.json"
-    },
-    {
-      "model": "gemini-3.6-flash",
-      "slug": "gemini-3.6-flash",
-      "base_slug": "gemini-3.6-flash",
-      "config_id": "default",
-      "status": "empty",
-      "num_valid": 0,
-      "num_tasks": 1581,
-      "num_samples": 0,
-      "mean_episode_return": null,
-      "note": "No run was launched in this campaign."
     }
   ],
   "last_updated": "2026-09-25 16:26 PDT",

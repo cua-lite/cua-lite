@@ -8,11 +8,10 @@
     "subject": "eval(screenspot_pro): support reference models and GPT reasoning variants"
   },
   "artifact_root": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0",
-  "result_count": 16,
+  "result_count": 15,
   "status_counts": {
     "complete": 14,
-    "partial": 1,
-    "empty": 1
+    "partial": 1
   },
   "scoring": "Mean episode return over samples with error == null; API errors are excluded and ordinary zero-reward predictions remain included.",
   "results": [
@@ -557,18 +556,6 @@
       },
       "breakdown_path": ".exps/eval/screenspot_pro/2026-09-17T14-28_03858be/run_0/gpt-5.5/breakdown.json",
       "source_artifact_path": ".exps/eval/screenspot_pro/2026-09-20-default-config/gpt-5.5"
-    },
-    {
-      "model": "gemini-3.6-flash",
-      "slug": "gemini-3.6-flash",
-      "base_slug": "gemini-3.6-flash",
-      "config_id": "default",
-      "status": "empty",
-      "num_valid": 0,
-      "num_tasks": 1581,
-      "num_samples": 0,
-      "mean_episode_return": null,
-      "note": "No run was launched in this campaign."
     }
   ]
 }
