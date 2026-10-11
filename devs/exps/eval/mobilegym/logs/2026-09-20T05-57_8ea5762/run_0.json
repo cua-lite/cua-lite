@@ -34,9 +34,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-17T06-00_802749c/run_0/gpt-6-astra__medium/run_info.txt",
       "source_run_info_sha256": "fbd9c7738bf21bbd6db8d69d7d2cedd01da14e2eeb0f383e0bec39bce44254e6",
-      "source_launch_commits": [
-        "802749c"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "dd29b3e125fc47a31e2482c11067d2bcc59da51ab57036e105caada04af58336",
       "config_path": "scripts/configs/gpt/default/mobilegym.yaml",
@@ -66,9 +63,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-17T06-00_802749c/run_0/gpt-5.6-sol__medium/run_info.txt",
       "source_run_info_sha256": "5292bb3f0cb3ba30effd0d1fbc0f81bb869072dc452451327a9bba5a89dc0ed3",
-      "source_launch_commits": [
-        "802749c"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "8df0a2e2ada348d41929fb583cc84670d364e87df355069c6a7011ca8360ca86",
       "config_path": "scripts/configs/gpt/default/mobilegym.yaml",
@@ -102,9 +96,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-17T06-00_802749c/run_0/gpt-5.5__medium/run_info.txt",
       "source_run_info_sha256": "77a12b419d9c84355113963da3329177c9e1e5c6adead203d88832725f2343d3",
-      "source_launch_commits": [
-        "802749c"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "8638ad928a721b265c88c9b6e2b91fdf8f2e0313c8cb4da844a8bf8d5874c005",
       "config_path": "scripts/configs/gpt/default/mobilegym.yaml",
@@ -138,9 +129,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-15T11-33_802749c/run_0/Qwen_Qwen3.8-27B/run_info.txt",
       "source_run_info_sha256": "d34a1bf7aabe003cf5a11cc9dbaec4fcdadc62167ef7360e95e5a2480ca95cdf",
-      "source_launch_commits": [
-        "802749c"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "ba975fa1a7c4bb609ad872167c49fce66ee2c7e38c9338641fec69a6a2ddd2e3",
       "config_path": "scripts/configs/qwen3_8/default/mobilegym.yaml",
@@ -169,9 +157,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-15T11-33_802749c/run_0/inclusionAI_UI-Venus-2-9B/run_info.txt",
       "source_run_info_sha256": "223dd5a424644f14d2fcbe6c6e28fe556579d5f6bf1c847c668e04ae828e5ca5",
-      "source_launch_commits": [
-        "802749c"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "a7aa8a8ec057ea0d254435d5bd943ffd97895463ebe9bd19789935b85b608fc3",
       "config_path": "scripts/configs/ui_venus_2/default/mobilegym.yaml",
@@ -200,9 +185,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-15T11-33_802749c/run_0/Qwen_Qwen3.5-27B/run_info.txt",
       "source_run_info_sha256": "c72f38fcdd28502fdf219d21ead6756470604b42a0a5bcfe5096a4b45fb23777",
-      "source_launch_commits": [
-        "802749c"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "f3b5cc82ae5e7d55d1a2d197af099c18568782eaa324e5dfefa50ee603f7c9bb",
       "config_path": "scripts/configs/qwen3_5/default/mobilegym.yaml",
@@ -231,9 +213,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-15T11-33_802749c/run_0/Tongyi-MAI_MAI-UI-8B/run_info.txt",
       "source_run_info_sha256": "84155c4f33f52e680de005f49fb59b739515ce80dc07b5a9f82d126a77f5df6d",
-      "source_launch_commits": [
-        "802749c"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "202a9dca83a857a98511ee3f0de04c939acd16f7daa2d33105ee3e5883f6d901",
       "config_path": "scripts/configs/mai_ui/default/mobilegym.yaml",
@@ -262,9 +241,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-15T11-33_802749c/run_0/Qwen_Qwen3-VL-32B-Instruct/run_info.txt",
       "source_run_info_sha256": "5430b1134a24cdab0231c6c8dc38604e6b70685ac815d1d05b118ba9f93d8a1d",
-      "source_launch_commits": [
-        "802749c"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "057ec9226489ef86945ac608035afe921bd10394ef8ee8e89aabaf15c32b33e9",
       "config_path": "scripts/configs/qwen3_vl/default/mobilegym.yaml",
@@ -293,10 +269,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3.5-9B/run_info.txt",
       "source_run_info_sha256": "7360aea7a9d968e8a4910fd9dcd103787c316f71b638c947d90fbb6b91f47737",
-      "source_launch_commits": [
-        "dd6c13d",
-        "802749c"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "f3cb1e23382c63ef61e91a8f944e26fa44e264e813771e539157acd6080984a1",
       "config_path": "scripts/configs/qwen3_5/default/mobilegym.yaml",
@@ -326,9 +298,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3.5-4B/run_info.txt",
       "source_run_info_sha256": "779d032c755426e72dd58cdac4f749f4b881e67474ec4ebca70fad8c2e97d3be",
-      "source_launch_commits": [
-        "dd6c13d"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "94a7984b697ed52f4625bcda17de89d8819f0277d538a56a10fd11c8d2240d65",
       "config_path": "scripts/configs/qwen3_5/default/mobilegym.yaml",
@@ -355,9 +324,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3-VL-8B-Instruct/run_info.txt",
       "source_run_info_sha256": "b6e8807923373e82e1bd5ecd6167e1aa4cf7931e22ef2e521e46cadcb978ada8",
-      "source_launch_commits": [
-        "dd6c13d"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "2e9f160871628a540666c854864d84c387c77c2ba6ee11a2c6e425c8057457c3",
       "config_path": "scripts/configs/qwen3_vl/default/mobilegym.yaml",
@@ -384,9 +350,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-12T06-10_dd6c13d/run_0/Qwen_Qwen3-VL-4B-Instruct/run_info.txt",
       "source_run_info_sha256": "fb9ba79b0612598aedc1932d2fcf512f1c4d23ae8f96d5ac54fce6d316f3531e",
-      "source_launch_commits": [
-        "dd6c13d"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "d63423d461c29e2c5cc8ac2bf6454c4d3a660dc820d97299af2841673bf6aa9a",
       "config_path": "scripts/configs/qwen3_vl/default/mobilegym.yaml",
@@ -413,9 +376,6 @@
       "num_errors": 0,
       "source_run_info_path": ".exps/eval/mobilegym/2026-09-12T06-10_dd6c13d/run_0/ByteDance-Seed_UI-TARS-1.5-7B/run_info.txt",
       "source_run_info_sha256": "ef61217fddba5f31805462f654f8e069321fdc28e7e72cfde191b92cc75d699d",
-      "source_launch_commits": [
-        "dd6c13d"
-      ],
       "source_had_uncommitted_changes": false,
       "sample_records_sha256": "c5381e81abc13dae63fec5909f01a11a25098ac156f8eb926fc8ce507eb99320",
       "config_path": "scripts/configs/ui_tars_15_v1/default/mobilegym.yaml",
@@ -442,10 +402,6 @@
       "num_errors": 1,
       "source_run_info_path": ".exps/eval/mobilegym/probe_20260919/run_1/claude-opus-5/run_info.txt",
       "source_run_info_sha256": "976c9e4956dfcf5ceb19886fa98d700382a85ce27bf06389f77132a7e4aafe50",
-      "source_launch_commits": [
-        "802749c",
-        "8ea5762"
-      ],
       "source_had_uncommitted_changes": true,
       "sample_records_sha256": "5d88b7a7e151f2e23828ec3ec3e8244803f8a825b2a21aa3550b02b234f5a4e9",
       "config_path": "scripts/configs/claude/default/mobilegym.yaml",
@@ -481,5 +437,6 @@
   ],
   "errors": [],
   "metric_policy": "Mean episode return over samples without errors; model failures with terminal evaluator rewards remain valid.",
-  "runtime_transport_commit": "a8e0bc5"
+  "runtime_transport_commit": "a8e0bc5",
+  "provenance_note": "The top-level commit identifies this report. Original commands and launch revisions are retained in the raw artifacts."
 }
