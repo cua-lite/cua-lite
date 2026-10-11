@@ -25,11 +25,9 @@
 | `Qwen/Qwen3-VL-8B-Instruct` | 116/116 | 0.5172 |
 | `Qwen/Qwen3-VL-4B-Instruct` | 116/116 | 0.4310 |
 | `ByteDance-Seed/UI-TARS-1.5-7B` | 116/116 | 0.1983 |
-| ⚠️ `gemini-3.6-flash` | _**0/116**_ | _**—**_ |
 
 ## Highlights
 
-- Gemini 3.6 Flash was not started in this campaign.
 
 ## Experiment specification
 

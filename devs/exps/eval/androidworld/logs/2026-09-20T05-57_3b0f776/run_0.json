@@ -9,10 +9,9 @@
   },
   "artifact_root": ".exps/eval/androidworld/2026-09-20T05-57_3b0f776/run_0",
   "snapshot_kind": "retained_run_aggregation",
-  "result_count": 15,
+  "result_count": 14,
   "status_counts": {
-    "complete": 14,
-    "empty": 1
+    "complete": 14
   },
   "results": [
     {
@@ -346,18 +345,6 @@
       "config_path": "scripts/configs/ui_tars_15_v1/default/androidworld.yaml",
       "environment_overrides": {},
       "recorded_api_kwargs": {}
-    },
-    {
-      "model": "gemini-3.6-flash",
-      "slug": "gemini-3.6-flash",
-      "base_slug": "gemini-3.6-flash",
-      "config_id": "default",
-      "status": "empty",
-      "num_valid": 0,
-      "num_tasks": 116,
-      "num_samples": 0,
-      "mean_episode_return": null,
-      "note": "Not started in this campaign."
     }
   ],
   "errors": [],
