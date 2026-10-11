@@ -1,11 +1,11 @@
 # androidlab @ 2026-09-17T14-26_5268092 · run_0
 
-- **Commit**: `5268092` — eval(androidlab): support reference models and GPT reasoning variants
+- **Report revision**: `5268092`.
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB; API models use no local GPU.
 - **Artifacts**: `.exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/`
 - **Started**: `2026-09-15 PDT`
 - **Last updated**: `2026-09-25 00:43 PDT`
-- **Notes**: This snapshot aggregates retained reference runs; it is not a new rollout. The paired JSON records each original artifact path, launch commits, configuration and source hashes. Canonical artifact entries link to those retained runs. Claude code drifted during the campaign; launch-time dirty state and subsequent commits remain recorded in `run_info.txt`.
+- **Notes**: Consolidated reference results; source paths, configurations and summary hashes are recorded in the paired JSON. Original launch records remain in the raw artifacts.
 
 ## Results
 
