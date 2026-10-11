@@ -122,7 +122,7 @@ if [ ! -d "$COMMIT_DIR/$RUN_ID" ] && [ -d "$COMMIT_DIR" ]; then
   fi
 fi
 
-# model-family → rollout config (grounding subset: qwen3_vl, qwen3_5, evocua, ui_tars, ui_tars_15_v1, mai_ui)
+# model-family → rollout config
 case "$MODEL" in
   gpt-*)                            CFG=scripts/configs/gpt/default/screenspot_pro.yaml ;;
   claude-*)                         CFG=scripts/configs/claude/default/screenspot_pro.yaml ;;
