@@ -25,7 +25,6 @@
 | `ByteDance-Seed/UI-TARS-1.5-7B` | 325/325 | 0.274721 |
 | `Qwen/Qwen3.5-4B` | 325/325 | 0.270294 |
 | `Qwen/Qwen3-VL-4B-Instruct` | 325/325 | 0.236474 |
-| ⚠️ `gemini-3.6-flash` | _**0/325**_ | _**—**_ |
 
 Mean episode return uses valid sample summaries only. API/environment errors
 are excluded from the mean; normal zero rewards and scored model-format failures
@@ -33,7 +32,6 @@ remain included. Finished counts retain the full filtered task total.
 
 ## Highlights
 
-- Gemini 3.6 Flash: not started; no recorded campaign.
 
 ## Experiment Specification
 
