@@ -596,5 +596,6 @@
     }
   ],
   "last_updated": "2026-09-25 15:33 PDT",
-  "aggregation_note": "A fresh non-thinking run replaces UI-Venus-2-9B. Other rows retain their recorded source artifacts and actual configurations; source paths are authoritative."
+  "aggregation_note": "A fresh non-thinking run replaces UI-Venus-2-9B. Other rows retain their recorded source artifacts and actual configurations; source paths are authoritative.",
+  "provenance_note": "The top-level commit identifies this report. Original commands and launch revisions are retained in the raw artifacts."
 }
