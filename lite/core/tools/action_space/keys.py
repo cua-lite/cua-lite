@@ -4,6 +4,7 @@ from __future__ import annotations
 
 KEY_NAME_ALIASES: dict[str, str] = {
     "ctrl": "ctrl", "control": "ctrl", "ctl": "ctrl",
+    "control_l": "ctrl",
     "ctrlleft": "ctrl", "ctrlright": "ctrl",
     "controlleft": "ctrl", "controlright": "ctrl",
     "alt": "alt", "option": "alt", "opt": "alt",

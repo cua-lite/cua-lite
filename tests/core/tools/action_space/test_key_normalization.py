@@ -35,6 +35,10 @@ def test_desktop_key_builders_normalize_common_model_spellings() -> None:
         "ctrl",
         "c",
     ]
+    assert _only_action(LiteDesktopActionSpace.key(["Control_L", "C"]))["keys"] == [
+        "ctrl",
+        "c",
+    ]
     assert _only_action(LiteDesktopActionSpace.key_down("Command+Shift+P"))["keys"] == [
         "meta",
         "shift",
