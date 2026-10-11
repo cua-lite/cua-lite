@@ -1,11 +1,11 @@
 # mobileworld @ 2026-09-23T04-43_6d75fa0 · run_0
 
-- **Commit**: `6d75fa0` — fix(mobileworld): exclude user-interaction tasks from default eval
+- **Report revision**: `6d75fa0`.
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB; API models use no local GPU.
 - **Artifacts**: `.exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/`
 - **Started**: `2026-09-23 PDT`
 - **Last updated**: `2026-09-25 00:43 PDT`
-- **Notes**: This snapshot aggregates retained reference runs; it is not a new rollout. The paired JSON records each original artifact path, launch commits, configuration and source hashes. Canonical artifact entries link to those retained runs. Claude code drifted during the campaign; launch-time dirty state and subsequent commits remain recorded in `run_info.txt`.
+- **Notes**: Consolidated reference results; source paths, configurations and summary hashes are recorded in the paired JSON. Original launch records remain in the raw artifacts.
 
 ## Results
 
