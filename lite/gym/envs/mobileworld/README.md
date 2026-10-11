@@ -50,7 +50,7 @@ sudo setfacl -m u:$(id -u):rw /dev/kvm           # ACL method (per boot)
 ls -l /dev/kvm                                   # verify: your user has rw
 ```
 
-**Agent-user-interaction tasks are filtered out by the default eval runner.** There are 46 upstream tasks tagged `agent-user-interaction`, of which 44 are registered (the other two also require MCP). To explicitly run them with an agent that supports asking the user, omit the exclusion filter and enable `ask_user` in `env_kwargs.extra_tools`. Before starting the env-server, export `USER_AGENT_API_KEY` and `USER_AGENT_BASE_URL` for its OpenAI-compatible simulator endpoint. These take precedence over `OPENAI_API_KEY` and `OPENAI_BASE_URL`, allowing the simulator and evaluated model to use separate services. The env forwards the credentials into each new container; restart the server and recreate its containers after changing them. The model is `server_kwargs.user_agent_model` in the env config (default `gpt-5.6-luna`). GUI-only tasks need neither the tool nor these credentials.
+**The default eval runner excludes the 44 registered user-interaction tasks.** To run them explicitly, omit the filter and enable `ask_user` in `env_kwargs.extra_tools`. Set `USER_AGENT_API_KEY` and `USER_AGENT_BASE_URL` before starting the env-server; these override the `OPENAI_*` fallbacks when containers are created. The simulated-user model is `server_kwargs.user_agent_model` (default `gpt-5.6-luna`).
 
 **MCP tasks are not supported** at this stage: the 40 `agent-mcp`-tagged tasks are excluded from registration (`data/tasks.json` still lists all 201).
 
@@ -98,7 +98,7 @@ print(gym.registry.task_ids("mobileworld"))
 # {"eval": ["AcceptMeetingTask", ...]}   # 161 tasks (deterministic → eval split only)
 ```
 
-161 registered tasks (201 upstream − 40 `agent-mcp`): 117 GUI-only + 44 agent-user-interaction. Interaction tasks remain registered with `metadata.others.exclude_reason="ask_user"`, independent of the model or enabled tools. The [eval runner](/devs/exps/eval/mobileworld/run.sh) filters them by default, following the OSWorld convention. When invoking `scripts/rollout.py` directly, pass the same filter (model YAMLs configure the agent and environment, not task selection):
+161 registered tasks (201 upstream − 40 `agent-mcp`): 117 GUI-only + 44 user-interaction tasks marked `metadata.others.exclude_reason="ask_user"`. The [eval runner](/devs/exps/eval/mobileworld/run.sh) excludes the latter. Use the same filter for direct rollouts:
 
 ```bash
 uv run python scripts/rollout.py \
