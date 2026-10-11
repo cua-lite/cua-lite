@@ -194,10 +194,6 @@
             "sha256": "e68598df80aaabc4b3473dd81adcfc34e2c29813a2a0499e8c1b6fcbd993558e"
           }
         ],
-        "source_commits": [
-          "93604b5",
-          "445ceac"
-        ],
         "replacement_policy": "Use the replacement rollout for every listed task; never fall back to an obsolete judge result."
       }
     },
@@ -412,11 +408,6 @@
             "sha256": "85be85c5d4e4264a74509405891f1a79d861121e3130e211c38b7905e9f9c11b"
           }
         ],
-        "source_commits": [
-          "445ceac",
-          "93604b5",
-          "c732800"
-        ],
         "replacement_policy": "Use each Azure replacement first, otherwise the recorded source override or original run; never fall back to obsolete judge results."
       },
       "mean_turns": 58.98979591836735
@@ -582,11 +573,6 @@
             "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-22T10-45_93604b5/run_0/gpt-5.5__reasoning_medium/run_info.txt",
             "sha256": "eeecabe848af804f49b461520c1f9b61fa1d72ff58f10fe43a66e851506cf434"
           }
-        ],
-        "source_commits": [
-          "445ceac",
-          "93604b5",
-          "c732800"
         ],
         "replacement_policy": "Use each Azure replacement first, otherwise the recorded source override or original run; never fall back to obsolete judge results."
       },
@@ -764,10 +750,6 @@
             "sha256": "a7f55077f18cda0134bf0b130dd313eb360d4ea76aedc8d366b2f9767dd01bf2"
           }
         ],
-        "source_commits": [
-          "93604b5",
-          "445ceac"
-        ],
         "replacement_policy": "Use the replacement rollout for every listed task; never fall back to an obsolete judge result."
       }
     },
@@ -938,10 +920,6 @@
             "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_azure_judge/.exps/eval/osworld_2/2026-09-23_azure_regrade/run_0/Qwen_Qwen3.8-27B/run_info.txt",
             "sha256": "a648696faaf1dca7c9d89463945078e6117b7223b8923b632dd94f25b5dbae74"
           }
-        ],
-        "source_commits": [
-          "93604b5",
-          "445ceac"
         ],
         "replacement_policy": "Use the replacement rollout for every listed task; never fall back to an obsolete judge result."
       }
@@ -1118,10 +1096,6 @@
             "sha256": "08680a1b9957b811092d803776c2066585199b6ad56c29f3b01ac5700980b9e2"
           }
         ],
-        "source_commits": [
-          "93604b5",
-          "445ceac"
-        ],
         "replacement_policy": "Use the replacement rollout for every listed task; never fall back to an obsolete judge result."
       }
     },
@@ -1296,10 +1270,6 @@
             "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_azure_judge/.exps/eval/osworld_2/2026-09-23_azure_regrade/run_0/Qwen_Qwen3-VL-4B-Instruct/run_info.txt",
             "sha256": "1ce1c9b37731ff9566a8a8cbbcc24f48cf9f079661a6fb8c4c5d7bc1cb35d0c6"
           }
-        ],
-        "source_commits": [
-          "93604b5",
-          "445ceac"
         ],
         "replacement_policy": "Use the replacement rollout for every listed task; never fall back to an obsolete judge result."
       }
@@ -1476,10 +1446,6 @@
             "sha256": "316b01170dfc2141c6ca6bd3a50967609a95718542f339851e85a4871ff76357"
           }
         ],
-        "source_commits": [
-          "93604b5",
-          "445ceac"
-        ],
         "replacement_policy": "Use the replacement rollout for every listed task; never fall back to an obsolete judge result."
       }
     },
@@ -1492,16 +1458,16 @@
       "num_valid": 98,
       "num_tasks": 98,
       "num_samples": 98,
-      "mean_episode_return": 0.004974489795918367,
+      "mean_episode_return": 0.014158163265306122,
       "summary_path": ".exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/inclusionAI_UI-Venus-2-9B/summary.json",
       "artifact_path": ".exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/inclusionAI_UI-Venus-2-9B",
       "provenance": {
         "configuration": {
           "path": "scripts/configs/ui_venus_2/default/osworld_2.yaml",
-          "sha256": "21e3cb7aad79acd9e80d26ef49624bb1090cf9352146ca6399abe8a1da0ec58d"
+          "sha256": "10cb230108b1ecf24b6274ecff694e3120f06624fcc1c43d6802329c0dd085ac"
         },
         "source_artifact_paths": [
-          "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/inclusionAI_UI-Venus-2-9B"
+          "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-25T15-22_116726e/run_0/inclusionAI_UI-Venus-2-9B"
         ],
         "replacement_task_ids": [],
         "valid_task_ids": [
@@ -1606,26 +1572,19 @@
         ],
         "error_task_ids": [],
         "missing_task_ids": [],
-        "sample_summary_manifest_sha256": "7e1fda205895ead838580804ef326445c46fe4852ef442c5ec37ad93d7f5657a",
+        "sample_summary_manifest_sha256": "5b79f419350e936d1ff1ccc043ccf6904a70228d0d815d1b2062534df0953337",
         "sample_summary_manifest_format": "SHA256 of sorted lines: <task_id> <summary.json sha256>\\n",
         "source_files": [
           {
-            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/inclusionAI_UI-Venus-2-9B/summary.json",
-            "sha256": "704f699b0ead444696ce8bbd60df3bcc5abfacf3a0b1cb3f916eb13a93cb5186"
+            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-25T15-22_116726e/run_0/inclusionAI_UI-Venus-2-9B/summary.json",
+            "sha256": "fd5403befa486d9e0a45c7b14ba67ab772d6aec1092677d08d9083f60f7eb41f"
           },
           {
-            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/inclusionAI_UI-Venus-2-9B/run_info.txt",
-            "sha256": "3dfda68db37ea5cd5a7bdf25c40a9b8afe521c266126f063ef399c141a3c7dcb"
-          },
-          {
-            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/inclusionAI_UI-Venus-2-9B/launch.log",
-            "sha256": "4e276e19f2cf1bc8e12202bfcb452ea26a92349ae9b49e2e66f8859fa8a7f144"
+            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-25T15-22_116726e/run_0/inclusionAI_UI-Venus-2-9B/run_info.txt",
+            "sha256": "6393fa3a608ba87940a32e34cb7fd8901bdc9fac7941e227ad7fcd88fed8c3de"
           }
         ],
-        "source_commits": [
-          "4c40e34"
-        ],
-        "source_config_path": "scripts/configs/ui_venus_2/default/osworld.yaml"
+        "source_config_path": "scripts/configs/ui_venus_2/default/osworld_2.yaml"
       }
     },
     {
@@ -1637,16 +1596,16 @@
       "num_valid": 98,
       "num_tasks": 98,
       "num_samples": 98,
-      "mean_episode_return": 0.004883673469387755,
+      "mean_episode_return": 0.004754081632653061,
       "summary_path": ".exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json",
       "artifact_path": ".exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/ByteDance-Seed_UI-TARS-1.5-7B",
       "provenance": {
         "configuration": {
           "path": "scripts/configs/ui_tars_15_v1/default/osworld_2.yaml",
-          "sha256": "f050b2d61ef51e21a57cd60e95e1c963f1e8cf1cf5e85c0f1026aee7230c2e52"
+          "sha256": "c947029e13126a448e3718342bdb391f784dc3b87040fe3922feca9c8509be52"
         },
         "source_artifact_paths": [
-          "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/ByteDance-Seed_UI-TARS-1.5-7B"
+          "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-25T15-22_116726e/run_0/ByteDance-Seed_UI-TARS-1.5-7B"
         ],
         "replacement_task_ids": [],
         "valid_task_ids": [
@@ -1751,26 +1710,19 @@
         ],
         "error_task_ids": [],
         "missing_task_ids": [],
-        "sample_summary_manifest_sha256": "3aa84f0f5d0abea074881a66718dbf4c47b6554fc0a15a3f60b428249c7fd1f5",
+        "sample_summary_manifest_sha256": "a54e59a9d724a64b2957c0ce413109d55b1dcd775ee7d75c251dbaccf8353b67",
         "sample_summary_manifest_format": "SHA256 of sorted lines: <task_id> <summary.json sha256>\\n",
         "source_files": [
           {
-            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json",
-            "sha256": "5cb382d5780a6a3c7eada41d3e5fc0f70cc791ec7d18006db85a6f17aef68777"
+            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-25T15-22_116726e/run_0/ByteDance-Seed_UI-TARS-1.5-7B/summary.json",
+            "sha256": "d9d7f741385de0bbc14ffa55ee7c1bda821700577bbebf526637208da68a5d17"
           },
           {
-            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/ByteDance-Seed_UI-TARS-1.5-7B/run_info.txt",
-            "sha256": "795b3d5cee35ab7c4213bdbb48c2f179220cebd6756812fe0c8589ce35d4a20e"
-          },
-          {
-            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/ByteDance-Seed_UI-TARS-1.5-7B/launch.log",
-            "sha256": "c769ce42aa2b929d0e3cf5c78598bed333606e84cdd3697ff2cc2475c8d355a5"
+            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-25T15-22_116726e/run_0/ByteDance-Seed_UI-TARS-1.5-7B/run_info.txt",
+            "sha256": "2597e7725007267b4e8dc2ae4eb0846f00f28cf948d4ee389f84c228b0031603"
           }
         ],
-        "source_commits": [
-          "4c40e34"
-        ],
-        "source_config_path": "scripts/configs/ui_tars_15_v1/default/osworld.yaml"
+        "source_config_path": "scripts/configs/ui_tars_15_v1/default/osworld_2.yaml"
       }
     },
     {
@@ -1944,10 +1896,6 @@
             "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_azure_judge/.exps/eval/osworld_2/2026-09-23_azure_regrade/run_0/Qwen_Qwen3.5-9B/run_info.txt",
             "sha256": "f287538499e7120706ac0251e6061fa1caff4b9b8f8dcae066fcfd7ca557914b"
           }
-        ],
-        "source_commits": [
-          "93604b5",
-          "445ceac"
         ],
         "replacement_policy": "Use the replacement rollout for every listed task; never fall back to an obsolete judge result."
       }
@@ -2124,10 +2072,6 @@
             "sha256": "71f6ccafe33300314dcb41e4aa8b7bc780d197185e11662b7cc43aeb52daf790"
           }
         ],
-        "source_commits": [
-          "93604b5",
-          "445ceac"
-        ],
         "replacement_policy": "Use the replacement rollout for every listed task; never fall back to an obsolete judge result."
       }
     },
@@ -2140,16 +2084,16 @@
       "num_valid": 98,
       "num_tasks": 98,
       "num_samples": 98,
-      "mean_episode_return": 0.0024744897959183675,
+      "mean_episode_return": 0.006501700680272109,
       "summary_path": ".exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/meituan_EvoCUA-8B-20260105/summary.json",
       "artifact_path": ".exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/meituan_EvoCUA-8B-20260105",
       "provenance": {
         "configuration": {
           "path": "scripts/configs/evocua/default/osworld_2.yaml",
-          "sha256": "b74fd3eee15c6d93656239e5735fee98f3b7b09fa45947af4e59b733a5efcbb5"
+          "sha256": "5477744ae1077f5320edbdd136d4f0887e27c880a0b781b24f83af5da602cf28"
         },
         "source_artifact_paths": [
-          "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/meituan_EvoCUA-8B-20260105"
+          "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-25T15-22_116726e/run_0/meituan_EvoCUA-8B-20260105"
         ],
         "replacement_task_ids": [],
         "valid_task_ids": [
@@ -2254,26 +2198,19 @@
         ],
         "error_task_ids": [],
         "missing_task_ids": [],
-        "sample_summary_manifest_sha256": "ef652d8da859a05d0ea07b2085c1380a13dd83b713bdbc5cf144befe497251d1",
+        "sample_summary_manifest_sha256": "ada473757fdf366cf050e262c2fb8646f46aaa4cbe637244f22a560b097b8976",
         "sample_summary_manifest_format": "SHA256 of sorted lines: <task_id> <summary.json sha256>\\n",
         "source_files": [
           {
-            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/meituan_EvoCUA-8B-20260105/summary.json",
-            "sha256": "6c2d95aac0a29e69461e97495b76f8f4e55bf167869238c2ac208fe6cbf88dfe"
+            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-25T15-22_116726e/run_0/meituan_EvoCUA-8B-20260105/summary.json",
+            "sha256": "944c45b03f9c91506a9995891a2dfbf0652d8da3f5ea8ae8f321d4b2d41d5a2f"
           },
           {
-            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/meituan_EvoCUA-8B-20260105/run_info.txt",
-            "sha256": "2cdbb036eb28efe42bf96eb16ef048d3a99ead1bfe51ee1a02fcd6a6f9371ac7"
-          },
-          {
-            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-23T13-57_4c40e34/run_0/meituan_EvoCUA-8B-20260105/launch.log",
-            "sha256": "4326745775d32cf8180bd8436a43f173e205d733a6c2f261856e60d07b342f28"
+            "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_volume/.exps/eval/osworld_2/2026-09-25T15-22_116726e/run_0/meituan_EvoCUA-8B-20260105/run_info.txt",
+            "sha256": "4092f230d494dcec4204a54c9249e4e7c15d1c77f8df047c7d24c24e00768850"
           }
         ],
-        "source_commits": [
-          "4c40e34"
-        ],
-        "source_config_path": "scripts/configs/evocua/default/osworld.yaml"
+        "source_config_path": "scripts/configs/evocua/default/osworld_2.yaml"
       }
     },
     {
@@ -2415,9 +2352,6 @@
             "path": "/srv/home/weichenzhang/cua-lite-overall/worktrees/osworld_2_azure_judge/.exps/eval/osworld_2/2026-09-23_opus5_default/run_0/claude-opus-5/result-accounting.json",
             "sha256": "a4355719cef91aeb682f583460920d63d1504741d2239166954282cba27b3d18"
           }
-        ],
-        "source_commits": [
-          "445ceac"
         ],
         "excluded_api_error_task_ids": [
           "029",
@@ -2570,6 +2504,6 @@
     "108"
   ],
   "scoring": "Mean episode return over finite, error-free sample summaries. API and environment exceptions are excluded; normal zero rewards are included.",
-  "aggregation_note": "Reference rows use actual Medium GPT runs with per-task Azure replacements. Claude remains the recorded Max-effort measurement; future default YAML selects Medium.",
-  "recorded_at": "2026-09-25T20:47:51.463455+00:00"
+  "aggregation_note": "Consolidated reference results. The report revision identifies this snapshot; raw artifacts retain original commands and launch revisions.",
+  "recorded_at": "2026-10-11T00:52:59.193288+00:00"
 }
