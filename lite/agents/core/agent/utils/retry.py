@@ -44,6 +44,7 @@ async def acompletion_with_retry(
     base_delay: float,
     max_delay: float,
     log_name: str = "llm-call",
+    retry_if: Callable[[Exception], bool] | None = None,
     **api_kwargs: Any,
 ) -> Any:
     """Capped exp backoff + jitter wrapper around an async LLM ``call``.
@@ -54,12 +55,15 @@ async def acompletion_with_retry(
 
     ``call`` is the provider entrypoint (e.g. ``litellm.acompletion`` /
     ``litellm.aresponses``), injected so families share one retry loop.
+    ``retry_if`` lets the caller handle errors that require changing the request.
     """
     last_exc: BaseException | None = None
     for attempt in range(max_retries + 1):
         try:
             return await call(**api_kwargs)
         except Exception as e:  # noqa: BLE001 — retry is broad by design
+            if retry_if is not None and not retry_if(e):
+                raise
             last_exc = e
             if attempt >= max_retries:
                 break
