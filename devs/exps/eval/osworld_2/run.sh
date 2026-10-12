@@ -50,7 +50,6 @@
 #     container per trajectory, cold boot ~30-90 s).
 #   - The SCORED count is service-dependent: exclude_reason gates tasks whose
 #     service isn't provisioned. Simulated-user tasks are filtered by default.
-#     Task 072 is additionally skipped pending a full rollout check.
 #     Record the actual selected count from summary.json.
 #   - No --env-kwargs step_timeout override: osworld_2's make_kwargs already
 #     set step_timeout=600 + reset_timeout=960 (configs/default.yaml), unlike
@@ -174,8 +173,8 @@ HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   --env-id osworld_2 --splits eval \
   `# Filter drops service-gated tasks (llm_judge without OPENAI_API_KEY,` \
   `# gitlab, human_in_the_loop — whatever this deployment left` \
-  `# unprovisioned); task 072 remains separately held out.` \
-  --filter "lambda m: not m.others.get('exclude_reason') and not m.others.get('user_sim') and m.others.get('task_id') != '072'" \
+  `# unprovisioned), plus simulated-user tasks.` \
+  --filter "lambda m: not m.others.get('exclude_reason') and not m.others.get('user_sim')" \
   --concurrency "$CONCURRENCY" \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"

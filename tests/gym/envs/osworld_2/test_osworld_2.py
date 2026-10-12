@@ -953,6 +953,7 @@ def test_default_runner_filters_simulated_user_tasks():
         others.pop("exclude_reason", None)
         assert not predicate(SimpleNamespace(others=others))
     assert predicate(SimpleNamespace(others={"task_id": "001"}))
+    assert predicate(SimpleNamespace(others={"task_id": "072"}))
     assert not predicate(SimpleNamespace(others={"exclude_reason": "multi_phase"}))
 
 
