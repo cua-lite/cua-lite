@@ -840,7 +840,9 @@ _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS = {
     "scripts/configs/qwen3_vl/default/browsergym.webarena/default.yaml",
     "scripts/configs/qwen3_vl/default/browsergym.webarena/som.yaml",
     "scripts/configs/qwen3_vl/default/browsergym.webarena/text_only.yaml",
+    "scripts/configs/ui_tars_15_v1/default/browsergym.miniwob/default.yaml",
     "scripts/configs/ui_tars_15_v1/default/browsergym.webarena/default.yaml",
+    "scripts/configs/ui_venus_2/default/browsergym.miniwob/default.yaml",
     "scripts/configs/ui_venus_2/default/browsergym.webarena/default.yaml",
 }
 
@@ -854,6 +856,7 @@ _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS = {
 
 _EXPECTED_NAV_CONFIGS = {
     "scripts/configs/gpt/default/webgym.yaml",
+    "scripts/configs/evocua/default/browsergym.miniwob/default.yaml",
     "scripts/configs/fara/default/browsergym.miniwob/default.yaml",
     "scripts/configs/fara/default/browsergym.visualwebarena/goal_image.yaml",
     "scripts/configs/fara/default/browsergym.webarena/default.yaml",
@@ -989,6 +992,7 @@ _EXPECTED_RESPONSE_CONFIGS = {
      | _MOBILE_USE_RECIPE_CONFIGS)
 
 _EXPECTED_TERMINATE_CONFIGS = {
+    "scripts/configs/evocua/default/browsergym.miniwob/default.yaml",
     "scripts/configs/evocua/default/waa.yaml",
     "scripts/configs/ui_tars_15_v1/default/waa.yaml",
     "scripts/configs/ui_venus_2/default/waa.yaml",
