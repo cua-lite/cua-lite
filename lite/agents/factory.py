@@ -34,11 +34,7 @@ from lite.utils.registry import compose_key
 
 # Reusable per-row fragments (spread into individual entries below).
 _NO_THINK = {"agent_kwargs": {"enable_thinking": False}}
-
-
-def _tp(n: int) -> dict:
-    return {"engine_kwargs": {"tp_size": n}}
-
+def _tp(n: int) -> dict: return {"engine_kwargs": {"tp_size": n}}
 
 LOCAL_AGENTS: dict[str, dict] = {
     # Qwen3-VL ``-Instruct`` checkpoints ship with chat_template's ``<think>``
@@ -134,7 +130,7 @@ API_AGENTS: dict[str, dict] = {
     "claude-sonnet-4-6": {"agent_id": "claude"},
     # GPT (OpenAI) — requires native computer tool (GPT-5.4+)
     "gpt-5.5": {"agent_id": "gpt"},
-    "gpt-5.6-sol": {"agent_id": "gpt"},
+    "gpt-5.6-sol":{"agent_id":"gpt"},
     # Gemini (Google) — native generateContent computer use
     "gemini-3.6-flash": {"agent_id": "gemini"},
     "gemini-3.5-flash": {"agent_id": "gemini"},
