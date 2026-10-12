@@ -1,0 +1,10 @@
+# Minimal direct-browser runtime, separate from the training/model stack.
+playwright==1.62.0
+pillow>=10.0
+pydantic>=2.6
+pyyaml>=6.0
+psutil>=5.9
+numpy>=1.26
+httpx>=0.27
+fastapi>=0.110
+jsonschema>=4.0

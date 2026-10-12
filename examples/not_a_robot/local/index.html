@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visual Tasks — local interaction lab</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/neal.css">
+  <link rel="stylesheet" href="/neal_spatial.css">
+  <link rel="stylesheet" href="/neal_puzzles.css">
+  <script src="/neal.js" defer></script>
+  <script src="/neal_grids.js" defer></script>
+  <script src="/neal_boards.js" defer></script>
+  <script src="/neal_forms.js" defer></script>
+  <script src="/neal_replacements.js" defer></script>
+  <script src="/neal_ducks.js" defer></script>
+  <script src="/neal_camera.js" defer></script>
+  <script src="/neal_motion.js" defer></script>
+  <script src="/neal_spatial.js" defer></script>
+  <script src="/neal_puzzles.js" defer></script>
+  <script src="/game.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="masthead">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">V</span> VISUAL TASKS</div>
+      <span class="badge">LOCAL / SYNTHETIC</span>
+    </header>
+    <section id="gallery" hidden>
+      <p class="eyebrow">INTERACTION LAB · 01</p>
+      <h1>Small tasks.<br>Real interactions.</h1>
+      <p class="intro">Self-hosted visual tasks and reference-based reconstructions from Neal's game.
+        Reference artwork requires a private local import. No external services are contacted.</p>
+      <form id="seed-form"><label for="seed">Random seed</label>
+        <input id="seed" type="number" min="0" max="4294967295" value="0" required>
+        <button class="secondary" type="submit">Apply seed</button>
+      </form>
+      <div id="task-cards" class="cards"></div>
+    </section>
+    <section id="exercise" hidden>
+      <div class="task-top"><p id="task-number" class="eyebrow"></p><span id="seed-label" class="seed-label"></span></div>
+      <h1 id="task-title"></h1>
+      <p id="instruction" class="intro"></p>
+      <p id="reference-note" class="reference-note" hidden></p>
+      <div class="board" id="board"></div>
+      <div class="status-row"><p id="feedback" role="status" aria-live="polite">Ready when you are.</p>
+        <span id="mistakes">Mistakes: 0</span></div>
+      <nav id="preview-controls" hidden><a href="/">All tasks</a><button id="restart" class="secondary">Restart same seed</button></nav>
+    </section>
+    <p id="boot-error" role="alert" hidden></p>
+    <footer><span>Local experimental implementation · Not the official Neal game</span><span id="version"></span></footer>
+  </main>
+</body>
+</html>

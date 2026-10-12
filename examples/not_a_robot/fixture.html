@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Offline synthetic browser control</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #edf2f7; color: #172638; font: 20px Arial, sans-serif; }
+    main { width: 800px; margin: 64px auto; padding: 32px; background: white; border-radius: 16px; }
+    .notice { margin: 0 0 24px; color: #506175; font-size: 16px; }
+    h1 { margin: 0 0 24px; font-size: 32px; }
+    button, input { font: inherit; }
+    #checkbox { display: flex; align-items: center; gap: 20px; width: 380px; height: 96px;
+      margin: 36px auto; padding: 24px; border: 2px solid #64819a; border-radius: 8px;
+      background: #f6f9fc; color: #172638; cursor: pointer; }
+    .square { width: 34px; height: 34px; border: 3px solid #365974; background: white; }
+    label { display: block; margin-bottom: 12px; }
+    input { width: 340px; height: 48px; padding: 8px; border: 2px solid #64819a; }
+    #keyboard-status, #drag-status { min-height: 24px; font-size: 18px; }
+    #drag-area { position: relative; height: 150px; margin-top: 24px; }
+    #drag-square { position: absolute; left: 24px; top: 34px; width: 64px; height: 64px;
+      background: #2468c5; border-radius: 8px; touch-action: none; cursor: grab; z-index: 1; }
+    #target { position: absolute; left: 430px; top: 6px; width: 180px; height: 120px;
+      display: grid; place-items: center; border: 3px dashed #557183; border-radius: 10px; }
+    #complete { color: #17603c; font-weight: bold; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="notice">Local synthetic control only. This is not Neal's game or a CAPTCHA service.</p>
+    <h1 id="heading">Level 1: Checkbox</h1>
+    <section id="stage-one">
+      <p>Click the checkbox to enter the second control stage.</p>
+      <button id="checkbox" role="checkbox" aria-checked="false">
+        <span class="square" aria-hidden="true"></span>I'm not a robot
+      </button>
+    </section>
+    <section id="stage-two" hidden>
+      <form id="keyboard-form">
+        <label for="ready-input">Type READY and press Enter.</label>
+        <input id="ready-input" autocomplete="off" spellcheck="false">
+      </form>
+      <p id="keyboard-status" aria-live="polite">Keyboard input not completed.</p>
+      <p>Drag the blue square into the dashed target.</p>
+      <div id="drag-area">
+        <div id="drag-square" aria-label="Blue square"></div>
+        <div id="target">Drop here</div>
+      </div>
+      <p id="drag-status" aria-live="polite">Drag not completed.</p>
+      <p id="complete" hidden>Synthetic control complete.</p>
+    </section>
+  </main>
+  <script>
+    const checkbox = document.getElementById("checkbox");
+    checkbox.addEventListener("click", () => {
+      checkbox.setAttribute("aria-checked", "true");
+      document.getElementById("stage-one").hidden = true;
+      document.getElementById("stage-two").hidden = false;
+      document.getElementById("heading").textContent = "Level 2: Keyboard and drag";
+    });
+
+    let keyboardComplete = false;
+    let dragComplete = false;
+    document.getElementById("keyboard-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      keyboardComplete = document.getElementById("ready-input").value === "READY";
+      document.getElementById("keyboard-status").textContent = keyboardComplete
+        ? "Keyboard input completed." : "Please type READY exactly.";
+      document.getElementById("complete").hidden = !(keyboardComplete && dragComplete);
+    });
+
+    const square = document.getElementById("drag-square");
+    let dragStart = null;
+    square.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      dragStart = {x: event.clientX, y: event.clientY};
+      square.setPointerCapture(event.pointerId);
+    });
+    square.addEventListener("pointermove", (event) => {
+      if (!dragStart) return;
+      square.style.transform = `translate(${event.clientX - dragStart.x}px, ${event.clientY - dragStart.y}px)`;
+    });
+    square.addEventListener("pointerup", (event) => {
+      if (!dragStart) return;
+      const target = document.getElementById("target").getBoundingClientRect();
+      dragComplete = event.clientX >= target.left && event.clientX <= target.right
+        && event.clientY >= target.top && event.clientY <= target.bottom;
+      document.getElementById("drag-status").textContent = dragComplete
+        ? "Drag completed." : "Drag missed the target. Try again.";
+      document.getElementById("complete").hidden = !(keyboardComplete && dragComplete);
+      square.style.transform = "";
+      dragStart = null;
+      square.releasePointerCapture(event.pointerId);
+    });
+    square.addEventListener("pointercancel", () => {
+      square.style.transform = "";
+      dragStart = null;
+    });
+  </script>
+</body>
+</html>

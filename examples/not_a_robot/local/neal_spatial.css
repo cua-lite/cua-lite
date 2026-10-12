@@ -1,0 +1,20 @@
+.neal-spatial-note {font:12px/1.4 sans-serif;color:#52616b;margin:8px 10px}
+.neal-spatial-canvas {display:block;width:100%;height:auto;touch-action:none;outline:none;background:#e8edf0}
+.neal-spatial-input {display:block;box-sizing:border-box;width:calc(100% - 24px);margin:14px 12px;padding:12px;font:22px monospace;border:1px solid #9ca5ad}
+.neal-spatial-controls {display:flex;justify-content:center;gap:8px;padding:8px;flex-wrap:wrap}
+.neal-spatial-controls button {font:18px sans-serif;padding:8px 14px;border:1px solid #aaa;background:#fafafa;touch-action:none;cursor:pointer}
+.neal-text3d {height:260px;position:relative;overflow:hidden;perspective:550px;touch-action:none;background:radial-gradient(ellipse,#fff,#dfe5ec)}
+.neal-text3d-world {position:absolute;left:50%;top:50%;transform-style:preserve-3d}
+.neal-text3d-letter {position:absolute;width:60px;height:90px;top:-45px;left:-30px;transform-style:preserve-3d;font:bold 64px/90px Georgia,serif;text-align:center}
+.neal-text3d-letter span {position:absolute;inset:0;backface-visibility:visible;text-shadow:1px 1px 1px #333}
+.neal-text3d-orb {position:absolute;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff9,#698dbb99);transform-style:preserve-3d}
+.neal-spatial-status {font:14px/1.5 sans-serif;min-height:22px;margin:6px 12px;color:#344454}
+.neal-spatial-assembly {display:block;width:100%;background:linear-gradient(#e8eff5,#fff);touch-action:none;user-select:none}
+.neal-spatial-assembly [data-piece] {cursor:grab}
+.neal-spatial-assembly circle {fill:#553314;stroke:#eed7aa;stroke-width:1}
+.neal-spatial-chess {display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));aspect-ratio:1;margin:4px;touch-action:none;user-select:none}
+.neal-game .neal-spatial-square {position:relative;border:0;padding:0;background:#f0d9b5;font:42px/1 "Segoe UI Symbol","DejaVu Sans",serif;cursor:pointer;color:#151515;min-width:0;min-height:0}
+.neal-game .neal-spatial-square.dark {background:#b58863}
+.neal-spatial-square.selected {box-shadow:inset 0 0 0 4px #2873cd}
+.neal-spatial-square .coordinate {position:absolute;left:2px;bottom:1px;font:10px sans-serif;color:#222;text-shadow:none}
+.neal-game .neal-spatial-square[data-color=w] {color:#fff;text-shadow:0 1px 1px #000,1px 0 1px #000,-1px 0 1px #000,0 -1px 1px #000}
