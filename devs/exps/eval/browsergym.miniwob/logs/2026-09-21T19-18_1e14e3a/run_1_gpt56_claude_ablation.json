@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "env": "browsergym.miniwob",
+  "commit_dir": "2026-09-21T19-18_1e14e3a",
+  "run_id": "run_1_gpt56_claude_ablation",
+  "commit": {
+    "short_sha": "1e14e3a",
+    "subject": "Allow MiniWoB GPT reasoning effort override"
+  },
+  "artifact_root": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_1_gpt56_claude_ablation",
+  "result_count": 3,
+  "status_counts": {
+    "complete": 3,
+    "partial": 0,
+    "empty": 0
+  },
+  "runtime": {
+    "env_server_url_present": false,
+    "env_server_token_present": false
+  },
+  "results": [
+    {
+      "model": "claude-opus-5",
+      "slug": "claude-opus-5__sub2api_no_cache",
+      "base_slug": "claude-opus-5",
+      "config_id": "sub2api_no_cache",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.912,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_1_gpt56_claude_ablation/claude-opus-5__sub2api_no_cache/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_1_gpt56_claude_ablation/claude-opus-5__sub2api_no_cache"
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "slug": "gpt-5.6-sol__reasoning_xhigh",
+      "base_slug": "gpt-5.6-sol",
+      "config_id": "reasoning_xhigh",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.832,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_1_gpt56_claude_ablation/gpt-5.6-sol__reasoning_xhigh/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_1_gpt56_claude_ablation/gpt-5.6-sol__reasoning_xhigh"
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "slug": "gpt-5.6-sol__reasoning_medium",
+      "base_slug": "gpt-5.6-sol",
+      "config_id": "reasoning_medium",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.824,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_1_gpt56_claude_ablation/gpt-5.6-sol__reasoning_medium/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_1_gpt56_claude_ablation/gpt-5.6-sol__reasoning_medium"
+    }
+  ]
+}

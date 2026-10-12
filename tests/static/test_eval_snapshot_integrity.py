@@ -32,6 +32,10 @@ KNOWN_MD_ONLY_SNAPSHOTS = {
     "devs/exps/eval/androidworld/logs/2026-04-28T21-31_785df232/run_0.md",
     "devs/exps/eval/browsergym.miniwob/logs/2026-07-01T20-57_f57d3cbb92/run_1_default.md",
     "devs/exps/eval/browsergym.miniwob/logs/2026-07-01T20-57_f57d3cbb92/run_1_textonly.md",
+    # Campaign leaderboard spanning several (commit, run_id) pairs, so no single
+    # run dir backs it and update_run_json.py cannot produce a sibling payload.
+    # The runs it carries forward each have their own paired snapshot.
+    "devs/exps/eval/browsergym.miniwob/logs/2026-09-21T19-18_1e14e3a/run_0.md",
     "devs/exps/eval/cua/logs/2026-07-09T22-41_d982edcfb3/run_0.md",
     "devs/exps/eval/lite.osworld/logs/2026-04-26T18-38_8b9d4bd/run_0.md",
     "devs/exps/eval/osworld/logs/2026-04-26T18-38_8b9d4bd/run_0.md",

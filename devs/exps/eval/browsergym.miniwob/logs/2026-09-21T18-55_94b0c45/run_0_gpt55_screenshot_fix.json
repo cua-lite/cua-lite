@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "env": "browsergym.miniwob",
+  "commit_dir": "2026-09-21T18-55_94b0c45",
+  "run_id": "run_0_gpt55_screenshot_fix",
+  "commit": {
+    "short_sha": "94b0c45",
+    "subject": "Fix BrowserGym no-op screenshot scaling"
+  },
+  "artifact_root": ".exps/eval/browsergym.miniwob/2026-09-21T18-55_94b0c45/run_0_gpt55_screenshot_fix",
+  "result_count": 1,
+  "status_counts": {
+    "complete": 1,
+    "partial": 0,
+    "empty": 0
+  },
+  "runtime": {
+    "env_server_url_present": false,
+    "env_server_token_present": false
+  },
+  "results": [
+    {
+      "model": "gpt-5.5",
+      "slug": "gpt-5.5",
+      "base_slug": "gpt-5.5",
+      "config_id": "default",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.848,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T18-55_94b0c45/run_0_gpt55_screenshot_fix/gpt-5.5/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T18-55_94b0c45/run_0_gpt55_screenshot_fix/gpt-5.5"
+    }
+  ]
+}
