@@ -1,6 +1,6 @@
 # mobileworld @ 2026-09-23T04-43_6d75fa0 · run_0
 
-- **Report revision**: `6d75fa0`.
+- **Commit**: `6d75fa0` — `fix(mobileworld): exclude user-interaction tasks from default eval`
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB; API models use no local GPU.
 - **Artifacts**: `.exps/eval/mobileworld/2026-09-23T04-43_6d75fa0/run_0/`
 - **Started**: `2026-09-23 PDT`

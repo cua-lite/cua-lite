@@ -823,6 +823,7 @@ _EXPECTED_ASK_USER_CONFIGS = {
 _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS = {
     "scripts/configs/claude/default/browsergym.miniwob/default.yaml",
     "scripts/configs/claude/default/browsergym.webarena/default.yaml",
+    "scripts/configs/evocua/default/browsergym.webarena/default.yaml",
     "scripts/configs/gpt/default/browsergym.miniwob/default.yaml",
     "scripts/configs/gpt/default/browsergym.webarena/default.yaml",
     "scripts/configs/qwen3_5/default/browsergym.miniwob/default.yaml",
@@ -839,6 +840,8 @@ _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS = {
     "scripts/configs/qwen3_vl/default/browsergym.webarena/default.yaml",
     "scripts/configs/qwen3_vl/default/browsergym.webarena/som.yaml",
     "scripts/configs/qwen3_vl/default/browsergym.webarena/text_only.yaml",
+    "scripts/configs/ui_tars_15_v1/default/browsergym.webarena/default.yaml",
+    "scripts/configs/ui_venus_2/default/browsergym.webarena/default.yaml",
 }
 
 # MiniWoB text+bid rows: `action_subsets: ["bid", "chat", "infeas"]` surfaces
@@ -876,6 +879,9 @@ _EXPECTED_NAV_CONFIGS = {
     "scripts/configs/qwen3_vl/default/webgym.yaml",
     "scripts/configs/qwen3_vl/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/qwen3_vl/default/webharbor.webvoyager/som.yaml",
+    "scripts/configs/claude/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/evocua/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/ui_tars_15_v1/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/ui_venus_2/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/qwen3_8/default/browsergym.miniwob/default.yaml",
     "scripts/configs/qwen3_8/default/browsergym.visualwebarena/goal_image.yaml",
@@ -951,6 +957,9 @@ _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/qwen3_5/default/webharbor.webvoyager/som.yaml",
     "scripts/configs/qwen3_8/default/webharbor.webvoyager/som.yaml",
     "scripts/configs/qwen3_vl/compact/webgym.yaml",
+    "scripts/configs/claude/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/evocua/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/ui_tars_15_v1/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/ui_venus_2/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/ui_venus_2/default/lite.osworld.yaml",
     "scripts/configs/ui_venus_2/default/osworld.yaml",
