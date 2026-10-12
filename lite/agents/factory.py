@@ -34,7 +34,11 @@ from lite.utils.registry import compose_key
 
 # Reusable per-row fragments (spread into individual entries below).
 _NO_THINK = {"agent_kwargs": {"enable_thinking": False}}
-def _tp(n: int) -> dict: return {"engine_kwargs": {"tp_size": n}}
+
+
+def _tp(n: int) -> dict:
+    return {"engine_kwargs": {"tp_size": n}}
+
 
 LOCAL_AGENTS: dict[str, dict] = {
     # Qwen3-VL ``-Instruct`` checkpoints ship with chat_template's ``<think>``
@@ -88,8 +92,8 @@ LOCAL_AGENTS: dict[str, dict] = {
     # so pin it off for the eval matrix as with Qwen3.5.
     "Qwen/Qwen3.8-27B": {"agent_id": "qwen3_8", **_NO_THINK, **_tp(2)},
     # Holo4 uses Qwen's XML tool-call wire format with its own flat desktop and
-    # mobile tool vocabulary. Native thinking stays enabled; the family agent
-    # suppresses replay of prior thinking during chat-template rendering.
+    # mobile tool vocabulary. Native thinking stays enabled and replays across
+    # turns: the agent renders history with ``preserve_thinking=True``.
     "Hcompany/Holo4-27B": {"agent_id": "holo4", **_tp(2)},
     "Hcompany/Holo4-35B-A3B": {"agent_id": "holo4", **_tp(4)},
     # Other open-weight families.
@@ -130,7 +134,7 @@ API_AGENTS: dict[str, dict] = {
     "claude-sonnet-4-6": {"agent_id": "claude"},
     # GPT (OpenAI) — requires native computer tool (GPT-5.4+)
     "gpt-5.5": {"agent_id": "gpt"},
-    "gpt-5.6-sol":{"agent_id":"gpt"},
+    "gpt-5.6-sol": {"agent_id": "gpt"},
     # Gemini (Google) — native generateContent computer use
     "gemini-3.6-flash": {"agent_id": "gemini"},
     "gemini-3.5-flash": {"agent_id": "gemini"},

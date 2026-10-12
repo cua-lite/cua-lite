@@ -1,0 +1,21 @@
+# Holo4 rollout eval on MobileWorld.
+# 161 tasks (201 upstream − 40 agent-mcp) across 20 apps in DinD boxes,
+# scored on real device / backend state. The 44 agent-user-interaction tasks
+# need the `ask_user` extra tool (enabled below) AND OPENAI_API_KEY exported
+# on the env-server host before containers spawn; the 117 GUI-only tasks run
+# without it.
+
+agent_id: "holo4"
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 1.0
+    top_p: 0.95
+    top_k: 20
+    max_new_tokens: 4096
+
+# max_steps omitted: mobileworld's env default is 50 (upstream ``mw eval
+# --max_round 50``).
+env_id: "mobileworld"
+env_kwargs:
+  loop_detect: 5
+  extra_tools: ["open_app", "ask_user", "response", "terminate"]

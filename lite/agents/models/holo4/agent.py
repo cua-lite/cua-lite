@@ -18,16 +18,20 @@ class Holo4BaseAgent(
     reasoning_effort: str | None = None
 
     def build_generation_prompt(self, messages: list[dict[str, Any]]) -> str:
-        """Build the Holo4 chat template prompt without replaying old reasoning."""
+        """Build the Holo4 chat-template prompt while replaying native reasoning."""
         if self.processor is None:
             raise RuntimeError("agent.processor is not set")
+        thinking_enabled = (
+            getattr(self.adapter, "enable_thinking", True) and self.reasoning_effort != "disabled"
+        )
         kwargs: dict[str, Any] = {
+            "tools": self.adapter._assemble_tool_schemas(),
             "add_generation_prompt": True,
             "tokenize": False,
-            "enable_thinking": getattr(self.adapter, "enable_thinking", True),
-            "preserve_thinking": False,
+            "enable_thinking": thinking_enabled,
+            "preserve_thinking": True,
         }
-        if self.reasoning_effort is not None:
+        if self.reasoning_effort not in (None, "disabled"):
             kwargs["reasoning_effort"] = self.reasoning_effort
         return self.processor.apply_chat_template(messages, **kwargs)
 

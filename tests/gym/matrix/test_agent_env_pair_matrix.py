@@ -99,9 +99,9 @@ _CONFIG_ROOTS = (Path("scripts/configs"),)
 # vacuously passing.
 _MIN_CONFIG_YAMLS = 150
 _MIN_DISTINCT_PAIRS = 110
-_EXPECTED_AGENT_CONFIG_ROWS = 196
-_EXPECTED_ENV_CONFIG_ROWS = 191
-_EXPECTED_DISTINCT_PAIRS = 153
+_EXPECTED_AGENT_CONFIG_ROWS = 201
+_EXPECTED_ENV_CONFIG_ROWS = 196
+_EXPECTED_DISTINCT_PAIRS = 158
 
 
 class ConfigRow:
@@ -155,8 +155,9 @@ PAIR_ROWS = [r for r in ROWS if r.env_id]
 # ``metadata.dims``. Most envs answer that from
 # the registry with no docker image and no VM; the few whose *module import*
 # is hard-gated on an uninstalled third-party package (browsergym, cua-bench)
-# or a provisioned task cache (lite.cuagym) are pinned here so the containment
-# sweep still covers their rows on a partially-provisioned host.
+# or a provisioned task cache (lite.cuagym, lite.osworld) are pinned here so
+# the containment sweep still covers their rows on a partially-provisioned
+# host.
 #
 # The pins are NOT trusted blindly: ``test_pinned_env_dims_match_live_registry``
 # re-derives every pin that IS importable and fails on drift, so a fully
@@ -169,6 +170,7 @@ _PINNED_ENV_DIMS: dict[str, tuple[str, ...]] = {
     "cua.bench.local.kicad": ("desktop", "use"),
     "cua.bench.local.workflows": ("desktop", "use"),
     "lite.cuagym": ("browser", "use"),
+    "lite.osworld": ("desktop", "use"),
 }
 
 # Envs that end the episode on the FIRST step (single-step grounding). They are

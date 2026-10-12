@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 from typing import Any, ClassVar, Literal
 
@@ -20,17 +21,26 @@ from lite.core.tools.schemas import tool, tool_schema_name
 
 _DESKTOP_SCHEMA_ACTIONS: dict[str, frozenset[str]] = {
     "click_desktop": frozenset({"click"}),
+    "double_click_desktop": frozenset({"click"}),
+    "triple_click_desktop": frozenset({"click"}),
     "move_to_desktop": frozenset({"mouse_move"}),
+    "mouse_down_desktop": frozenset({"mouse_down"}),
+    "mouse_up_desktop": frozenset({"mouse_up"}),
     "scroll_desktop": frozenset({"scroll"}),
+    "drag_and_drop": frozenset({"drag"}),
+    "drag_to_desktop": frozenset({"drag"}),
     "hotkey_desktop": frozenset({"key"}),
-    "write_desktop": frozenset({"type"}),
-    "write_at_desktop": frozenset({"click", "type"}),
+    "key_down_desktop": frozenset({"key_down"}),
+    "key_up_desktop": frozenset({"key_up"}),
+    "hold_and_tap_key_desktop": frozenset({"key"}),
+    "write_desktop": frozenset({"key", "type"}),
+    "write_at_desktop": frozenset({"click", "key", "type"}),
     "wait_desktop": frozenset({"wait"}),
 }
 
 _MOBILE_SCHEMA_ACTIONS: dict[str, frozenset[str]] = {
     "mobile_click": frozenset({"tap"}),
-    "mobile_write": frozenset({"tap", "type"}),
+    "mobile_write": frozenset({"tap", "type", "system_button"}),
     "mobile_scroll": frozenset({"swipe"}),
     "mobile_swipe": frozenset({"swipe"}),
     "mobile_long_press": frozenset({"long_press"}),
@@ -117,6 +127,26 @@ class Holo4DesktopActionSpace(
 
     @staticmethod
     @tool(
+        element="Visible element to double-click.",
+        x="Horizontal coordinate normalized to [0, 1000].",
+        y="Vertical coordinate normalized to [0, 1000].",
+    )
+    def double_click_desktop(element: str, x: int, y: int) -> dict[str, Any]:
+        """Double-click a visible desktop element."""
+        return LiteDesktopActionSet.click(coordinate=[x, y], clicks=2)
+
+    @staticmethod
+    @tool(
+        element="Visible element to triple-click.",
+        x="Horizontal coordinate normalized to [0, 1000].",
+        y="Vertical coordinate normalized to [0, 1000].",
+    )
+    def triple_click_desktop(element: str, x: int, y: int) -> dict[str, Any]:
+        """Triple-click a visible desktop element."""
+        return LiteDesktopActionSet.click(coordinate=[x, y], clicks=3)
+
+    @staticmethod
+    @tool(
         element="Visible element to move the pointer to.",
         x="Horizontal coordinate normalized to [0, 1000].",
         y="Vertical coordinate normalized to [0, 1000].",
@@ -124,6 +154,22 @@ class Holo4DesktopActionSpace(
     def move_to_desktop(element: str, x: int, y: int) -> dict[str, Any]:
         """Move the pointer to a visible desktop element."""
         return LiteDesktopActionSet.mouse_move(coordinate=[x, y])
+
+    @staticmethod
+    @tool(button="Mouse button to hold down.")
+    def mouse_down_desktop(
+        button: Literal["left", "right", "middle"] = "left",
+    ) -> dict[str, Any]:
+        """Press and hold a mouse button at the current pointer position."""
+        return LiteDesktopActionSet.mouse_down(button=button)
+
+    @staticmethod
+    @tool(button="Mouse button to release.")
+    def mouse_up_desktop(
+        button: Literal["left", "right", "middle"] = "left",
+    ) -> dict[str, Any]:
+        """Release a held mouse button."""
+        return LiteDesktopActionSet.mouse_up(button=button)
 
     @staticmethod
     @tool(
@@ -146,10 +192,74 @@ class Holo4DesktopActionSpace(
         )
 
     @staticmethod
-    @tool(keys="Keys to press together.")
-    def hotkey_desktop(keys: list[str]) -> dict[str, Any]:
+    @tool(
+        description="What is being dragged and where.",
+        x1="Horizontal start coordinate normalized to [0, 1000].",
+        y1="Vertical start coordinate normalized to [0, 1000].",
+        x2="Horizontal end coordinate normalized to [0, 1000].",
+        y2="Vertical end coordinate normalized to [0, 1000].",
+    )
+    def drag_and_drop(
+        description: str,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+    ) -> dict[str, Any]:
+        """Drag from one point to another.
+
+        The official wire name carries no ``_desktop`` suffix. The official
+        ``hold_keys`` argument is not carried: canonical ``drag`` holds no
+        modifiers, and 192 of 193 official calls omit it.
+        """
+        return LiteDesktopActionSet.drag(start_coordinate=[x1, y1], coordinate=[x2, y2])
+
+    @staticmethod
+    @tool(
+        element="Visible element to drag to.",
+        x="Horizontal coordinate normalized to [0, 1000].",
+        y="Vertical coordinate normalized to [0, 1000].",
+    )
+    def drag_to_desktop(element: str, x: int, y: int) -> dict[str, Any]:
+        """Drag from the current pointer position to a visible element."""
+        return LiteDesktopActionSet.drag(coordinate=[x, y])
+
+    @staticmethod
+    @tool(
+        keys="Keys to press together.",
+        repeat_count="Number of times to press the chord.",
+    )
+    def hotkey_desktop(keys: list[str], repeat_count: int = 1) -> dict[str, Any]:
         """Press and release a desktop key chord."""
-        return LiteDesktopActionSet.key(keys=keys)
+        if repeat_count < 1:
+            raise ValueError("repeat_count must be at least 1")
+        return merge_adjacent_lite_action_batches(
+            [LiteDesktopActionSet.key(keys=keys) for _ in range(repeat_count)]
+        )[0]
+
+    @staticmethod
+    @tool(key="Key to press and hold.")
+    def key_down_desktop(key: str) -> dict[str, Any]:
+        """Press and hold a key."""
+        return LiteDesktopActionSet.key_down(keys=[key])
+
+    @staticmethod
+    @tool(key="Held key to release.")
+    def key_up_desktop(key: str) -> dict[str, Any]:
+        """Release a held key."""
+        return LiteDesktopActionSet.key_up(keys=[key])
+
+    @staticmethod
+    @tool(
+        hold_keys="Keys to press and hold.",
+        tap_keys="Keys to tap while the held keys are down.",
+    )
+    def hold_and_tap_key_desktop(
+        hold_keys: list[str],
+        tap_keys: list[str],
+    ) -> dict[str, Any]:
+        """Hold modifiers down, tap keys, then release: one chord."""
+        return LiteDesktopActionSet.key(keys=[*hold_keys, *tap_keys])
 
     @staticmethod
     @tool(
@@ -206,33 +316,52 @@ class Holo4DesktopActionSpace(
         active_extra_tool_names: set[str] | None = None,
         **kwargs: Any,
     ) -> list[dict[str, Any]]:
+        converters = {
+            "click_desktop": self.click_desktop,
+            "double_click_desktop": self.double_click_desktop,
+            "triple_click_desktop": self.triple_click_desktop,
+            "move_to_desktop": self.move_to_desktop,
+            "mouse_down_desktop": self.mouse_down_desktop,
+            "mouse_up_desktop": self.mouse_up_desktop,
+            "scroll_desktop": self.scroll_desktop,
+            "drag_and_drop": self.drag_and_drop,
+            "drag_to_desktop": self.drag_to_desktop,
+            "hotkey_desktop": self.hotkey_desktop,
+            "key_down_desktop": self.key_down_desktop,
+            "key_up_desktop": self.key_up_desktop,
+            "hold_and_tap_key_desktop": self.hold_and_tap_key_desktop,
+            "write_desktop": self.write_desktop,
+            "write_at_desktop": self.write_at_desktop,
+            "wait_desktop": self.wait_desktop,
+        }
         validated = super().convert_tool_calls_from_agent(agent_tool_calls, **kwargs)
         active_extras = active_extra_tool_names or set()
         result: list[dict[str, Any]] = []
         for call in validated:
             name = tool_call_name(call)
-            arguments = tool_call_arguments(call)
+            arguments = {**tool_call_arguments(call)}
             try:
-                if name == "click_desktop":
-                    result.append(self.click_desktop(**arguments))
-                elif name == "move_to_desktop":
-                    result.append(self.move_to_desktop(**arguments))
-                elif name == "scroll_desktop":
-                    result.append(self.scroll_desktop(**arguments))
-                elif name == "hotkey_desktop":
-                    result.append(self.hotkey_desktop(**arguments))
-                elif name == "write_desktop":
-                    result.append(self.write_desktop(**arguments))
-                elif name == "write_at_desktop":
-                    result.append(self.write_at_desktop(**arguments))
-                elif name == "wait_desktop":
-                    result.append(self.wait_desktop(**arguments))
+                if name in converters:
+                    # Official Holo4 trajectories occasionally emit desktop
+                    # pointer coordinates as numeric strings (19 of 49,554
+                    # coordinate values); keep canonical coordinate lists
+                    # integer.
+                    for key in ("x", "y", "x1", "y1", "x2", "y2"):
+                        value = arguments.get(key)
+                        if isinstance(value, str):
+                            try:
+                                arguments[key] = int(value)
+                            except ValueError:
+                                pass
+                    result.append(converters[name](**arguments))
                 elif name == "shell" and BASH_TOOL_NAME in active_extras:
                     result.append(make_tool_call(BASH_TOOL_NAME, {"command": arguments["command"]}))
                 elif name == "answer":
                     result.append(
                         self._project_finish_from_agent(arguments["content"], active_extras)
                     )
+                elif name in active_extras:
+                    result.append(make_tool_call(name, arguments))
                 else:
                     raise ModelToolCallParseError(f"unsupported Holo4 desktop tool {name!r}")
             except ModelToolCallParseError:
@@ -248,6 +377,12 @@ class Holo4DesktopActionSpace(
         tool_calls: list[dict[str, Any]],
         **kwargs: Any,
     ) -> list[dict[str, Any]]:
+        """Render canonical calls in the Holo4 desktop vocabulary.
+
+        A canonical-form renderer, not an inverse of the parse direction:
+        expanded lowerings render back as their primitive spellings
+        (``write_at_desktop`` as click/hotkey/write, for example).
+        """
         result: list[dict[str, Any]] = []
         for tool_call in tool_calls:
             projected_extra = self._project_extra_to_agent(tool_call)
@@ -255,25 +390,40 @@ class Holo4DesktopActionSpace(
                 result.append(projected_extra)
                 continue
             if tool_call_name(tool_call) != LITE_COMPUTER_ACTION_BATCH_TOOL_NAME:
-                raise ValueError(
-                    f"unsupported canonical desktop tool {tool_call_name(tool_call)!r}"
+                # lite -> agent re-emits an open set: a name outside the
+                # canonical batch is the env extra-tool channel, so it passes
+                # through as bare agent wire instead of raising.
+                result.append(
+                    {
+                        "name": tool_call_name(tool_call),
+                        "arguments": tool_call_arguments(tool_call),
+                    }
                 )
+                continue
             for child in unpack_action_batch_call(tool_call):
                 name = child["name"]
                 arguments = child["arguments"]
                 coordinate = arguments.get("coordinate")
                 if name == "click":
-                    result.append(
-                        {
-                            "name": "click_desktop",
-                            "arguments": {
-                                "element": "screen coordinate",
-                                "x": coordinate[0],
-                                "y": coordinate[1],
-                                "button": arguments.get("button", "left"),
-                            },
-                        }
-                    )
+                    # double/triple_click_desktop carry no ``button`` argument;
+                    # official calls used the default left button throughout.
+                    click_arguments: dict[str, Any] = {
+                        "element": "screen coordinate",
+                        "x": coordinate[0],
+                        "y": coordinate[1],
+                    }
+                    clicks = arguments.get("clicks", 1)
+                    if clicks == 2:
+                        result.append(
+                            {"name": "double_click_desktop", "arguments": click_arguments}
+                        )
+                    elif clicks == 3:
+                        result.append(
+                            {"name": "triple_click_desktop", "arguments": click_arguments}
+                        )
+                    else:
+                        click_arguments["button"] = arguments.get("button", "left")
+                        result.append({"name": "click_desktop", "arguments": click_arguments})
                 elif name == "mouse_move":
                     result.append(
                         {
@@ -284,6 +434,54 @@ class Holo4DesktopActionSpace(
                                 "y": coordinate[1],
                             },
                         }
+                    )
+                elif name == "mouse_down":
+                    result.append(
+                        {
+                            "name": "mouse_down_desktop",
+                            "arguments": {"button": arguments.get("button", "left")},
+                        }
+                    )
+                elif name == "mouse_up":
+                    result.append(
+                        {
+                            "name": "mouse_up_desktop",
+                            "arguments": {"button": arguments.get("button", "left")},
+                        }
+                    )
+                elif name == "drag":
+                    start = arguments.get("start_coordinate")
+                    if start:
+                        result.append(
+                            {
+                                "name": "drag_and_drop",
+                                "arguments": {
+                                    "description": "screen element",
+                                    "x1": start[0],
+                                    "y1": start[1],
+                                    "x2": coordinate[0],
+                                    "y2": coordinate[1],
+                                },
+                            }
+                        )
+                    else:
+                        result.append(
+                            {
+                                "name": "drag_to_desktop",
+                                "arguments": {
+                                    "element": "screen element",
+                                    "x": coordinate[0],
+                                    "y": coordinate[1],
+                                },
+                            }
+                        )
+                elif name == "key_down":
+                    result.append(
+                        {"name": "key_down_desktop", "arguments": {"key": arguments["keys"][0]}}
+                    )
+                elif name == "key_up":
+                    result.append(
+                        {"name": "key_up_desktop", "arguments": {"key": arguments["keys"][0]}}
                     )
                 elif name == "scroll":
                     result.append(
@@ -318,7 +516,7 @@ class Holo4DesktopActionSpace(
                         {"name": "wait_desktop", "arguments": {"seconds": arguments["duration"]}}
                     )
                 else:
-                    raise ValueError(f"unsupported canonical desktop action {name!r}")
+                    result.append({"name": name, "arguments": arguments})
         return result
 
 
@@ -345,6 +543,7 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         text="Text to write.",
         x="Horizontal coordinate normalized to [0, 1000].",
         y="Vertical coordinate normalized to [0, 1000].",
+        overwrite="Whether to replace the current field contents.",
         enter="Whether to press Enter after writing.",
     )
     def mobile_write(
@@ -352,9 +551,14 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         text: str,
         x: int,
         y: int,
+        overwrite: bool = False,
         enter: bool = False,
     ) -> dict[str, Any]:
-        """Focus a visible mobile field and write text into it."""
+        """Focus a visible mobile field and write text into it.
+
+        The official ``overwrite`` argument is not carried: canonical mobile
+        ``type`` appends to whatever the focused field already holds.
+        """
         calls = [
             LiteMobileActionSet.tap(coordinate=[x, y]),
             LiteMobileActionSet.type(text=text),
@@ -425,6 +629,7 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         y_touch="Starting vertical coordinate normalized to [0, 1000].",
         x_lift="Ending horizontal coordinate normalized to [0, 1000].",
         y_lift="Ending vertical coordinate normalized to [0, 1000].",
+        duration="Drag duration in milliseconds.",
     )
     def mobile_drag(
         element: str,
@@ -432,10 +637,16 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         y_touch: int,
         x_lift: int,
         y_lift: int,
+        duration: int = 400,
     ) -> dict[str, Any]:
-        """Drag a visible mobile element."""
+        """Drag a visible mobile element.
+
+        The official ``duration`` argument is not carried: canonical mobile
+        ``drag`` defines no duration.
+        """
         return LiteMobileActionSet.drag(
-            start_coordinate=[x_touch, y_touch], coordinate=[x_lift, y_lift]
+            start_coordinate=[x_touch, y_touch],
+            coordinate=[x_lift, y_lift],
         )
 
     @staticmethod
@@ -494,11 +705,35 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
             arguments = tool_call_arguments(call)
             try:
                 if name in converters:
+                    if name == "mobile_click":
+                        coordinate = arguments.get("x")
+                        if isinstance(coordinate, str):
+                            try:
+                                coordinate = ast.literal_eval(coordinate)
+                            except (SyntaxError, ValueError):
+                                pass
+                        if isinstance(coordinate, (list, tuple)):
+                            arguments = {
+                                "element": arguments.get("element", "screen coordinate"),
+                                "x": coordinate[0],
+                                "y": coordinate[1],
+                            }
+                    if name == "mobile_swipe" and "x_touch" not in arguments:
+                        arguments = {
+                            "x_touch": arguments["x"],
+                            "y_touch": arguments["y"],
+                            "x_lift": arguments["x_lift"],
+                            "y_lift": arguments["y_lift"],
+                        }
                     result.append(converters[name](**arguments))
+                elif name == "shell" and BASH_TOOL_NAME in active_extras:
+                    result.append(make_tool_call(BASH_TOOL_NAME, {"command": arguments["command"]}))
                 elif name == "answer":
                     result.append(
                         self._project_finish_from_agent(arguments["content"], active_extras)
                     )
+                elif name in active_extras:
+                    result.append(make_tool_call(name, arguments))
                 else:
                     raise ModelToolCallParseError(f"unsupported Holo4 mobile tool {name!r}")
             except ModelToolCallParseError:
@@ -512,6 +747,12 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         tool_calls: list[dict[str, Any]],
         **kwargs: Any,
     ) -> list[dict[str, Any]]:
+        """Render canonical calls in the Holo4 mobile vocabulary.
+
+        A canonical-form renderer, not an inverse of the parse direction:
+        ``mobile_hide_keyboard`` renders as ``mobile_go_back`` and
+        ``mobile_go_to_all_apps`` as home + swipe, for example.
+        """
         result: list[dict[str, Any]] = []
         for tool_call in tool_calls:
             projected_extra = self._project_extra_to_agent(tool_call)
@@ -519,9 +760,16 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
                 result.append(projected_extra)
                 continue
             if tool_call_name(tool_call) != LITE_MOBILE_ACTION_BATCH_TOOL_NAME:
-                raise ValueError(
-                    f"unsupported canonical mobile tool {tool_call_name(tool_call)!r}"
+                # lite -> agent re-emits an open set: a name outside the
+                # canonical batch is the env extra-tool channel, so it passes
+                # through as bare agent wire instead of raising.
+                result.append(
+                    {
+                        "name": tool_call_name(tool_call),
+                        "arguments": tool_call_arguments(tool_call),
+                    }
                 )
+                continue
             children = unpack_action_batch_call(tool_call)
             child_index = 0
             while child_index < len(children):
@@ -539,18 +787,14 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
                         and enter_child["name"] == "system_button"
                         and enter_child["arguments"].get("button") == "Enter"
                     )
-                    result.append(
-                        {
-                            "name": "mobile_write",
-                            "arguments": {
-                                "element": "screen field",
-                                "text": next_child["arguments"]["text"],
-                                "x": coordinate[0],
-                                "y": coordinate[1],
-                                "enter": press_enter,
-                            },
-                        }
-                    )
+                    write_arguments = {
+                        "element": "screen field",
+                        "text": next_child["arguments"]["text"],
+                        "x": coordinate[0],
+                        "y": coordinate[1],
+                        "enter": press_enter,
+                    }
+                    result.append({"name": "mobile_write", "arguments": write_arguments})
                     child_index += 3 if press_enter else 2
                     continue
                 if name == "tap":
@@ -565,18 +809,18 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
                         }
                     )
                 elif name == "type":
-                    result.append(
-                        {
-                            "name": "mobile_write",
-                            "arguments": {
-                                "element": "focused field",
-                                "text": arguments["text"],
-                                "x": 500,
-                                "y": 500,
-                                "enter": False,
-                            },
-                        }
-                    )
+                    # Out-of-family canonical input only: in-family
+                    # ``mobile_write`` lowers to tap + type, so a bare type
+                    # renders as mobile_write with screen-center placeholder
+                    # coordinates for the focused field.
+                    write_arguments = {
+                        "element": "focused field",
+                        "text": arguments["text"],
+                        "x": 500,
+                        "y": 500,
+                        "enter": False,
+                    }
+                    result.append({"name": "mobile_write", "arguments": write_arguments})
                 elif name == "swipe":
                     start = arguments["start_coordinate"]
                     result.append(
@@ -591,28 +835,32 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
                         }
                     )
                 elif name == "long_press":
+                    long_press_arguments = {
+                        "element": "screen coordinate",
+                        "x": coordinate[0],
+                        "y": coordinate[1],
+                    }
+                    if "duration" in arguments:
+                        long_press_arguments["duration"] = round(arguments["duration"] * 1000)
                     result.append(
                         {
                             "name": "mobile_long_press",
-                            "arguments": {
-                                "element": "screen coordinate",
-                                "x": coordinate[0],
-                                "y": coordinate[1],
-                            },
+                            "arguments": long_press_arguments,
                         }
                     )
                 elif name == "drag":
                     start = arguments["start_coordinate"]
+                    drag_arguments = {
+                        "element": "screen element",
+                        "x_touch": start[0],
+                        "y_touch": start[1],
+                        "x_lift": coordinate[0],
+                        "y_lift": coordinate[1],
+                    }
                     result.append(
                         {
                             "name": "mobile_drag",
-                            "arguments": {
-                                "element": "screen element",
-                                "x_touch": start[0],
-                                "y_touch": start[1],
-                                "x_lift": coordinate[0],
-                                "y_lift": coordinate[1],
-                            },
+                            "arguments": drag_arguments,
                         }
                     )
                 elif name == "system_button" and arguments["button"] == "Home":
@@ -620,7 +868,7 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
                 elif name == "system_button" and arguments["button"] == "Back":
                     result.append({"name": "mobile_go_back", "arguments": {}})
                 else:
-                    raise ValueError(f"unsupported canonical mobile action {name!r}")
+                    result.append({"name": name, "arguments": arguments})
                 child_index += 1
         return result
 

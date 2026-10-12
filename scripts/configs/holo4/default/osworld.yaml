@@ -1,4 +1,7 @@
 # Holo4 rollout eval on OSWorld.
+# The model's native `answer` tool projects to canonical `response` at the
+# Holo4 adapter boundary (preferred over `terminate` when both are active),
+# so the final answer text survives in the trajectory.
 
 agent_id: "holo4"
 agent_kwargs:
@@ -12,5 +15,5 @@ env_id: "osworld"
 env_kwargs:
   max_steps: 30
   loop_detect: 5
-  extra_tools: ["terminate"]
+  extra_tools: ["response", "terminate"]
 

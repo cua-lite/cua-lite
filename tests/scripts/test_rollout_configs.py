@@ -94,7 +94,6 @@ def test_lite_osworld_rollout_configs_pin_static_contract() -> None:
     assert _protocol_kwargs(qwen3_5_compact)["history_n"] == 1
 
 
-
 _ENVS_DIR = ROOT / "lite/gym/envs"
 _FINISH_TOOL_NAMES = LiteFinishToolSet.get_tool_names()
 
@@ -257,10 +256,7 @@ def _parent_map(tree: ast.AST) -> dict[ast.AST, ast.AST]:
 
 
 def _functions(tree: ast.AST) -> list[ast.AST]:
-    return [
-        n for n in ast.walk(tree)
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
+    return [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
 
 
 def _branches_on_response(func: ast.AST) -> bool:
@@ -270,10 +266,7 @@ def _branches_on_response(func: ast.AST) -> bool:
             isinstance(node, ast.Compare)
             and len(node.ops) == 1
             and isinstance(node.ops[0], ast.Eq)
-            and any(
-                isinstance(c, ast.Constant) and c.value == "response"
-                for c in node.comparators
-            )
+            and any(isinstance(c, ast.Constant) and c.value == "response" for c in node.comparators)
         ):
             return True
     return False
@@ -359,7 +352,8 @@ def _answer_eval_sub_envs(tree: ast.AST) -> set[str]:
     scoped: set[str] = set()
     for func in _functions(tree):
         constants = {
-            n.value for n in ast.walk(func)
+            n.value
+            for n in ast.walk(func)
             if isinstance(n, ast.Constant) and isinstance(n.value, str)
         }
         if "reference_answers" not in constants:
@@ -443,9 +437,11 @@ def _has_answer_gated_eval(env_id: str) -> bool:
     if main_py is None:
         return False
     for node in ast.walk(_parsed(main_py)):
-        test = getattr(node, "test", None) if isinstance(
-            node, (ast.If, ast.IfExp, ast.While)
-        ) else None
+        test = (
+            getattr(node, "test", None)
+            if isinstance(node, (ast.If, ast.IfExp, ast.While))
+            else None
+        )
         if test is None:
             continue
         for sub in ast.walk(test):
@@ -510,8 +506,7 @@ def test_every_answer_requiring_config_row_advertises_response() -> None:
     assert checked > 50, f"gate walked too few rows ({checked}) — path/env resolution broke"
     assert not offenders, (
         "rows on answer-scored envs omit `response` from env_kwargs.extra_tools, so the "
-        "model-visible structured answer tool is absent:\n  "
-        + "\n  ".join(offenders)
+        "model-visible structured answer tool is absent:\n  " + "\n  ".join(offenders)
     )
 
 
@@ -633,6 +628,7 @@ _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/gpt/default/mobileworld.yaml",
     "scripts/configs/holo4/default/androidworld.yaml",
     "scripts/configs/holo4/default/mobilegym.yaml",
+    "scripts/configs/holo4/default/mobileworld.yaml",
     "scripts/configs/mai_ui/compact/androidworld.yaml",
     "scripts/configs/mai_ui/compact/mobilegym.yaml",
     "scripts/configs/mai_ui/default/androidlab.yaml",
@@ -679,6 +675,7 @@ _MOBILE_ANSWER_FINISH_CONFIGS = {
     "scripts/configs/gpt/default/mobileworld.yaml",
     "scripts/configs/holo4/default/androidworld.yaml",
     "scripts/configs/holo4/default/mobilegym.yaml",
+    "scripts/configs/holo4/default/mobileworld.yaml",
     "scripts/configs/mai_ui/compact/androidworld.yaml",
     "scripts/configs/mai_ui/compact/mobilegym.yaml",
     "scripts/configs/mai_ui/default/androidlab.yaml",
@@ -719,6 +716,7 @@ _MOBILE_ANSWER_FINISH_CONFIGS = {
 _EXPECTED_ASK_USER_CONFIGS = {
     "scripts/configs/claude/default/mobileworld.yaml",
     "scripts/configs/gpt/default/mobileworld.yaml",
+    "scripts/configs/holo4/default/mobileworld.yaml",
     "scripts/configs/qwen3_5/default/mobileworld.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
     "scripts/configs/qwen3_vl/default/mobileworld.yaml",
@@ -793,7 +791,7 @@ _EXPECTED_NAV_CONFIGS = {
 _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/gpt/default/webgym.yaml",
     "scripts/configs/holo4/default/lite.osworld.yaml",
-
+    "scripts/configs/holo4/default/osworld.yaml",
     # The fara browsergym rows all select ``response`` so a tool-call-free
     # final turn is scored through ``make_no_tool_call_final_actions`` instead
     # of degrading to a bare ``terminate``; miniwob was the one row that had
@@ -852,8 +850,11 @@ _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/qwen3_8/default/browsergym.webarena/text_only.yaml",
     "scripts/configs/qwen3_8/default/mobilegym.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
-} | (_BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS | _MOBILE_ANSWER_FINISH_CONFIGS
-     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS)
+} | (
+    _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS
+    | _MOBILE_ANSWER_FINISH_CONFIGS
+    | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS
+)
 
 _EXPECTED_TERMINATE_CONFIGS = {
     "scripts/configs/holo4/default/lite.osworld.yaml",
@@ -927,8 +928,11 @@ _EXPECTED_TERMINATE_CONFIGS = {
     "scripts/configs/qwen3_8/default/browsergym.webarena/text_only.yaml",
     "scripts/configs/qwen3_8/default/mobilegym.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
-} | (_BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS | _MOBILE_ANSWER_FINISH_CONFIGS
-     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS)
+} | (
+    _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS
+    | _MOBILE_ANSWER_FINISH_CONFIGS
+    | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS
+)
 
 _REQUIRED_RESPONSE_EXTRA_TOOL_CONFIGS = {
     "scripts/configs/fara/default/webgym.yaml",
@@ -972,7 +976,8 @@ def _tool_io_source_yamls() -> list[Path]:
         if not base.exists():
             continue
         paths.extend(
-            p for p in base.rglob("*.yaml")
+            p
+            for p in base.rglob("*.yaml")
             if "build/lib" not in p.as_posix() and "/.tmp/" not in p.as_posix()
         )
     env_root = root / "lite" / "gym" / "envs"
@@ -1187,8 +1192,8 @@ def test_tool_io_browsergym_yaml_does_not_rely_on_implicit_extra_tools():
         elif env_kwargs["extra_tools"] is None:
             offenders.append(f"{rel}:env_kwargs.extra_tools is null")
 
-    assert not offenders, (
-        "browsergym source YAML must spell extra_tools explicitly:\n" + "\n".join(offenders)
+    assert not offenders, "browsergym source YAML must spell extra_tools explicitly:\n" + "\n".join(
+        offenders
     )
 
 
