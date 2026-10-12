@@ -82,9 +82,38 @@ WEBVOYAGER_SOM = _snap(
     "2026-07-10T15-40_651af22040",
     "run_0_som",
 )
+WEBVOYAGER_SEP22 = _snap(
+    "webharbor.webvoyager",
+    "2026-09-22T01-45_c50ae84",
+    "run_0_thinking_xhigh",
+)
 
 
 KNOWN_PAIR_VIOLATIONS = {
+    # `stats.num_tasks` is the task count a run's FINAL invocation loaded, not
+    # the env's eval set, so these four never-mopped-up rows report fewer than
+    # 643 in summary.json. The snapshot reports Finished against the 643-task
+    # eval set instead, which is the number a reader needs.
+    _vid(
+        WEBVOYAGER_SEP22,
+        "row.finished",
+        "config=reasoning_xhigh model=gpt-5.6-sol md=639/643 json=639/639",
+    ),
+    _vid(
+        WEBVOYAGER_SEP22,
+        "row.finished",
+        "config=reasoning_xhigh model=gpt-5.5 md=633/643 json=633/634",
+    ),
+    _vid(
+        WEBVOYAGER_SEP22,
+        "row.finished",
+        "config=think_on model=Qwen/Qwen3.5-9B md=627/643 json=627/628",
+    ),
+    _vid(
+        WEBVOYAGER_SEP22,
+        "row.finished",
+        "config=think_on model=Qwen/Qwen3.5-4B md=638/643 json=638/639",
+    ),
     _vid(
         ANDROIDLAB_JUL09,
         "md.artifact_root",
