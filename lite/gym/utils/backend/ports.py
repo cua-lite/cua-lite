@@ -50,6 +50,7 @@ the raw exception and should treat it the same way.
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import json
 import logging
@@ -108,19 +109,29 @@ _RECENT_ALLOCATIONS: dict[int, float] = {}
 def _is_port_free(port: int) -> bool:
     """Return *True* if *port* is not bound on any local address.
 
-    Checks IPv4 (0.0.0.0, 127.0.0.1) and IPv6 (::1) WITHOUT SO_REUSEADDR,
-    so that ports held by Docker containers (which bind to both 127.0.0.1
-    and [::1]) are correctly detected as in-use.
+    Checks the IPv4 wildcard and loopback plus the IPv6 loopback and
+    wildcard WITHOUT SO_REUSEADDR, so that ports held by Docker containers
+    (which bind both stacks) are detected as in-use. On hosts where a
+    probed address does not exist — no IPv6 stack at all, or no ``::1``
+    on loopback — the probe raises EAFNOSUPPORT/EADDRNOTAVAIL for every
+    port: an address problem, not a port conflict. Those errnos skip the
+    probe instead of marking every port in-use (which would exhaust every
+    band on the host).
     """
     for family, host in [
         (socket.AF_INET, "0.0.0.0"),
         (socket.AF_INET, "127.0.0.1"),
         (socket.AF_INET6, "::1"),
+        (socket.AF_INET6, "::"),
     ]:
         try:
             with socket.socket(family, socket.SOCK_STREAM) as s:
                 s.bind((host, port))
-        except OSError:
+        except OSError as e:
+            # EADDRNOTAVAIL/EAFNOSUPPORT mean the probed address does not
+            # exist on this host, not that the port is taken.
+            if e.errno in (errno.EADDRNOTAVAIL, errno.EAFNOSUPPORT):
+                continue
             return False
     return True
 
