@@ -19,8 +19,9 @@ cleanup, and retry/recovery.
 Task registry loads from the checked-in ``data/tasks.json`` (dumped from the
 image by ``scripts/tasks.sh``) — no mobile_world Python import on the host.
 ``agent-mcp``-tagged tasks are NOT registered (MCP tool integration is not
-supported at this stage); ``agent-user-interaction`` tasks are registered and
-need the ``ask_user`` extra tool + host ``OPENAI_API_KEY`` (see README).
+supported at this stage); ``agent-user-interaction`` tasks remain registered
+with ``exclude_reason="ask_user"``. The eval runner filters those 44 tasks by
+default, leaving 117 GUI-only tasks (see README).
 
 Prerequisites:
   - uv run --no-sync bash lite/gym/envs/mobileworld/scripts/install.sh
@@ -474,21 +475,22 @@ class MobileWorldEnv(EnvServerPoolable, EnvServerResource):
         """Same-source metadata builder.
         ``task_name=""`` / ``task_meta={}`` is the legacy no-task seed;
         extra_tool_schemas mirrors bind()'s default resolution."""
+        others = {
+            "task_name": task_name,
+            # Copy task lists so registered/live metadata cannot mutate the catalog.
+            "tags": list(task_meta.get("tags", [])),
+            "task_apps": list(task_meta.get("apps", [])),
+            "apps": list(_MOBILE_WORLD_APPS),  # full launchable catalog / open_app enum
+        }
+        if "agent-user-interaction" in others["tags"]:
+            others["exclude_reason"] = "ask_user"
         return LiteCUAMetadata(
             dims=("mobile", "use"),
             extra_tool_schemas=resolve_extra_tools(
                 _EXTRA_TOOLS, tools=MobileworldTools, env_name="mobileworld",
             ),
             valid_actions=list(_SCHEMA_VALID_ACTIONS),
-            others={
-                "task_name": task_name,
-                # list(...): sever the registered/live others from the task
-                # registry's own lists (a consumer mutating one must not
-                # corrupt the other side).
-                "tags": list(task_meta.get("tags", [])),
-                "task_apps": list(task_meta.get("apps", [])),  # apps THIS task involves (per-task)
-                "apps": list(_MOBILE_WORLD_APPS),          # full launchable catalog (open_app enum source)
-            },
+            others=others,
         )
 
     def _runtime_metadata(self) -> LiteCUAMetadata:
