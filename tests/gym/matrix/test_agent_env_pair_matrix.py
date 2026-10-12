@@ -902,8 +902,10 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/claude/default/lite.osworld.yaml",
     "scripts/configs/claude/default/osworld_2.yaml",
     "scripts/configs/claude/default/osworld.yaml",
+    "scripts/configs/claude/default/waa.yaml",
     "scripts/configs/evocua/default/lite.osworld.yaml",
     "scripts/configs/evocua/default/osworld.yaml",
+    "scripts/configs/evocua/default/waa.yaml",
     "scripts/configs/gemini/default/lite.osworld.yaml",
     "scripts/configs/gemini/default/osworld.yaml",
     "scripts/configs/gemini/default/osworld_2.yaml",
@@ -954,4 +956,6 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/ui_tars/default/osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/lite.osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/osworld.yaml",
+    "scripts/configs/ui_tars_15_v1/default/waa.yaml",
+    "scripts/configs/ui_venus_2/default/waa.yaml",
 }
