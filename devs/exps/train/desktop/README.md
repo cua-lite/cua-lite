@@ -916,10 +916,9 @@ stochastic, so the committed sidecar is the pinned artifact, not the recipe.
 DATA=devs/exps/train/desktop/data
 TRAIN="$DATA/grpo.scalecua_rl.libreoffice.g4.n214.usable.parquet"
 EVAL="$DATA/osworld.eval115.libreoffice.parquet"
-ARMB="$DATA/grpo.libreoffice.armB.scalecua214_perturb64.parquet"
 
-if [ -e "$TRAIN" ] && [ -e "$EVAL" ] && [ -e "$ARMB" ]; then
-  echo "keep existing fixed manifests: $TRAIN $EVAL $ARMB"
+if [ -e "$TRAIN" ] && [ -e "$EVAL" ]; then
+  echo "keep existing fixed manifests: $TRAIN $EVAL"
 else
   uv run python - "$DATA" <<'PY'
 import sys
@@ -928,7 +927,7 @@ sys.path.insert(0, "devs/exps/train/desktop")
 import pandas as pd
 
 from lite.utils.parquet import write_records_to_parquet
-from utils.tasks import OSW, SCA, _read_jsonl, domain_of, eval_rows, pool_of
+from utils.tasks import SCA, _read_jsonl, domain_of, eval_rows, pool_of
 
 D = sys.argv[1]
 LO = {"libreoffice_calc", "libreoffice_impress", "libreoffice_writer"}
@@ -949,16 +948,7 @@ write_records_to_parquet([row("lite.scalecua", t, "rl") for t in train],
                          f"{D}/grpo.scalecua_rl.libreoffice.g4.n{len(train)}.usable.parquet")
 write_records_to_parquet([row("lite.osworld", t, "eval") for t in ev],
                          f"{D}/osworld.eval{len(ev)}.libreoffice.parquet")
-# Arm B adds the task-level-contaminated rows back and changes nothing else. It exists to be
-# compared against the pool above; never report a number trained on it without that label.
-pt = {r["task_id"]: r for r in _read_jsonl(OSW / "train.perturb.jsonl")}
-pb = sorted(t for t, b in bucket.items()
-            if b in USABLE and pool_of(t) == "perturb"
-            and pt.get(t) is not None and domain_of(pt[t]) in LO)
-write_records_to_parquet([row("lite.scalecua", t, "rl") for t in train]
-                         + [row("lite.osworld", t, "train.perturb") for t in pb],
-                         f"{D}/grpo.libreoffice.armB.scalecua{len(train)}_perturb{len(pb)}.parquet")
-print(f"wrote {len(train)} train, {len(ev)} eval, arm-B pool {len(train) + len(pb)}")
+print(f"wrote {len(train)} train, {len(ev)} eval")
 PY
 fi
 
@@ -1133,7 +1123,7 @@ rate is the higher of the two despite the smaller nominal value.
 <details>
 <summary>Data</summary>
 
-All six manifests are plain domain filters over two tracked corpora — no calibration sidecar, no
+All five manifests are plain domain filters over two tracked corpora — no calibration sidecar, no
 rollout log, no GPU. `sorted()` is what makes two builds on two clusters byte-identical.
 
 ```bash
@@ -1141,7 +1131,7 @@ rollout log, no GPU. `sorted()` is what makes two builds on two clusters byte-id
 DATA=devs/exps/train/desktop/data
 MISSING=0
 for m in impress.synth287 impress.train395 impress.eval47 \
-         impress_calc.synth565 impress_calc.train779 impress_calc.eval93; do
+         impress_calc.train779 impress_calc.eval93; do
   [ -e "$DATA/$m.parquet" ] || MISSING=1
 done
 if [ "$MISSING" = 0 ]; then
@@ -1167,8 +1157,9 @@ for stem, doms in (("impress", {"libreoffice_impress"}),
     p = sorted(t for t, r in pt.items() if domain_of(r) in doms)
     ev = sorted(r["task_id"] for r in eval_rows(scored_only=True) if domain_of(r) in doms)
     train = sorted([(t, "train.synth") for t in s] + [(t, "train.perturb") for t in p])
-    write_records_to_parquet([row(t, "train.synth") for t in s],
-                             f"{D}/{stem}.synth{len(s)}.parquet")
+    if stem == "impress":  # the clean arm; impress_calc's has not been trained
+        write_records_to_parquet([row(t, "train.synth") for t in s],
+                                 f"{D}/{stem}.synth{len(s)}.parquet")
     write_records_to_parquet([row(t, sp) for t, sp in train],
                              f"{D}/{stem}.train{len(train)}.parquet")
     write_records_to_parquet([row(t, "eval") for t in ev], f"{D}/{stem}.eval{len(ev)}.parquet")
@@ -1209,9 +1200,6 @@ Composition, and the provenance label that has to travel with every number read 
     impress_calc.train779 565 synth (calc 278 / impress 287)
                         + 214 perturb (calc 106 / impress 108)   77 of 93  (task-level)
     impress_calc.eval93    93 eval tasks, calc 46 / impress 47
-
-`impress_calc.synth565.parquet` also falls out of the build. It is the clean-arm control for the
-two-domain run and has not been trained yet; the `+12.24pp` above is the `perturb`-including arm.
 
 </details>
 
