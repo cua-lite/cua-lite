@@ -7,6 +7,8 @@ An Open Platform for Computer-Use Agents
 <p align="center">
   <a href="https://cua-lite.github.io">Homepage</a>
   &nbsp;·&nbsp;
+  <a href="/assets/paper.pdf">Paper</a>
+  &nbsp;·&nbsp;
   <a href="https://huggingface.co/cua-lite">Hugging Face</a>
   &nbsp;·&nbsp;
   <a href="https://cua-lite.github.io/#benchmarks">Leaderboard</a>
