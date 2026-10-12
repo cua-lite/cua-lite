@@ -129,9 +129,11 @@ print(gym.registry.task_ids("waa"))
 
 The `eval` split contains WAA's 154 published tasks. `eval_noctxt` is **not** a separate data partition (nor a train/eval mirror) — it is WAA's alternate no-context variant of those tasks (task ids prefixed `noctxt_`). In the pinned catalog, setup differs for 40 task pairs and is identical for 114; instructions differ for 17 pairs. The two are exposed as separate splits so `--splits eval_noctxt` selects the no-context benchmark directly.
 
-Thirteen tasks in each split use WAA's original `infeasible` evaluator — valid scored tasks, not env failures — flagged by `env.metadata.others["exclude_reason"] == "infeasible"`. A further three variants per split are flagged with a `block:` reason: their evaluator returns reward `1` on the prepared setup state with no agent action (Details-view Explorer, an accepted-absent cookie, a pre-set time zone, an already-satisfied file ordering — six variants across the two splits, split-specific), mirroring `lite.osworld`'s hand-curated `block:` exclusions. The standard CUA-Lite rollout recipe filters both and evaluates 138 tasks per split; running the full 154-task set is an explicit opt-in (`report_infeasible`), see [`docs/eval.md`](/docs/eval.md#windowsagentarena).
+Thirteen tasks in each split use WAA's original `infeasible` evaluator — valid scored tasks, not env failures — flagged by `env.metadata.others["exclude_reason"] == "infeasible"`. A further three variants per split are flagged with a `block:` reason: their evaluator returns reward `1` on the prepared setup state with no agent action (Details-view Explorer, an accepted-absent cookie, a pre-set time zone, an already-satisfied file ordering — six variants across the two splits, split-specific), mirroring `lite.osworld`'s hand-curated `block:` exclusions. The standard CUA-Lite rollout recipe filters both and evaluates 138 tasks per split; see [`docs/eval.md`](/docs/eval.md#windowsagentarena).
 
 Task definitions derive from WindowsAgentArena and retain its MIT license; see `data/NOTICE`.
+
+`report_infeasible` remains available as an opt-in tool; the default eval runner excludes infeasible tasks.
 
 ## Evaluation
 

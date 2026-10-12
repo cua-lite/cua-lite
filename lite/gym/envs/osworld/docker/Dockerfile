@@ -46,3 +46,7 @@ RUN python -c "from desktop_env.desktop_env import DesktopEnv; \
 COPY server.py /usr/local/bin/server.py
 RUN chmod +x /usr/local/bin/server.py
 EXPOSE 6000
+
+# QEMU inherits this process-local setting through the original VM entrypoint.
+COPY disable_thp.py /usr/local/bin/disable_thp.py
+ENTRYPOINT ["/usr/bin/tini", "-s", "/opt/venv/bin/python", "/usr/local/bin/disable_thp.py", "/run/entry.sh"]

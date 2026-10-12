@@ -27,7 +27,7 @@ make_kwargs:
 
 env_kwargs:
   max_steps: 30           # step budget before truncation (inference-only; no reward)
-  extra_tools: []         # opt-in; available: response, terminate
+  extra_tools: ["terminate"]  # model-visible finish tool for open-ended tasks
   platform: linux         # linux | macos | windows | android (android → mobile action space)
   local: true             # true → local QEMU/Docker (no key); false → Cua cloud (needs CUA_API_KEY)
   post_action_delay: 2.0  # asyncio.sleep after each step before the screenshot; desktop settle

@@ -188,13 +188,15 @@ class TestDesktopSurface:
             self.space, LiteDesktopActionSpace.scroll(direction="right", amount=2),
         ) == "Swipe(amount=200, axis='horizontal')"
 
-    def test_type_carries_press_enter_as_a_trailing_newline(self) -> None:
+    def test_type_text_round_trips_verbatim(self) -> None:
+        """``Type`` and canonical ``type`` use the same spelling for Enter -- a
+        trailing newline -- so neither direction rewrites the content."""
         assert _wire(
-            self.space, LiteDesktopActionSpace.type(text="hi", press_enter=True),
+            self.space, LiteDesktopActionSpace.type(text="hi\n"),
         ) == "Type(content='hi\\n')"
         parsed = _parse(self.space, "Type(content='hi\\n')")
         (child,) = tool_call_arguments(parsed[0])["actions"]
-        assert child == {"action": "type", "text": "hi", "press_enter": True}
+        assert child == {"action": "type", "text": "hi\n"}
 
     def test_hotkey_repeat_fans_out_rather_than_collapsing(self) -> None:
         """``repeat`` has no canonical carrier. Dropping it would silently press
@@ -324,12 +326,18 @@ class TestBrowserSurface:
         assert tool_call_name(call) == text.split("(")[0]
 
     def test_submitting_type_is_refused_loudly(self) -> None:
-        """The browser ``Type`` does not submit and the grammar allows one action
-        per turn, so a canonical ``press_enter`` has nowhere to go."""
-        with pytest.raises(ValueError, match="press_enter"):
+        """Canonical spells Enter as a trailing newline, but the BROWSER grammar's
+        ``Type`` only enters text -- Enter is a separate ``PressEnter`` -- and it
+        allows one action per turn, so a submitting ``type`` has nowhere to go.
+        (The DESKTOP grammar is the opposite: its prompt defines ``Type`` as
+        pressing Enter for each ``\n``, so it renders the newline verbatim.)"""
+        with pytest.raises(ValueError, match="submitting type"):
             self.space.convert_tool_calls_to_agent(
-                [LiteDesktopActionSpace.type(text="q", press_enter=True)]
+                [LiteDesktopActionSpace.type(text="q\n")]
             )
+        assert self.space.convert_tool_calls_to_agent(
+            [LiteDesktopActionSpace.type(text="q")]
+        ) == [{"name": "Type", "arguments": {"content": "q"}}]
 
     def test_multi_action_turn_is_refused_loudly(self) -> None:
         """No ``Sequence`` here: rendering two actions into one ``<action>``

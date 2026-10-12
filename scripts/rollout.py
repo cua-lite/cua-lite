@@ -33,10 +33,25 @@ Usage:
 """
 from __future__ import annotations
 
-import asyncio
+import os
 
-from lite.infer.cli import make_infer_parser, run_infer
-from lite.utils.logging import setup_logging
+# Direct rollout can fork subprocesses and score in-process. OpenBLAS reads
+# these variables when numpy first loads, so set the process defaults before any
+# import can pull numpy or another native numeric pool into the process.
+_THREAD_CAP_VARS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
+for _var in _THREAD_CAP_VARS:
+    os.environ.setdefault(_var, "1")
+
+import asyncio  # noqa: E402
+
+from lite.infer.cli import make_infer_parser, run_infer  # noqa: E402
+from lite.utils.logging import setup_logging  # noqa: E402
 
 setup_logging()
 

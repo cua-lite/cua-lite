@@ -1,5 +1,5 @@
 # Qwen3.8 rollout eval on MobileGym
-# 416 parameterized tasks across 28 simulated apps, deterministic state-diff judges.
+# 416 parameterized tasks across 24 launchable apps, deterministic state-diff judges.
 #
 # Related configs: scripts/configs/qwen3_8/compact/mobilegym.yaml
 

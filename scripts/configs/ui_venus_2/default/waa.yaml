@@ -1,0 +1,14 @@
+# WAA: use the standard exclude_reason filter in docs/eval.md.
+agent_id: ui_venus_2
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 0.0
+    top_p: 0.7
+    max_new_tokens: 4096
+  sudo_password: ""
+
+env_id: waa
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  extra_tools: ["terminate"]

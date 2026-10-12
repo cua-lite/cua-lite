@@ -1,0 +1,21 @@
+# UI-Venus-2-9B rollout eval on cua-lite browsergym.webarena.
+#
+# Sampling and image history match the WebVoyager browser config.
+
+agent_id: "ui_venus_2"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 4096
+  protocol_kwargs:
+    n_history_images: 2
+
+env_id: "browsergym.webarena"
+env_kwargs:
+  with_homepage_hint: true
+  max_steps: 30
+  extra_tools: ["goto", "back", "response", "terminate"]
+  use_screenshot: true
+  use_ax_tree: false
+  include_page_context_text: false
+  skip_dom_extraction: true

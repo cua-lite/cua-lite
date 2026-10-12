@@ -120,6 +120,23 @@ class TestToAgent:
         assert out[0]["arguments"]["action"] == "left_click"
         assert out[0]["arguments"]["coordinate"] == [5, 6]
 
+    def test_type_renders_a_trailing_newline_as_press_enter(self):
+        """Fara's wire has its own ``press_enter``; canonical spells the same
+        thing as a trailing newline. Rendering must put it back, or replay hands
+        the model a ``type`` that never submits. The key is emitted ONLY when it
+        is true -- a literal False would add a field the model never sent."""
+        submitting = self.space.convert_tool_calls_to_agent(
+            [LiteDesktopActionSpace.type(text="shoes\n")]
+        )
+        assert submitting[0]["arguments"]["text"] == "shoes"
+        assert submitting[0]["arguments"]["press_enter"] is True
+
+        plain = self.space.convert_tool_calls_to_agent(
+            [LiteDesktopActionSpace.type(text="shoes")]
+        )
+        assert plain[0]["arguments"]["text"] == "shoes"
+        assert "press_enter" not in plain[0]["arguments"]
+
     def test_computer_batch_to_agent_unwraps(self):
         tc = make_tool_call(
             "computer",
@@ -227,15 +244,15 @@ class TestFromAgent:
 
     def test_type_with_coordinate_decomposes_to_click_then_type(self):
         # Fara's ``type`` carries a coordinate (focus the field first). Must emit
-        # click(coordinate) — restores the crosshair — then type(text), threading
-        # press_enter through for the env.
+        # click(coordinate) — restores the crosshair — then type(text), with
+        # Fara's ``press_enter`` spelled as canonical's trailing newline.
         out = self.space.convert_tool_calls_from_agent(
             self._call(action="type", coordinate=[694, 36], text="hi", press_enter=True)
         )
         assert [tool_call_name(tc) for tc in out] == ["computer"]
         assert tool_call_arguments(out[0])["actions"] == [
             {"action": "click", "coordinate": [694, 36]},
-            {"action": "type", "text": "hi", "press_enter": True},
+            {"action": "type", "text": "hi\n"},
         ]
 
     def test_type_without_coordinate_is_bare_type(self):

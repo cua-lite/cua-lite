@@ -84,7 +84,7 @@ def test_scalecua_import_reuses_lite_osworld_lo_save_postconfig(tmp_path):
         payload,
         runtime_split="train",
         source_domain="libreoffice_impress",
-        context=dataset._ImportContext(snapshot=tmp_path),
+        context=dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset()),
     )
 
     assert unsupported == []
@@ -130,7 +130,7 @@ def test_scalecua_import_detects_lo_save_postconfig_key_shapes(
         payload,
         runtime_split="train",
         source_domain="libreoffice_writer",
-        context=dataset._ImportContext(snapshot=tmp_path),
+        context=dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset()),
     )
 
     assert unsupported == []
@@ -148,7 +148,7 @@ def test_scalecua_import_source_preserves_key_list_boundaries(tmp_path):
         },
         runtime_split="train",
         source_domain="vs_code",
-        context=dataset._ImportContext(snapshot=tmp_path),
+        context=dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset()),
     )
 
     assert unsupported == []
@@ -169,7 +169,7 @@ def test_scalecua_import_does_not_repair_key_press_singleton_chords(tmp_path):
         },
         runtime_split="train",
         source_domain="vs_code",
-        context=dataset._ImportContext(snapshot=tmp_path),
+        context=dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset()),
     )
 
     assert unsupported == []
@@ -234,7 +234,7 @@ def test_scalecua_import_repairs_known_upstream_chord_key_list_sources(
     payload,
     expected_postconfig,
 ):
-    context = dataset._ImportContext(snapshot=tmp_path)
+    context = dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset())
     source_path = tmp_path / "hf_snapshot" / source_rel
 
     row = dataset._row_from_payload(
@@ -275,7 +275,7 @@ def test_scalecua_import_repairs_known_upstream_expected_text_literal_newlines(
             "postconfig": [],
         },
     }
-    context = dataset._ImportContext(snapshot=tmp_path)
+    context = dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset())
 
     row = dataset._row_from_payload(
         payload,
@@ -308,7 +308,7 @@ def test_scalecua_import_preserves_legacy_top_level_action_parameters(tmp_path):
         },
     }
 
-    context = dataset._ImportContext(snapshot=tmp_path)
+    context = dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset())
     normalized, unsupported = dataset._normalize_runtime_payload(
         payload,
         runtime_split="rl",
@@ -371,7 +371,7 @@ def test_scalecua_import_reuses_lite_osworld_gimp_export_postconfig(tmp_path):
         payload,
         runtime_split="train",
         source_domain="gimp",
-        context=dataset._ImportContext(snapshot=tmp_path),
+        context=dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset()),
     )
 
     assert unsupported == []
@@ -432,7 +432,7 @@ def test_scalecua_import_uses_gimp_expected_target_path_for_export_postconfig(tm
         payload,
         runtime_split="train",
         source_domain="gimp",
-        context=dataset._ImportContext(snapshot=tmp_path),
+        context=dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset()),
     )
 
     assert unsupported == []
@@ -458,7 +458,7 @@ def test_scalecua_import_normalizes_vscode_builtin_theme_aliases(tmp_path):
             }
         }
     }
-    context = dataset._ImportContext(snapshot=tmp_path)
+    context = dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset())
 
     normalized, unsupported = dataset._normalize_runtime_payload(
         payload,
@@ -523,7 +523,7 @@ def test_scalecua_import_does_not_replace_non_export_gimp_postconfig(tmp_path):
         payload,
         runtime_split="train",
         source_domain="gimp",
-        context=dataset._ImportContext(snapshot=tmp_path),
+        context=dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset()),
     )
 
     assert unsupported == []
@@ -549,7 +549,7 @@ def test_scalecua_row_uses_canonical_domain_but_stable_source_task_id(tmp_path):
         canonical_domain="multi_apps",
         source_path=(tmp_path / "2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e_task_verify_20.json"),
         inherited_exclusion=None,
-        context=dataset._ImportContext(snapshot=tmp_path),
+        context=dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset()),
     )
 
     assert row["task_id"] == (
@@ -585,7 +585,7 @@ def test_scalecua_drops_stale_a462_setup_and_keeps_runnable_rl_variants(tmp_path
         "config": [stale_setup, focus_click],
         "evaluator": {"func": "exact_match"},
     }
-    context = dataset._ImportContext(snapshot=tmp_path)
+    context = dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset())
 
     normalized, unsupported = dataset._normalize_runtime_payload(
         payload,
@@ -606,6 +606,7 @@ def test_scalecua_drops_stale_a462_setup_and_keeps_runnable_rl_variants(tmp_path
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "instruction_setup_mismatch"
     )
@@ -616,6 +617,7 @@ def test_scalecua_drops_stale_a462_setup_and_keeps_runnable_rl_variants(tmp_path
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         == "upstream_generated_eval_bug"
     )
@@ -626,6 +628,7 @@ def test_scalecua_drops_stale_a462_setup_and_keeps_runnable_rl_variants(tmp_path
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -647,7 +650,7 @@ def test_scalecua_repairs_root_home_test1_setup_without_excluding_rl(tmp_path):
         ],
         "evaluator": {"func": "exact_match"},
     }
-    context = dataset._ImportContext(snapshot=tmp_path)
+    context = dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset())
 
     normalized, unsupported = dataset._normalize_runtime_payload(
         payload,
@@ -674,6 +677,7 @@ def test_scalecua_repairs_root_home_test1_setup_without_excluding_rl(tmp_path):
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -691,7 +695,7 @@ def test_scalecua_normalizes_bare_update_desktop_database_setup(tmp_path):
         ],
         "evaluator": {"func": "exact_match"},
     }
-    context = dataset._ImportContext(snapshot=tmp_path)
+    context = dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset())
 
     normalized, unsupported = dataset._normalize_runtime_payload(
         payload,
@@ -737,7 +741,7 @@ def test_scalecua_rewrites_external_placeholder_download_to_local_png(tmp_path):
         ],
         "evaluator": {"func": "check_image_size__e19bd559"},
     }
-    context = dataset._ImportContext(snapshot=tmp_path)
+    context = dataset._ImportContext(snapshot=tmp_path, broken_metrics=frozenset())
 
     normalized, unsupported = dataset._normalize_runtime_payload(
         payload,

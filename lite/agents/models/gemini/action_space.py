@@ -44,7 +44,10 @@ from lite.agents.core.action_space.base import (
     LiteMobileActionSpace,
 )
 from lite.agents.core.action_space.errors import ModelToolCallParseError
-from lite.agents.core.action_space.utils.geometry import PIXELS_PER_CLICK
+from lite.agents.core.action_space.utils.geometry import (
+    PIXELS_PER_CLICK,
+    required_model_text,
+)
 from lite.core.tools.action_space import merge_adjacent_lite_action_batches
 from lite.core.tools.action_space.geometry import MAX_NORM
 from lite.core.tools.calls import make_tool_call, tool_call_arguments, tool_call_name
@@ -320,15 +323,14 @@ class GeminiDesktopActionSpace(BaseActionSpace, key=r"gemini@(desktop|browser)")
             )
             return [LiteDesktopActionSpace.mouse_move(coordinate=coordinate), press]
         if verb == "type":
-            # 1:1. Gemini has a dedicated press_enter field, so -- unlike GPT,
-            # whose wire can only spell it as a trailing newline -- there is
-            # nothing to re-encode. Never default it to False: canonical strips
-            # None, and a literal False would add a key and break round-trip.
+            # Gemini has a dedicated ``press_enter`` field; canonical spells the
+            # same intent as a trailing newline, which every transport executes
+            # as Return. ``press_enter=False`` and an absent field both mean "do
+            # not submit", so both leave the text alone.
             text = args.get("text", "")
-            press_enter = args.get("press_enter")
-            if press_enter is None:
-                return [LiteDesktopActionSpace.type(text=text)]
-            return [LiteDesktopActionSpace.type(text=text, press_enter=bool(press_enter))]
+            if args.get("press_enter"):
+                text = f"{text}\n"
+            return [LiteDesktopActionSpace.type(text=text)]
         if verb == "drag_and_drop":
             # Gemini's (start_x, start_y) is the START; canonical `coordinate`
             # is the END and `start_coordinate` the start. Swapping them is
@@ -382,7 +384,7 @@ class GeminiDesktopActionSpace(BaseActionSpace, key=r"gemini@(desktop|browser)")
             return [
                 LiteDesktopActionSpace.scroll(
                     direction=direction,
-                    amount=max(1, magnitude // PIXELS_PER_CLICK),
+                    amount=max(1, round(magnitude / PIXELS_PER_CLICK)),
                     coordinate=_require_xy(args, verb=verb),
                 )
             ]
@@ -456,9 +458,14 @@ class GeminiDesktopActionSpace(BaseActionSpace, key=r"gemini@(desktop|browser)")
                 )
             ]
         if name == "type":
-            wire: dict[str, Any] = {"text": args.get("text", "")}
-            if args.get("press_enter") is not None:
-                wire["press_enter"] = args["press_enter"]
+            # Inverse of the from-agent mapping: canonical's trailing newline is
+            # Gemini's ``press_enter``. Emit the field only when it is true -- a
+            # literal False would add a key the model never sent.
+            text = args.get("text", "")
+            wire: dict[str, Any] = {"text": text}
+            if text.endswith("\n"):
+                wire["text"] = text[:-1]
+                wire["press_enter"] = True
             return [_flat("type", wire)]
         if name == "key":
             keys = args.get("keys", [])
@@ -663,9 +670,10 @@ class GeminiMobileActionSpace(BaseActionSpace, key="gemini@mobile"):
                 )
             return [LiteMobileActionSpace.system_button(button=button)]
         if verb == "type":
-            # Canonical mobile ``type`` has NO press_enter (unlike desktop), and
-            # no mobile env reads one. Expanding is the only faithful mapping.
-            out = [LiteMobileActionSpace.type(text=args.get("text", ""))]
+            # Canonical mobile ``type`` has no Enter spelling at all -- unlike
+            # desktop, where a trailing newline is the Return keypress, mobile
+            # envs read neither. Expanding is the only faithful mapping.
+            out = [LiteMobileActionSpace.type(text=required_model_text(args, action=verb))]
             if args.get("press_enter"):
                 out.append(LiteMobileActionSpace.system_button(button="Enter"))
             return out

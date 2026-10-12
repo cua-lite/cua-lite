@@ -10,6 +10,11 @@ env_kwargs:
   max_steps: null
   post_action_delay: 0.8
   eval_mode: text                      # text | grounded (grounded -> +15 steps for AnswerSheet)
+  reward_shaping: false                # false = MobileGym's own Success Rate (COMPLETE and
+                                       # judge.success and judge.clean -> 1.0, else 0.0), which is
+                                       # what eval must report. true additionally pays partial
+                                       # credit where the SR is 0, strictly below 1.0 so the argmax
+                                       # is unchanged -- RL only, see docs/grpo.md#mobilegym.
   display_resolution: [1080, 2400]     # browser physical viewport (sent to the container per /reset)
   dpr: 3.0                             # device pixel ratio (physical px / CSS px) for the viewport
   seed: null                           # null = unseeded; eval registers a fixed seed

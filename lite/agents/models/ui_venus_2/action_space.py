@@ -543,10 +543,9 @@ class UIVenus2DesktopActionSpace(BaseActionSpace, key="ui_venus_2@desktop"):
             )["function"]]
 
         if name == "type":
-            text = args.get("text", "")
-            if args.get("press_enter"):
-                text = f"{text}\n"
-            return [UIVenus2DesktopActionSpace.Type(content=text)["function"]]
+            return [UIVenus2DesktopActionSpace.Type(
+                content=args.get("text", ""),
+            )["function"]]
 
         if name == "key":
             return [UIVenus2DesktopActionSpace.Hotkey(keys=list(args.get("keys", [])))["function"]]
@@ -631,10 +630,7 @@ class UIVenus2DesktopActionSpace(BaseActionSpace, key="ui_venus_2@desktop"):
             return [_swipe_to_canonical_scroll(args)]
 
         if name == "Type":
-            content = args.get("content", "")
-            if isinstance(content, str) and content.endswith("\n"):
-                return [LiteDesktopActionSpace.type(text=content[:-1], press_enter=True)]
-            return [LiteDesktopActionSpace.type(text=content)]
+            return [LiteDesktopActionSpace.type(text=args.get("content", ""))]
 
         if name in ("Hotkey", "KeyDown", "KeyUp"):
             keys = _require_keys(name, args.get("keys"))
@@ -1019,12 +1015,15 @@ class UIVenus2BrowserActionSpace(BaseActionSpace, key="ui_venus_2@browser"):
             )["function"]]
 
         if name == "type":
-            if args.get("press_enter"):
+            text = args.get("text", "")
+            if text.endswith("\n"):
                 raise ValueError(
-                    "UI-Venus-2 browser cannot render type(press_enter=True): its "
-                    "Type does not submit and the grammar allows one action per turn"
+                    "UI-Venus-2 browser cannot render a submitting type: canonical "
+                    "spells Enter as a trailing newline, but the browser grammar's "
+                    "Type only enters text (Enter is a separate PressEnter) and "
+                    "allows one action per turn"
                 )
-            return [UIVenus2BrowserActionSpace.Type(content=args.get("text", ""))["function"]]
+            return [UIVenus2BrowserActionSpace.Type(content=text)["function"]]
 
         if name == "key":
             return [UIVenus2BrowserActionSpace.Hotkey(keys=list(args.get("keys", [])))["function"]]

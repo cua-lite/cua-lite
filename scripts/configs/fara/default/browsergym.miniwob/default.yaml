@@ -26,6 +26,7 @@ env_kwargs:
   # screenshot is used) to keep env.step fast.
   use_screenshot: true
   use_ax_tree: false
+  include_page_context_text: false
   skip_dom_extraction: true
   # Fara's web nav/finish is native to computer_use, but translated canonical
   # Lite calls still need schemas for self-contained rollout parquet. Fara's

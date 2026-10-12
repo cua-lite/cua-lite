@@ -1,0 +1,59 @@
+# Qwen3.5 mobile.use — 720x1600 screenshot, image_max 4, Action-only.
+#
+# `i4` IS image_max. history_n stays at the protocol default (100), so TEXT history
+# is uncapped; only screenshots are capped. Do not read `i4` vs `i1` as anything but
+# the image budget — both keep every turn's text.
+#
+# The visible-image count SAWTOOTHS 1,2,3,4,1,2,3,4: the fold budget is spent over
+# the whole trajectory, so every fold_size-th step drops back to one image. That is
+# also what makes `i4` the cheaper of the two to TRAIN despite the larger per-step
+# peak: fold_size == image_max keeps four consecutive steps prefix-compatible, so
+# build_segment_samples packs them into one sequence and each screenshot is encoded
+# once. Setting fold_size BELOW image_max advances the folded prefix every step and
+# packing collapses.
+#
+#                              resolution  img  text hist   mode
+#   mobile.use.i1.yaml           720x1600    1  all turns   Action
+#   mobile.use.i1.reasoning.yaml 720x1600    1  all turns   <think>
+#   mobile.use.i4.yaml           720x1600  1-4  all turns   Action   <- this file
+#   mobile.use.i4.reasoning.yaml 720x1600  1-4  all turns   <think>
+#
+# One resolution across all four: unlike the desktop campaign there is no lowr/highr
+# axis here, so the profile name carries only the knobs that actually vary.
+#
+# No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row
+# from metadata.dims. system_prompt omitted -> the adapter's canonical USE_SYSTEM_PROMPT.
+
+agent_id: "qwen3_5"
+agent_kwargs:
+  sampling_kwargs:  # rollout.py only; export_sft drops it, RL sets sampling in the trainer
+    temperature: 0.0
+  # The frame the screenshot is resized to before it reaches the processor. It is NOT
+  # the tensor shape: Qwen3.5's mobile adapter sets smart_resize_enabled=False
+  # (adapter.py), but the HF processor still rounds to its own patch grid, so the model
+  # sees 704x1600 (image_grid_thw [1,100,44]) — exactly as desktop's 1280x720 becomes
+  # 1280x704.
+  #
+  # Coordinates are unaffected either way. Canonical Lite coordinates are NORMALIZED to
+  # [0, 1000] (lite/core/tools/action_space/geometry.py), so no resize on either side
+  # can shift them, and a teacher acting on the env-native 1080x2400 exports into this
+  # profile with its numbers unchanged (measured: 56/56 coordinate pairs). The
+  # "32-px rounding would shift coordinates" rationale in adapter.py is inherited from
+  # Qwen2.5-VL, which IS pixel-in-resized-frame; it does not apply to this family.
+  resolution: [720, 1600]
+  protocol_kwargs:
+    # Pinned, not inherited: the `i4` in the filename IS image_max, so a change to the
+    # protocol default must not silently rename this profile. history_n omitted -> 100.
+    # fold_size must track image_max: below it, adjacent steps stop being prefix-
+    # compatible and build_segment_samples can no longer pack them.
+    image_max: 4
+    fold_size: 4
+
+env_kwargs:
+  # max_steps omitted -> mobilegym's per-task difficulty budget (L1 15 / L2 30 /
+  # L3 45 / L4 60). A number here would flatten it across all four tiers.
+  loop_detect: 5
+  # Required, not cosmetic: without these the env rejects them as inactive extras and
+  # the model can never end an episode (or launch an app). Qwen native `open` parses
+  # to canonical `open_app`, `answer` to `response`.
+  extra_tools: ["open_app", "response", "terminate"]

@@ -18,8 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-
 from common import catalog_index, payload_for_exclusion
+
+from lite.gym.envs.lite.scalecua.src.osworld import judges
 from lite.gym.envs.lite.scalecua.src.utils import dataset
 
 
@@ -54,6 +55,7 @@ def main() -> int:
     prompt_path = Path(args.prompt_data)
     rows = pd.read_parquet(prompt_path).to_dict(orient="records")
     catalog = catalog_index()
+    broken_metrics = dataset._metrics_calling_undefined_helpers(judges.overlay_root())
 
     missing: list[str] = []
     excluded: list[tuple[str, str]] = []
@@ -81,6 +83,7 @@ def main() -> int:
             inherited_exclusion=others.get("exclude_reason"),
             unsupported=[],
             runtime_split=current_split,
+            broken_metrics=broken_metrics,
         )
         if reason:
             excluded.append((task_id, str(reason)))

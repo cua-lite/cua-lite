@@ -249,12 +249,18 @@ ROLLOUT_ARGS=(
 
 # RL defaults SKIP_EVAL_BEFORE_TRAIN=0 (don't skip) — baseline is a meaningful
 # reference for the reward trajectory. SFT defaults to 1 (skip).
+# EVAL_TEMPERATURE defaults to 0: a deterministic score, comparable across runs
+# and matching how the agent is deployed. slime instead defaults eval to the
+# rollout temperature (slime/utils/eval_config.py), which is what GRPO actually
+# maximises -- set EVAL_TEMPERATURE=1 to score the optimised objective, and
+# raise N_SAMPLES_PER_EVAL_PROMPT with it, since sampled scores need several
+# draws per task to stay as sensitive as the greedy one.
 if [ -n "$EVAL_PROMPT_DATA" ]; then
    EVAL_ARGS=(
       --eval-interval "${EVAL_INTERVAL:-5}"
       --eval-prompt-data "${ENV_ID}_eval" "${EVAL_PROMPT_DATA}"
       --n-samples-per-eval-prompt "${N_SAMPLES_PER_EVAL_PROMPT:-1}"
-      --eval-temperature 0
+      --eval-temperature "${EVAL_TEMPERATURE:-0}"
       --eval-top-p 1
    )
    if [ "${SKIP_EVAL_BEFORE_TRAIN:-0}" != "0" ]; then

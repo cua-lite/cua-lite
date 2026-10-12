@@ -11225,6 +11225,11 @@ def _make_workspace_setup_template(spec: dict) -> SynthTemplate:
         {"type": "sleep", "parameters": {"seconds": 2}},
         {"type": "launch", "parameters": {"command": chrome_cmd}},
         {"type": "sleep", "parameters": {"seconds": 4}},
+    ]
+    # Snapshot the process table at SCORING time, from whatever the episode left
+    # running. Taking it in oracle_steps meant check_list read a file only the
+    # oracle ever wrote, so an agent that really did launch the three apps scored 0.
+    postconfig_steps = [
         _execute(f"ps -A -o comm | sort -u > '{list_path}'"),
     ]
 
@@ -11254,7 +11259,7 @@ def _make_workspace_setup_template(spec: dict) -> SynthTemplate:
         instruction_fn=lambda p: p["instr"],
         evaluator_fn=lambda _p: evaluator,
         oracle_fn=lambda _p: oracle_steps,
-        postconfig_fn=lambda _p: None,
+        postconfig_fn=lambda _p: postconfig_steps,
         param_fn=_params,
         n_rows=2,
         eval_class="check_list+is_expected_tabs",
@@ -11296,15 +11301,27 @@ def _make_vscode_open_from_term_template(spec: dict) -> SynthTemplate:
         _execute("history -c 2>/dev/null || true; echo > ~/.bash_history"),
         *_terminal_preopen_steps(),
     ]
-    # Oracle: simulate the user running `code <proj_dir>` from a terminal,
-    # plant the bash_history entry, plant the recorded OpenProject path.
-    oracle_steps = [
-        _execute(f"echo 'code {proj_dir}' >> '{hist_path}'"),
+    # The probe DERIVES the evaluator's input from whatever state the episode left
+    # behind, so it belongs to postconfig -- which runs before scoring in EVERY
+    # episode. It used to sit in oracle_steps only: a real agent that did exactly
+    # what the instruction asks (run `code <proj_dir>` from a terminal) left no
+    # probe file at all, `cat` returned empty, and the row scored 0. Only the
+    # oracle could pass, because the oracle planted the scorer's own input.
+    postconfig_steps = [
         _execute(
             "if cat ~/.bash_history | grep -q '[c]ode '; "
             f"then echo true > '{probe_out}'; else echo false > '{probe_out}'; fi"
         ),
-        _write_text_step(config_out, spec["config_value"] + "\n"),
+        # Same story for the recorded workspace name: derive it from the folder the
+        # instruction names rather than having the oracle write the answer.
+        _execute(
+            f"if [ -d '{proj_dir}' ]; then basename '{proj_dir}' > '{config_out}'; fi"
+        ),
+    ]
+    # Oracle: simulate the user running `code <proj_dir>` from a terminal. It plants
+    # ONLY the history entry now; postconfig derives everything the evaluator reads.
+    oracle_steps = [
+        _execute(f"echo 'code {proj_dir}' >> '{hist_path}'"),
     ]
 
     evaluator = {
@@ -11332,7 +11349,7 @@ def _make_vscode_open_from_term_template(spec: dict) -> SynthTemplate:
         instruction_fn=lambda p: p["instr"],
         evaluator_fn=lambda _p: evaluator,
         oracle_fn=lambda _p: oracle_steps,
-        postconfig_fn=lambda _p: None,
+        postconfig_fn=lambda _p: postconfig_steps,
         param_fn=_params,
         n_rows=2,
         eval_class="check_include_exclude+compare_config",
@@ -12032,12 +12049,20 @@ def _make_doc_batch_convert_template(spec: dict) -> SynthTemplate:
     ]
     # Oracle: simulate user running the desired soffice batch command,
     # plant tarball + history probe.
-    oracle_steps = [
-        _execute(f"echo 'cd {work_dir} && soffice --headless --convert-to pdf *.doc' >> ~/.bash_history"),
+    # The history probe reads the episode's own shell history, so it must run before
+    # scoring in EVERY episode, not only the oracle's. Left in oracle_steps it made
+    # the row unscoreable: an agent that ran the batch command exactly as instructed
+    # produced no probe file, `cat` returned empty, and check_include_exclude failed.
+    postconfig_steps = [
         _execute(
             "if cat ~/.bash_history | grep -E '(soffice|libreoffice).+--convert-to[[:space:]]+pdf.+\\*\\.doc' >/dev/null; "
             f"then echo 'catch the desired command' > '{hist_probe}'; else echo 'failed to complete this task' > '{hist_probe}'; fi"
         ),
+    ]
+    # Oracle plants the history line and the tarball the agent is asked to build.
+    # The probe itself is postconfig's job now.
+    oracle_steps = [
+        _execute(f"echo 'cd {work_dir} && soffice --headless --convert-to pdf *.doc' >> ~/.bash_history"),
         _execute(f"cp '{expected_tgz}' '{tgz_path}'"),
     ]
 
@@ -12070,7 +12095,7 @@ def _make_doc_batch_convert_template(spec: dict) -> SynthTemplate:
         instruction_fn=lambda p: p["instr"],
         evaluator_fn=lambda _p: evaluator,
         oracle_fn=lambda _p: oracle_steps,
-        postconfig_fn=lambda _p: None,
+        postconfig_fn=lambda _p: postconfig_steps,
         param_fn=_params,
         n_rows=2,
         eval_class="check_include_exclude+compare_archive",

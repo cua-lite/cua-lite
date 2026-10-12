@@ -26,9 +26,11 @@
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/screenspot_pro/run.sh Qwen/Qwen3-VL-8B-Instruct
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/screenspot_pro/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/screenspot_pro/run.sh Qwen/Qwen3.5-27B
+#   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/screenspot_pro/run.sh Qwen/Qwen3.5-27B
 #
-# tp_size is inferred from the GPU count in CUDA_VISIBLE_DEVICES.
+# tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
+# GPU count; serve_sglang.py derives dp_size = visible // tp_size, so the GPUs you expose
+# set the REPLICA count. This script never passes --engine-kwargs, so tp is unchangeable here.
 # Pre-req: `uv run python lite/gym/envs/screenspot_pro/scripts/utils/download_tasks.py` to
 # pre-warm the HuggingFace cache (one-time; otherwise the env auto-downloads on first use).
 
@@ -120,12 +122,15 @@ if [ ! -d "$COMMIT_DIR/$RUN_ID" ] && [ -d "$COMMIT_DIR" ]; then
   fi
 fi
 
-# model-family → rollout config (grounding subset: qwen3_vl, qwen3_5, evocua, ui_tars, ui_tars_15_v1, mai_ui)
+# model-family → rollout config
 case "$MODEL" in
   gpt-*)                            CFG=scripts/configs/gpt/default/screenspot_pro.yaml ;;
+  claude-*)                         CFG=scripts/configs/claude/default/screenspot_pro.yaml ;;
   Qwen/Qwen3-VL-*-Instruct)        CFG=scripts/configs/qwen3_vl/default/screenspot_pro.yaml ;;
   Qwen/Qwen2.5-VL-*-Instruct)      CFG=scripts/configs/qwen2_5_vl/default/screenspot_pro.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/screenspot_pro.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/screenspot_pro.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/screenspot_pro.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/screenspot_pro.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/screenspot_pro.yaml ;;
   meituan/EvoCUA-*)                CFG=scripts/configs/evocua/default/screenspot_pro.yaml ;;
@@ -147,7 +152,7 @@ HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   --model-id "$MODEL" \
   ${MODEL_PATH:+--model-path "$MODEL_PATH"} \
   --env-id screenspot_pro --splits eval \
-  --concurrency 64 \
+  --concurrency "${EVAL_CONCURRENCY:-64}" \
   --env-kwargs '{"step_timeout": 180}' \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"

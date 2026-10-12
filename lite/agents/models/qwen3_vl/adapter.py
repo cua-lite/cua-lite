@@ -110,6 +110,21 @@ _QWEN_FINISH_ACTION_VALUES = frozenset({"answer", "terminate"})
 _TOOL_CALL_OPEN = "<tool_call>"
 _TOOL_CALL_CLOSE = "</tool_call>"
 
+
+def _strip_tool_calls(text: str) -> str:
+    """Remove every ``<tool_call>`` span, however the model malformed it.
+
+    One owner for the scrub, because two of them drifted: the copy that cleaned
+    the published content handled a dropped opener and stray bare tags, while
+    the copy that cleaned an unclosed-``<think>`` remainder handled only the
+    paired block -- so raw tool-call JSON leaked into ``reasoning_content``.
+    """
+    open_tag = re.escape(_TOOL_CALL_OPEN)
+    close_tag = re.escape(_TOOL_CALL_CLOSE)
+    text = re.sub(rf"(?:{open_tag}\s*)+.*?{close_tag}", "", text, flags=re.DOTALL)
+    text = re.sub(rf"\{{[^<]*\}}\s*{close_tag}", "", text)
+    return text.replace(_TOOL_CALL_OPEN, "").replace(_TOOL_CALL_CLOSE, "")
+
 # Qwen3VL vision constants. ``_smart_resize_image`` lives as a method on
 # :class:`Qwen3VLBaseAdapter` (reads the per-subclass ``smart_resize_factor`` /
 # ``smart_resize_max_pixels`` class attrs) so the Qwen2.5-VL subclass can
@@ -804,15 +819,20 @@ class Qwen3VLBaseAdapter(
 
         if "</think>" in response:
             clean = response.split("</think>", 1)[-1]
+        elif "<think>" in _strip_tool_calls(response):
+            # An unclosed opener: everything after it is reasoning, and must
+            # not fall through into published content. Both the test and the
+            # split run on the tool-call-scrubbed text, because a ``type``
+            # payload may contain the literal characters ``<think>``.
+            head, _, tail = _strip_tool_calls(response).partition("<think>")
+            trailing = tail.strip()
+            if trailing:
+                result["reasoning_content"] = trailing
+            clean = head
         else:
             clean = response
         clean = re.sub(r"<think>.*?</think>", "", clean, flags=re.DOTALL)
-        open_tag = re.escape(_TOOL_CALL_OPEN)
-        close_tag = re.escape(_TOOL_CALL_CLOSE)
-        clean = re.sub(rf"(?:{open_tag}\s*)+.*?{close_tag}", "", clean, flags=re.DOTALL)
-        clean = re.sub(rf"\{{[^<]*\}}\s*{close_tag}", "", clean)
-        clean = clean.replace(_TOOL_CALL_OPEN, "").replace(_TOOL_CALL_CLOSE, "")
-        clean = clean.strip()
+        clean = _strip_tool_calls(clean).strip()
         if clean:
             result["content"] = [{"type": "text", "text": clean}]
 
@@ -907,11 +927,10 @@ class Qwen3VLUseAdapter(Qwen3VLBaseAdapter):
         message: AgentMessage,
         **kwargs,
     ) -> LiteMessage:
-        """Parse the ``Action:`` line into ``action_description`` (first-non-empty
-        -line fallback when unprefixed — keeps it compact, avoids dragging
-        multi-paragraph reasoning into next-turn history) and, when
-        :attr:`enable_inline_reasoning`, the ``Thought:`` line into
-        ``inline_reasoning``.
+        """Parse the ``Action:`` line into ``action_description`` (the whole
+        pre-tool-call prose when unprefixed — see the comment at the fallback
+        for why nothing is trimmed) and, when :attr:`enable_inline_reasoning`,
+        the ``Thought:`` line into ``inline_reasoning``.
 
         ``action_description`` is the "narration accompanying an action"
         channel, so the retag applies ONLY to a turn that actually carries
@@ -963,10 +982,16 @@ class Qwen3VLUseAdapter(Qwen3VLBaseAdapter):
             if m:
                 action_text = m.group(1).strip()
             else:
-                action_text = next(
-                    (ln.strip() for ln in raw_text.splitlines() if ln.strip()),
-                    raw_text.strip(),
-                )
+                # No ``Action:`` marker: the WHOLE reply is the action
+                # description. Keeping only its first line used to drop the
+                # model's reasoning -- 17% of tool-call turns, a median of 232
+                # characters each -- and this teacher runs with thinking OFF, so
+                # that prose IS its reasoning. Nothing at runtime wanted the
+                # truncation either: same-family replay re-renders
+                # ``raw_response.text`` verbatim, so it only ever cost the
+                # durable record, which is exactly what a cross-family student
+                # is trained on.
+                action_text = raw_text.strip()
             parts = make_assistant_content(
                 inline_reasoning=inline_reasoning, action_description=action_text,
             )

@@ -43,6 +43,12 @@ def agent_step_to_rl_step(
     (``adapter.enable_thinking``); defaults False for families without a
     reasoning channel.
 
+    Thinking OFF additionally strips ``reasoning_content`` from every message.
+    That makes one internalized dataset serve both recipes: the same ``.think``
+    rows export with reasoning under a thinking-on config and without it under a
+    thinking-off one. Thinking ON changes nothing here — the template's own
+    handling of history reasoning is the contract.
+
     The emitted ``status`` is ``STATUS_COMPLETED``: a rendered step is a
     finished assistant turn and a saved row carries no per-turn
     ``finish_reason``. Episode outcome is a TRAJECTORY-level fact that only the
@@ -61,6 +67,16 @@ def agent_step_to_rl_step(
     # already rendered to a ``text`` part by the adapter, so it survives untouched;
     # only prompt-side metadata is stripped. Same shared boundary as base.py.
     agent_step = keep_model_visible_content(agent_step)
+    if not enable_thinking:
+        # Thinking off means the rendered sequence carries NO ``<think>`` body,
+        # anywhere. Qwen's template renders ``reasoning_content`` on every turn
+        # past the last real user query — and a ``<tool_response>`` turn is not
+        # one, so in an agentic chain that is every assistant turn. Leaving it in
+        # would render internalized reasoning into a thinking-off prompt, and on
+        # a target turn that also carries it, break the prefix check below. With
+        # thinking ON the template's own behavior is the contract; nothing here.
+        for message in agent_step:
+            message.pop("reasoning_content", None)
     prompt_messages = agent_step[:-1]
     prompt_text = processor.apply_chat_template(
         prompt_messages, tokenize=False, add_generation_prompt=True,
@@ -77,11 +93,13 @@ def agent_step_to_rl_step(
         raise ValueError(
             f"SFT prompt/target boundary broke (enable_thinking={enable_thinking}): "
             f"prompt_text is not a prefix of full_text (generation-prefix drift). "
-            f"This usually means enable_thinking does NOT match how the data was "
-            f"rendered — e.g. thinking-on data (reasoning in the target) tokenized "
-            f"with enable_thinking=False. Make enable_thinking match the render "
-            f"(export: agent_kwargs.enable_thinking in the config; DAgger: the "
-            f"student adapter's enable_thinking). prompt_tail={prompt_text[-48:]!r}"
+            f"The reasoning-vs-thinking mismatch that used to cause this is handled "
+            f"above (thinking off strips reasoning_content), so a break here means "
+            f"the template renders the target turn differently from the generation "
+            f"prefix for some OTHER reason — a family whose chat template varies by "
+            f"message shape, or a content part that survives "
+            f"keep_model_visible_content and only appears in the full render. "
+            f"prompt_tail={prompt_text[-48:]!r}"
         )
     response_text = full_text[len(prompt_text):]
     response_tokens = processor.tokenizer.encode(response_text, add_special_tokens=False)

@@ -1,8 +1,10 @@
-"""GPT teacher agent for distillation data collection (model-side).
+"""GPT teacher agents for distillation data collection (model-side).
 
-A thin :class:`GPTDesktopUseAgent` subclass for collecting *better* teacher
-trajectories to distill into small students. It differs from the base GPT agent
-in exactly two, fully **YAML-driven** ways — the base agent stays untouched:
+Thin subclasses of the GPT use-agents — :class:`GPTTeacherAgent` for
+desktop/browser, :class:`GPTMobileTeacherAgent` for mobile — for collecting
+*better* teacher trajectories to distill into small students. Both differ from
+their base agent in exactly two, fully **YAML-driven** ways, and the base agents
+stay untouched:
 
   1. **Structured response contract.** It appends a two-line contract built from
      the config strings ``inline_reasoning_instruction`` /
@@ -27,6 +29,19 @@ behavior does not belong in the production GPT agent, so it lives here and is op
 into per-run via ``agent_id: gpt.teacher`` (the factory's yaml-driven ``agent_id``
 override, same mechanism BrowserGym uses for ``qwen3_vl.base``).
 
+Both behaviours are platform-independent prose and message handling, so they live
+once in :class:`_GPTTeacherMixin`. Only the system-prompt seam differs: desktop
+appends the contract in ``_effective_system_prompt``, mobile in
+``_system_prompt_for_mobile_request`` — its own seam, which resolves ``{w}``/``{h}``
+against the frame actually sent and appends the env's finish guidance, neither of
+which the desktop seam does. The parse seam is shared: both use-agents expose
+``_parse_output_items`` with the same signature, so one override covers both.
+
+One yaml line picks both. ``lite.agents.factory`` composes the key as
+``compose_key(agent_id, *meta.dims)``, so ``agent_id: gpt.teacher`` resolves to the
+desktop leaf on lite.osworld (``@desktop@use``) and the mobile leaf on mobilegym
+(``@mobile@use``).
+
 Run (collection):
     # in a gpt collect yaml:
     #   agent_id: gpt.teacher
@@ -41,7 +56,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
-from lite.agents.models.gpt.agent import GPTDesktopUseAgent
+from lite.agents.models.gpt.agent import GPTDesktopUseAgent, GPTMobileUseAgent
 from lite.agents.models.gpt.utils.parse import GPTParsedOutput
 from lite.core import (
     LiteMessage,
@@ -112,9 +127,13 @@ def _split_thought_action(text: str) -> tuple[str, str]:
 
 
 @dataclass
-class GPTTeacherAgent(GPTDesktopUseAgent, key=r"gpt\.teacher(@(desktop|browser)@use)?"):
-    """GPT teacher that emits a YAML-defined ``Thought:`` + ``Action:`` per step,
-    distilled as ``inline_reasoning`` + ``action_description`` (not the API summary)."""
+class _GPTTeacherMixin:
+    """The teacher behaviour itself: the response contract, and the reply relabelling.
+
+    Platform-independent — it assembles prose and rewrites message content, and touches
+    no action space, coordinate frame, or tool surface. Mixed into one leaf per platform
+    below; each leaf only wires :meth:`_append_contract` to its own system-prompt seam.
+    """
 
     # The three prose pieces of the response contract — all defined in yaml ``agent_kwargs``.
     # ``inline_reasoning_instruction`` / ``action_description_instruction`` are the *content*
@@ -143,11 +162,14 @@ class GPTTeacherAgent(GPTDesktopUseAgent, key=r"gpt\.teacher(@(desktop|browser)@
             f"Action: {self.action_description_instruction}"
         )
 
-    def _effective_system_prompt(self) -> str | None:
-        # Base handles system_prompt (+ suffix). This subclass produces (and parses) its
-        # own Action line via the Thought:/Action: contract — the base agent has no
-        # action-description mechanism of its own.
-        base = super()._effective_system_prompt() or ""
+    def _append_contract(self, base: str | None) -> str | None:
+        """Append the response contract to whatever system prompt the base produced.
+
+        Each leaf calls this from its own prompt seam. The teacher owns (and parses) its
+        own Action line via the Thought:/Action: contract — the base agents have no
+        action-description mechanism of their own.
+        """
+        base = base or ""
         suffix = self._structured_output_instruction()
         combined = (base + ("\n" if base and suffix else "") + suffix).strip()
         return combined or None
@@ -210,3 +232,29 @@ class GPTTeacherAgent(GPTDesktopUseAgent, key=r"gpt\.teacher(@(desktop|browser)@
             new_content.append({"type": "action_description", "text": action})
         new_content.extend(carried)
         return {**msg, "content": new_content}
+
+
+@dataclass
+class GPTTeacherAgent(
+    _GPTTeacherMixin, GPTDesktopUseAgent, key=r"gpt\.teacher(@(desktop|browser)@use)?"
+):
+    """Desktop/browser teacher: ``Thought:`` + ``Action:`` per step, distilled as
+    ``inline_reasoning`` + ``action_description`` (not the API summary)."""
+
+    def _effective_system_prompt(self) -> str | None:
+        return self._append_contract(super()._effective_system_prompt())
+
+
+@dataclass
+class GPTMobileTeacherAgent(_GPTTeacherMixin, GPTMobileUseAgent, key="gpt.teacher@mobile@use"):
+    """Mobile teacher — the desktop leaf's sibling.
+
+    Mobile builds its system prompt in ``_system_prompt_for_mobile_request`` rather than
+    ``_effective_system_prompt``: it resolves ``{w}``/``{h}`` against the frame actually
+    sent and appends the env's finish guidance. Appending the contract there keeps both.
+    """
+
+    def _system_prompt_for_mobile_request(self, sent_w: int, sent_h: int) -> str | None:
+        return self._append_contract(
+            super()._system_prompt_for_mobile_request(sent_w, sent_h)
+        )

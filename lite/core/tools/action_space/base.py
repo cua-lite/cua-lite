@@ -170,13 +170,30 @@ class LiteDesktopActionSet(_ActionBatchActionSet):
 
     @staticmethod
     @tool(
-        text="The text content to type.",
-        press_enter="Whether to press Enter after typing the text.",
+        text=(
+            "The text content to type. End it with a newline to press Enter "
+            "after typing, e.g. to submit a search box."
+        ),
     )
-    def type(text: str, press_enter: bool | None = None) -> dict[str, Any]:
-        """On a desktop, type text content into the currently focused input field."""
+    def type(text: str) -> dict[str, Any]:
+        """On a desktop, type text content into the currently focused input field.
+
+        A TRAILING newline in ``text`` is an Enter press -- that is the one
+        spelling for "submit", so there is no separate "press enter" argument.
+        A transport that types character by character executes every real
+        newline as Return; one that sets a field value directly honours only the
+        trailing one and projects it onto its own flag at its own boundary.
+
+        NOT every provider wire can carry this spelling. A wire that delimits a
+        parameter body with newlines and strips the surrounding whitespace --
+        the Qwen XML ``<parameter=text>`` block is the one in this repo -- cannot
+        tell a payload newline from a delimiter, so a trailing newline does not
+        survive a round trip through it in either direction. Those families
+        spell "submit" as ``type`` followed by ``key(["enter"])`` instead, which
+        does round-trip; see ``lite/agents/models/qwen3_5/adapter.py``.
+        """
         return LiteDesktopActionSet._wrap_action(
-            BaseTools._make_call("type", text=text, press_enter=press_enter)
+            BaseTools._make_call("type", text=text)
         )
 
     @staticmethod

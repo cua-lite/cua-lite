@@ -203,7 +203,7 @@ their registry key is present.
 ### API Agent Families
 
 - `gpt`
-  IDs: `gpt-5.5`, `gpt-5.6-sol`.
+  IDs: `gpt-6-astra`, `gpt-5.5`, `gpt-5.6-sol`.
   Surfaces: desktop/browser/mobile `use` and desktop/browser `grounding.point`.
   Files: `agent.py`, `action_space.py`, `utils/*`.
 

@@ -27,7 +27,7 @@ import pytest
 # imports sglang_router/slime, which exist only inside the Slime container.
 # On any host venv these are named skips, not failures.
 pytest.importorskip("sglang_router", reason="Slime-Docker-only (sglang_router absent)")
-pytest.importorskip("slime", reason="Slime-Docker-only (slime absent)")
+pytest.importorskip("slime.rollout.base_types", reason="Slime-Docker-only (slime.rollout absent)")
 
 
 def test_shim_entrypoints_resolve():

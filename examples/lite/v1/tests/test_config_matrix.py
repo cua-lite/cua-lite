@@ -87,6 +87,11 @@ def _build_agent(row: ConfigRow) -> BaseAgent:
     if model_id in LOCAL_AGENTS:
         kwargs = {"processor": MagicMock(), "generate_fn": lambda *a, **k: None}
     agent_kwargs = dict(row.agent_kwargs)
+    # ``sampling_kwargs`` configures local serving/generate_fn, never the adapter.
+    # Both real consumers drop it before construction -- rollout at
+    # ``lite/infer/rollout.py`` and export at ``export_sft._adapter_kwargs_for_export``
+    # -- so a config carrying it is valid and this builder must mirror them.
+    agent_kwargs.pop("sampling_kwargs", None)
     env = SimpleNamespace(metadata=LiteCUAMetadata(dims=_DESKTOP_USE_DIMS))
     return make(model_id, env=env, agent_id=row.agent_id, **kwargs, **agent_kwargs)
 
@@ -108,6 +113,28 @@ def test_lite_v1_config_valid_actions_are_known_actions() -> None:
         if unknown:
             offenders.append(f"{row.rel}: unknown GUI actions {unknown}")
     assert not offenders, "\n".join(offenders)
+
+
+def test_lite_v1_reasoning_twins_differ_only_by_enable_thinking() -> None:
+    """A ``.reasoning`` config is its Action-only twin plus ``enable_thinking``.
+
+    The walkthrough reads the reasoning checkpoint against the Action-only one trained
+    on the same screenshot profile, so that pair IS the measurement. Without this,
+    dropping ``enable_thinking`` from BOTH files leaves every other test green while the
+    reasoning arm silently trains Action-only — the resolution test above only compares
+    a compact against its default twin, so a change made to both survives it.
+    """
+    by_rel = {row.rel: row for row in ROWS}
+    for profile in ("compact", "default"):
+        base = f"examples/lite/v1/configs/qwen3_5/desktop.use.{profile}"
+        plain = by_rel[f"{base}.yaml"]
+        thinking = by_rel[f"{base}.reasoning.yaml"]
+        assert thinking.agent_id == plain.agent_id
+        assert thinking.env_kwargs == plain.env_kwargs
+        assert thinking.agent_kwargs.get("enable_thinking") is True, profile
+        assert "enable_thinking" not in plain.agent_kwargs, profile
+        stripped = {k: v for k, v in thinking.agent_kwargs.items() if k != "enable_thinking"}
+        assert stripped == plain.agent_kwargs
 
 
 def test_lite_v1_compact_configs_differ_from_default_only_by_resolution() -> None:

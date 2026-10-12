@@ -10,6 +10,9 @@ Run:
 
 from __future__ import annotations
 
+import shlex
+from pathlib import Path
+
 import pytest
 
 import lite.gym as gym
@@ -18,7 +21,9 @@ from lite.core.messages.final import make_no_tool_call_final_actions
 from lite.core.tools import make_tool_call
 from lite.core.tools.calls import tool_call_arguments, tool_call_name
 from lite.core.tools.schemas import tool_schema_name, tool_schema_parameters
+from lite.core.utils.filters import parse_filter
 from lite.gym.envs.mobileworld.main import _TASKS, MobileWorldEnv
+from lite.infer.rollout import collect_tasks
 
 
 def _tool_schema(env: MobileWorldEnv, name: str) -> dict:
@@ -53,6 +58,35 @@ def test_task_registration_counts():
     )
 
 
+def test_interaction_tasks_have_exclude_reason_in_registered_and_live_metadata():
+    ids = gym.registry.task_ids("mobileworld", split="eval")
+    excluded = []
+    for task_id in ids:
+        expected = "ask_user" if "agent-user-interaction" in _TASKS[task_id]["tags"] else None
+        registered = gym.registry.task_metadata("mobileworld", task_id)
+        live = MobileWorldEnv(task_id=task_id, extra_tools=["ask_user"]).metadata
+        assert registered.others.get("exclude_reason") == expected
+        assert live.others.get("exclude_reason") == expected
+        if expected:
+            excluded.append(task_id)
+    assert len(ids) == 161
+    assert len(excluded) == 44
+
+
+def test_eval_runner_filter_selects_all_gui_only_tasks():
+    runner = Path(__file__).resolve().parents[4] / "devs/exps/eval/mobileworld/run.sh"
+    command = runner.read_text().split("exec uv run python scripts/rollout.py", 1)[1]
+    args = shlex.split(command.replace("\\\n", ""))
+    keep = parse_filter(args[args.index("--filter") + 1])
+    _, selected = collect_tasks("mobileworld", splits=["eval"], filter_fn=keep)
+    expected = {
+        task_id for task_id, task in _TASKS.items()
+        if not {"agent-mcp", "agent-user-interaction"}.intersection(task["tags"])
+    }
+    assert set(selected) == expected
+    assert len(selected) == 117
+
+
 def test_services_ensure_uses_dependency_preflight(monkeypatch):
     calls: list[str] = []
     monkeypatch.setattr(M, "_ensure_services", lambda env_id: calls.append(env_id))
@@ -84,6 +118,39 @@ def test_registered_metadata():
     assert m.others["task_name"] == "AcceptMeetingTask"
     assert m.others["task_apps"] == _TASKS["AcceptMeetingTask"]["apps"]
     assert m.extra_tool_schemas == []  # extra tools are opt-in
+
+
+@pytest.mark.parametrize("dedicated_credentials", [False, True])
+def test_simulated_user_credentials_reach_container(monkeypatch, dedicated_credentials):
+    import lite.gym.envs.mobileworld.container as C
+
+    monkeypatch.setenv("OPENAI_API_KEY", "evaluated-model-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://evaluated.example/v1")
+    monkeypatch.delenv("USER_AGENT_API_KEY", raising=False)
+    monkeypatch.delenv("USER_AGENT_BASE_URL", raising=False)
+    if dedicated_credentials:
+        monkeypatch.setenv("USER_AGENT_API_KEY", "simulated-user-key")
+        monkeypatch.setenv("USER_AGENT_BASE_URL", "https://simulator.example/v1")
+
+    captured = {}
+    monkeypatch.setattr(C, "docker_run_detached", lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setattr(C, "_kvm_gid", lambda: None)
+    container = C.MobileWorldContainer(name="test-simulated-user", api_port=10600)
+    monkeypatch.setattr(container, "_register", lambda: None)
+    monkeypatch.setattr(container, "_wait_until_ready", lambda: None)
+    container.start()
+
+    assert captured["env"] == {
+        "USER_AGENT_API_KEY": (
+            "simulated-user-key" if dedicated_credentials else "evaluated-model-key"
+        ),
+        "USER_AGENT_BASE_URL": (
+            "https://simulator.example/v1"
+            if dedicated_credentials else "https://evaluated.example/v1"
+        ),
+        "USER_AGENT_MODEL": C.CFG.server_kwargs["user_agent_model"],
+    }
+    assert "USER_AGENT_API_KEY" in captured["redact"]
 
 
 # ---------------------------------------------------------------------------

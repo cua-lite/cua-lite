@@ -37,7 +37,12 @@ from lite.agents.models.step_gui.adapter import (
 from lite.agents.models.step_gui.agent import STEPGUIMobileAgent
 from lite.agents.models.step_gui.protocol import StepGUIHistoryProtocol
 from lite.core import LiteCUAMetadata, LiteSample
+from lite.core.messages.final import pop_model_output_error
 from lite.core.tools import make_tool_call
+from lite.core.tools.action_space import (
+    lite_action_batch_child_name_errors,
+    validate_lite_action_batch_structure,
+)
 from lite.core.tools.calls import tool_call_arguments, tool_call_name
 from lite.core.tools.extra_tools import LiteFinishToolSet, make_open_app_tool
 from lite.core.tools.schemas import tool_schema_name
@@ -1323,7 +1328,6 @@ class TestParseFailureSignalling:
         self.adapter = _step_adapter()
 
     def _error_of(self, raw: str) -> str | None:
-        from lite.core.messages.final import pop_model_output_error
         msg = self.adapter.convert_message_from_agent(
             self.adapter.parse_raw_assistant_response(raw)
         )
@@ -1332,11 +1336,24 @@ class TestParseFailureSignalling:
     @pytest.mark.parametrize("raw", [
         "<THINK> t </THINK>\naction:",                  # empty action value
         "<THINK> t </THINK>\naction:\tpoint:1,2",       # empty action value + args
-        "action:NOSUCHVERB\tpoint:1,2",                 # unknown verb
         "explain:e\taction:\tsummary:s",                # explain/summary but no verb
     ])
     def test_malformed_action_grammar_marks_error(self, raw):
         assert self._error_of(raw)
+
+    def test_unknown_verb_routes_to_model_visible_invalid_action(self):
+        msg = self.adapter.convert_message_from_agent(
+            self.adapter.parse_raw_assistant_response("action:NOSUCHVERB\tpoint:1,2")
+        )
+
+        assert pop_model_output_error(msg) is None
+        actions = tool_call_arguments(msg["tool_calls"][0])["actions"]
+        assert actions == [{"action": "NOSUCHVERB", "point": [1, 2]}]
+        children, error = validate_lite_action_batch_structure("mobile", {"actions": actions})
+        assert error is None
+        error = lite_action_batch_child_name_errors("mobile", children).get(0)
+        assert error is not None
+        assert error.child_action_name == "NOSUCHVERB"
 
     @pytest.mark.parametrize("raw", [
         "<THINK> t </THINK>\n任务已经完成，无需继续操作。",   # prose final w/ THINK
@@ -1353,7 +1370,6 @@ class TestParseFailureSignalling:
     def test_partial_batch_parse_keeps_the_good_records(self):
         """If at least one record parses, the turn is actionable — no error."""
         raw = "action:CLICK\tpoint:100,100\naction:\naction:TYPE\tvalue:hi"
-        from lite.core.messages.final import pop_model_output_error
         msg = self.adapter.convert_message_from_agent(
             self.adapter.parse_raw_assistant_response(raw)
         )

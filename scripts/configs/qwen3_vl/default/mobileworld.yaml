@@ -1,6 +1,6 @@
 # Qwen3-VL rollout eval on MobileWorld
-# 161 tasks (201 upstream − 40 agent-mcp) across 20 apps in DinD boxes,
-# evaluated by real device / backend state.
+# 161 registered tasks; the eval runner filters 44 ask_user tasks, leaving
+# 117 GUI-only tasks evaluated by real device / backend state.
 #
 # No upstream Qwen3-VL reference for MobileWorld; greedy decoding
 # (temperature=0) matches the androidworld sibling config.
@@ -9,11 +9,8 @@
 #   - scripts/configs/qwen3_vl/default/androidworld.yaml  (mobile sibling)
 #   - scripts/configs/qwen3_5/default/mobileworld.yaml
 #
-# The 46 agent-user-interaction tasks need the ``ask_user`` extra tool
-# (enabled below) AND OPENAI_API_KEY exported before containers spawn. Set
-# OPENAI_BASE_URL only for a custom endpoint. The vars are forwarded into each
-# box for the simulated-user LLM, whose model is the env's
-# server_kwargs.user_agent_model knob. GUI-only tasks ignore both.
+# Interaction tasks carry exclude_reason="ask_user". Direct rollout calls
+# should pass --filter "lambda m: not m.others.get('exclude_reason')".
 
 agent_id: "qwen3_vl"
 agent_kwargs:

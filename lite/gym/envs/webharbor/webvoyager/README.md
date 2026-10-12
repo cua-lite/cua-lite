@@ -93,7 +93,7 @@ Tunable defaults live in [`configs/default.yaml`](/lite/gym/envs/webharbor/webvo
 | Key | Default | Why |
 |---|---|---|
 | `max_steps` | `null` (→ per-task, 15) | Step budget per episode; `null` reads the per-task value from `data/tasks.json`. |
-| `step_timeout` | `90.0` | Per-step wall-clock cap (seconds). |
+| `step_timeout` | `300.0` | Per-step wall-clock cap (seconds). |
 | `post_action_delay` | `0.5` | Settle time after each action (seconds). |
 | `viewport` | `[1280, 720]` | Browser viewport (fixed render size). |
 | `use_som` | `false` | Draw the Set-of-Marks `[N]` boxes on the screenshot. `false` = plain screenshot (coord mode); `som.yaml` sets `true`. |

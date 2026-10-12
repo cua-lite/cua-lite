@@ -1,10 +1,10 @@
 # Qwen3.8 vision+coord rollout eval on cua-lite browsergym.miniwob (full 125 tasks).
 #
 # Sampling: greedy decode (temperature 0.0), no native thinking channel — the
-# eval-matrix default (the factory pins enable_thinking=False for every Qwen3.8
-# checkpoint; see lite/agents/factory.py).
+# eval-matrix default (the qwen3_vl adapter defaults enable_thinking=False and every
+# Qwen3.8 adapter inherits it; see lite/agents/models/qwen3_vl/adapter.py).
 #
-# Protocol: `Qwen3_5HistoryProtocol` rolling-window + image-fold (history_n=50,
+# Protocol: `Qwen3_5HistoryProtocol` rolling-window + image-fold (history_n=100,
 # image_max=4, fold_size=4), byte-faithful to
 # `${CUA_LITE_REFERENCES_ROOT}/OSWorld/scripts/python/run_multienv_qwen.py`.
 # LiteBrowserActionSpace coord actions ([0, 1000] normalized → pixel via env viewport).
@@ -27,6 +27,7 @@ env_kwargs:
   # explicitly here for symmetry with text_only.yaml's obs-mode block.
   use_screenshot: true
   use_ax_tree: false
+  include_page_context_text: false
 
   # Vision fast-path: explicitly skip BrowserGym's O(nodes) per-step DOM-
   # snapshot + AXTree + extra-properties extraction (only the screenshot is

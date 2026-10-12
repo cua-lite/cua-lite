@@ -1,6 +1,6 @@
 # Qwen3.8 rollout eval on Online-Mind2Web.
-# Screenshot-first observations (explicit keep_text_with_images:false); env
-# defaults handle dataset pinning, v2 trajectories, and WebJudge reward/eval.
+# Screenshot-first observations; env disables model-visible URL/title/body page
+# context while keeping dataset pinning, v2 trajectories, and WebJudge reward/eval.
 #
 # Related configs (sync env_kwargs when changing):
 #   - scripts/configs/gpt/default/online_mind2web.yaml
@@ -10,11 +10,10 @@ agent_id: "qwen3_8"
 agent_kwargs:
   sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
     temperature: 0.0
-  protocol_kwargs:
-    keep_text_with_images: false
 
 env_id: "online_mind2web"
 env_kwargs:
+  include_page_context_text: false
   # Online-Mind2Web is NOT a pure-QA benchmark: its 300 tasks carry no
   # reference answer (data/tasks.json fields: confirmed_task / level /
   # reference_length / website) and most are imperatives ("Add a Box Combo to

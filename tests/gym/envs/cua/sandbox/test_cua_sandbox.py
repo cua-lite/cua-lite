@@ -19,6 +19,7 @@ from PIL import Image
 from lite.core import LiteCUAMetadata
 from lite.core.messages.final import make_no_tool_call_final_actions
 from lite.core.tools import make_tool_call
+from lite.core.tools.schemas import tool_schema_name
 from lite.gym.envs.cua.sandbox import CuaSandboxEnv
 from lite.gym.errors import (
     EnvDepsMissingError,
@@ -264,6 +265,14 @@ def test_metadata_platform_mobile():
     assert (
         CuaSandboxEnv("hi", platform="android").metadata.platform == LiteCUAMetadata.Platform.MOBILE
     )
+
+
+def test_default_config_exposes_terminate():
+    names = {
+        tool_schema_name(schema)
+        for schema in CuaSandboxEnv("hi").metadata.extra_tool_schemas
+    }
+    assert names == {"terminate"}
 
 
 def test_direct_sandbox_is_not_a_registered_backend_family():
@@ -861,6 +870,14 @@ async def test_terminate_ends_episode(fake_cua):
     r = await env.step([make_tool_call("terminate", {"status": "success"})])
     assert r.terminated is True and r.reward is None
     # terminate is NOT forwarded to the sandbox
+    assert _mouse_calls_after_reset(env) == [] and env._sb.keyboard.calls == []
+
+
+async def test_default_terminate_ends_episode(fake_cua):
+    env = CuaSandboxEnv("x", post_action_delay=0)
+    await env.reset()
+    r = await env.step([make_tool_call("terminate", {"status": "success"})])
+    assert r.terminated is True and r.reward is None
     assert _mouse_calls_after_reset(env) == [] and env._sb.keyboard.calls == []
 
 

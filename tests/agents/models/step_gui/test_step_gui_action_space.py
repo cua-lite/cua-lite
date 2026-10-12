@@ -34,6 +34,10 @@ from lite.agents.core.action_space.base import ActionSpaceRegistry, LiteMobileAc
 from lite.agents.core.adapter import AgentAdapterRegistry
 from lite.agents.models.step_gui.action_space import STEPGUIMobileActionSpace
 from lite.core import LiteCUAMetadata
+from lite.core.tools.action_space import (
+    lite_action_batch_child_name_errors,
+    validate_lite_action_batch_structure,
+)
 from lite.core.tools import make_tool_call
 from lite.core.tools.calls import tool_call_arguments, tool_call_name
 from lite.core.tools.extra_tools import LiteFinishToolSet, make_open_app_tool
@@ -477,15 +481,30 @@ class TestReverseConversion:
         result = self.space.convert_tool_calls_from_agent(tc)
         assert "summary" not in _only_mobile_action(result)
 
-    def test_unknown_action_is_dropped(self):
+    def test_unknown_wrapped_action_becomes_invalid_action_batch(self):
+        """Unknown wrapper actions must reach env ingress as model-visible errors."""
         tc = [
             {
                 "name": "mobile_use",
                 "arguments": {"action": "UNSUPPORTED", "value": "x"},
             }
         ]
-        result = self.space.convert_tool_calls_from_agent(tc)
-        assert result == []
+        out = self.space.convert_tool_calls_from_agent(tc)
+
+        assert len(out) == 1
+        assert tool_call_name(out[0]) == "mobile"
+        assert tool_call_arguments(out[0]) == {
+            "actions": [{"action": "UNSUPPORTED", "value": "x"}],
+        }
+        children, error = validate_lite_action_batch_structure(
+            "mobile",
+            tool_call_arguments(out[0]),
+        )
+        assert error is None
+        assert len(children) == 1
+        error = lite_action_batch_child_name_errors("mobile", children).get(0)
+        assert error is not None
+        assert error.child_action_name == "UNSUPPORTED"
 
 
 # =============================================================================

@@ -14,4 +14,4 @@ agent_kwargs:
 
 env_id: "screenspot_pro"
 env_kwargs:
-  binary_reward: true
+  reward_shaping: false
