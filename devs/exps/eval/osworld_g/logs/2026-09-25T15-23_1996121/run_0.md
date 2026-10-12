@@ -1,6 +1,6 @@
 # osworld_g @ 2026-09-25T15-23_1996121 - run_0
 
-- **Report revision**: `1996121`.
+- **Commit**: `1996121` — `eval(osworld_g): use official Venus non-thinking settings`
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/osworld_g/2026-09-25T15-23_1996121/run_0/` (gitignored).
 - **Started**: `2026-09-25 PDT`.

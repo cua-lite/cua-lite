@@ -1,6 +1,6 @@
 # osworld @ 2026-09-17T14-28_a50cc31 - run_0
 
-- **Report revision**: `a50cc31`.
+- **Commit**: `a50cc31` — `eval(osworld): support reference models and GPT reasoning variants`
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/osworld/2026-09-17T14-28_a50cc31/run_0/` (gitignored).
 - **Started**: `2026-09-14 PDT`.

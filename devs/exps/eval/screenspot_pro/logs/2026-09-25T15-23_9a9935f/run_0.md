@@ -1,6 +1,6 @@
 # screenspot_pro @ 2026-09-25T15-23_9a9935f - run_0
 
-- **Report revision**: `9a9935f`.
+- **Commit**: `9a9935f` — `eval(screenspot_pro): use official Venus non-thinking settings`
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/screenspot_pro/2026-09-25T15-23_9a9935f/run_0/` (gitignored).
 - **Started**: `2026-09-25 PDT`.

@@ -1,6 +1,6 @@
 # androidworld @ 2026-09-20T05-57_3b0f776 · run_0
 
-- **Report revision**: `3b0f776`.
+- **Commit**: `3b0f776` — `Merge remote-tracking branch 'origin/dev' into eval/androidworld`
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB; API models use no local GPU.
 - **Artifacts**: `.exps/eval/androidworld/2026-09-20T05-57_3b0f776/run_0/`
 - **Started**: `2026-09-12 PDT`

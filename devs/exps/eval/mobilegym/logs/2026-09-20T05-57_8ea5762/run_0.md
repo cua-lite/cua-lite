@@ -1,6 +1,6 @@
 # mobilegym @ 2026-09-20T05-57_8ea5762 · run_0
 
-- **Report revision**: `8ea5762`.
+- **Commit**: `8ea5762` — `Merge remote-tracking branch 'origin/dev' into eval/mobilegym`
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB; API models use no local GPU.
 - **Artifacts**: `.exps/eval/mobilegym/2026-09-20T05-57_8ea5762/run_0/`
 - **Started**: `2026-09-12 PDT`

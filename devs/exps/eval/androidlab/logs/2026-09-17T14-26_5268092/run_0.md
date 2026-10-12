@@ -1,6 +1,6 @@
 # androidlab @ 2026-09-17T14-26_5268092 · run_0
 
-- **Report revision**: `5268092`.
+- **Commit**: `5268092` — `eval(androidlab): support reference models and GPT reasoning variants`
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB; API models use no local GPU.
 - **Artifacts**: `.exps/eval/androidlab/2026-09-17T14-26_5268092/run_0/`
 - **Started**: `2026-09-15 PDT`

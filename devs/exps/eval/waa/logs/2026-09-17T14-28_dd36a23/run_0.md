@@ -1,6 +1,6 @@
 # waa @ 2026-09-17T14-28_dd36a23 - run_0
 
-- **Report revision**: `dd36a23`.
+- **Commit**: `dd36a23` — `feat(eval): add WAA reference runner and model configurations`
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/waa/2026-09-17T14-28_dd36a23/run_0/` (gitignored).
 - **Started**: `2026-09-09 PDT`.
