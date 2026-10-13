@@ -198,6 +198,7 @@ class Holo4DesktopActionSpace(
         y1="Vertical start coordinate normalized to [0, 1000].",
         x2="Horizontal end coordinate normalized to [0, 1000].",
         y2="Vertical end coordinate normalized to [0, 1000].",
+        hold_keys="Keys to hold during the drag.",
     )
     def drag_and_drop(
         description: str,
@@ -205,12 +206,13 @@ class Holo4DesktopActionSpace(
         y1: int,
         x2: int,
         y2: int,
+        hold_keys: list[str] | None = None,
     ) -> dict[str, Any]:
         """Drag from one point to another.
 
         The official wire name carries no ``_desktop`` suffix. The official
-        ``hold_keys`` argument is not carried: canonical ``drag`` holds no
-        modifiers, and 192 of 193 official calls omit it.
+        ``hold_keys`` argument is declared but not carried: canonical ``drag``
+        holds no modifiers, and 192 of 193 official calls use none.
         """
         return LiteDesktopActionSet.drag(start_coordinate=[x1, y1], coordinate=[x2, y2])
 

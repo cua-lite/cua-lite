@@ -144,6 +144,63 @@ def test_official_desktop_string_coordinates_are_normalized() -> None:
     assert _actions(converted[0]) == [{"action": "click", "coordinate": [509, 515], "clicks": 3}]
 
 
+def test_official_desktop_drag_hold_keys_is_declared_but_dropped() -> None:
+    # The official schema declares ``hold_keys`` (1 of 193 official calls uses
+    # it); canonical ``drag`` holds no modifiers, so the lowering must accept
+    # and drop it instead of failing the call.
+    params = tool_schema_parameters(Holo4DesktopActionSpace.get_tool_schema("drag_and_drop"))
+    assert "hold_keys" in params["properties"]
+    assert "hold_keys" not in params["required"]
+    converted = Holo4DesktopActionSpace().convert_tool_calls_from_agent(
+        [
+            {
+                "name": "drag_and_drop",
+                "arguments": {
+                    "description": "file onto folder",
+                    "x1": 100,
+                    "y1": 200,
+                    "x2": 700,
+                    "y2": 400,
+                    "hold_keys": ["ctrl"],
+                },
+            },
+            {
+                "name": "drag_and_drop",
+                "arguments": {
+                    "description": "file onto folder",
+                    "x1": 100,
+                    "y1": 200,
+                    "x2": 700,
+                    "y2": 400,
+                    "hold_keys": None,
+                },
+            },
+        ]
+    )
+    # The two adjacent drags merge into one canonical batch.
+    assert len(converted) == 1
+    assert _actions(converted[0]) == [
+        {"action": "drag", "start_coordinate": [100, 200], "coordinate": [700, 400]},
+        {"action": "drag", "start_coordinate": [100, 200], "coordinate": [700, 400]},
+    ]
+    assert (
+        Holo4DesktopActionSpace().convert_tool_calls_to_agent(converted)
+        == [
+            {
+                "name": "drag_and_drop",
+                "arguments": {
+                    "description": "screen element",
+                    "x1": 100,
+                    "y1": 200,
+                    "x2": 700,
+                    "y2": 400,
+                },
+            }
+        ]
+        * 2
+    )
+
+
 def test_mobile_schema_is_the_holo_flat_surface() -> None:
     assert Holo4MobileActionSpace.get_tool_names() == {
         "mobile_click",
