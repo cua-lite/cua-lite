@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
-from typing import Any
+from typing import Any, ClassVar
 
 from lite.agents.core.action_space import BaseActionSpace, assemble_tool_schemas
 from lite.agents.models.holo4.action_space import (
@@ -525,6 +525,19 @@ class Holo4BaseAdapter(
     enable_thinking: bool = True
     render_tools_section: bool = False
     system_prompt: str | None = None
+
+    # The write tools are flat, so their payloads ride plain parameters:
+    # ``content`` on desktop, ``text`` on mobile. Typed content keeps its
+    # wrapping quotes — unwrapping mangled text the model meant to type.
+    # ``answer``'s ``content`` is not typed content: its quotes are the
+    # model's, matching qwen3_5's ``answer``/``response``.
+    _typed_content_params: ClassVar[frozenset[tuple[str, str]]] = frozenset(
+        {
+            ("write_desktop", "content"),
+            ("write_at_desktop", "content"),
+            ("mobile_write", "text"),
+        }
+    )
 
     def _assemble_tool_schemas(self) -> list[dict[str, Any]]:
         metadata = self._cua_metadata()

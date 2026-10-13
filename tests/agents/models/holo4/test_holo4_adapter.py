@@ -395,6 +395,47 @@ I am checking the visible page.
     assert tool_call_arguments(lite_message["tool_calls"][1]) == {"command": "pwd"}
 
 
+def test_write_payloads_keep_wrapping_quotes_but_answer_loses_them() -> None:
+    # The write tools' payloads are typed content: a wrapping quote pair is
+    # part of what gets typed. ``answer``'s payload is the model's own
+    # formatting, so its quotes are stripped — matching qwen3_5's
+    # ``answer``/``response``.
+    adapter = Holo4DesktopUseAdapter(metadata=_metadata())
+    raw = """<tool_call>
+<function=write_desktop>
+<parameter=content>"Invoice # GES-1.pdf"</parameter>
+<parameter=press_enter>true</parameter>
+</function>
+</tool_call>
+<tool_call>
+<function=answer>
+<parameter=content>"42"</parameter>
+</function>
+</tool_call>"""
+    lite_message = adapter.convert_message_from_agent(adapter.parse_raw_assistant_response(raw))
+    assert tool_call_arguments(lite_message["tool_calls"][0])["actions"] == [
+        {"action": "type", "text": '"Invoice # GES-1.pdf"\n'}
+    ]
+    assert tool_call_arguments(lite_message["tool_calls"][1]) == {"text": "42"}
+
+
+def test_mobile_write_text_keeps_wrapping_quotes() -> None:
+    adapter = Holo4MobileUseAdapter(metadata=LiteCUAMetadata(dims=("mobile", "use")))
+    raw = """<tool_call>
+<function=mobile_write>
+<parameter=element>Name</parameter>
+<parameter=text>"42"</parameter>
+<parameter=x>500</parameter>
+<parameter=y>300</parameter>
+</function>
+</tool_call>"""
+    lite_message = adapter.convert_message_from_agent(adapter.parse_raw_assistant_response(raw))
+    assert tool_call_arguments(lite_message["tool_calls"][0])["actions"] == [
+        {"action": "tap", "coordinate": [500, 300], "clicks": 1},
+        {"action": "type", "text": '"42"'},
+    ]
+
+
 def test_arbitrary_active_extra_passes_through_unchanged() -> None:
     adapter = Holo4DesktopUseAdapter(metadata=_metadata())
     message = adapter.convert_message_from_agent(
