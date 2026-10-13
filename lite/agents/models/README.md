@@ -200,6 +200,19 @@ their registry key is present.
   `enable_thinking` to `apply_chat_template`.
   Files: `agent.py`, `adapter.py`, `action_space.py`, `protocol.py`.
 
+- `holo4`
+  IDs: `Hcompany/Holo4-{27B,35B-A3B}`.
+  Surfaces: desktop/browser/mobile `use`.
+  Files: `agent.py`, `adapter.py`, `action_space.py`, `protocol.py`.
+  Built on Qwen3.5 (same XML `<tool_call>` wire), with thinking on and prior
+  native `<think>` turns replayed across turns. The family delta is the
+  official harness's flat tool vocabulary — one named tool per action
+  (`click_desktop`, `write_at_desktop`, `mobile_write`, …) instead of the
+  `computer_use(action=...)` wrapper — with `bash` projected to `shell` and
+  `response`/`terminate` folded into one `answer` tool. `holo4.history`
+  keeps all text verbatim and evicts screenshots beyond a three-screenshot
+  window (the official AndroidWorld/OSWorld setting).
+
 ### API Agent Families
 
 - `gpt`
@@ -208,7 +221,8 @@ their registry key is present.
   Files: `agent.py`, `action_space.py`, `utils/*`.
 
 - `claude`
-  IDs: `claude-opus-4-8`, `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6`.
+  IDs: `claude-opus-5`, `claude-sonnet-5`, `claude-opus-4-8`, `claude-opus-4-7`,
+  `claude-opus-4-6`, `claude-sonnet-4-6`.
   Surfaces: desktop/browser/mobile `use` and desktop/browser `grounding.point`.
   Files: `agent.py`, `action_space.py`, `utils/*`.
 
