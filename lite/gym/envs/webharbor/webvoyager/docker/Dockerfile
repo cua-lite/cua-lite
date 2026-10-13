@@ -4,6 +4,7 @@ ARG WEBHARBOR_WEBVOYAGER_REPO=https://github.com/MinorJerry/WebVoyager.git
 ARG WEBHARBOR_WEBVOYAGER_SHA=5a7896738c10bfb8b9edccce6bb0e0411f8ae569
 ARG WEBHARBOR_REPO=https://github.com/aiming-lab/WebHarbor.git
 ARG WEBHARBOR_SHA=af0765d5abd68fb8ec190165d3aa3de333965f84
+ARG WEBHARBOR_ASSETS_REVISION=ad6f424f72cada9e6f5c09a58093d0ceeab9c52b
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -84,12 +85,15 @@ RUN pip install --no-cache-dir -r requirements.txt \
 # patches/, not an inline sed). fetch_assets-no-same-owner.patch: HF asset
 # tarballs preserve the uploader's uid/gid; some Docker builders cannot chown
 # those high ids while extracting, so unpack assets as the current build user.
+# The same patch also makes the default fetch set come from the pinned WebHarbor
+# site's directories instead of the mutable dataset's full tarball list.
 COPY patches/ /tmp/webharbor.webvoyager-patches/
 RUN cd /opt/webharbor \
  && patch -p1 < /tmp/webharbor.webvoyager-patches/fetch_assets-no-same-owner.patch \
  && grep -q -- "--no-same-owner" scripts/fetch_assets.sh \
+ && grep -q -- "SITES_TO_FETCH" scripts/fetch_assets.sh \
  && rm -rf /tmp/webharbor.webvoyager-patches \
- && ./scripts/fetch_assets.sh \
+ && ASSETS_REVISION="${WEBHARBOR_ASSETS_REVISION}" ./scripts/fetch_assets.sh \
  && ./scripts/check_assets.sh \
  && rm -rf sites/.cache \
  && mkdir -p /opt/WebSyn \

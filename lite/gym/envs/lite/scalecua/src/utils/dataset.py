@@ -1251,10 +1251,12 @@ def import_all(*, force_download: bool = False) -> dict[str, Any]:
             live_cache / "hf_snapshot", force_download=force_download
         )
         _materialize_judges(snapshot, staging)
+        judge_root = staging / "judge_functions"
         # Harden the pulled read-helpers in place before
         # catalog validation, so the fix is re-applied on every .cache pull and
         # is never a manual .cache edit.
-        import_report_judge_patch = _patch_judge_functions(staging / "judge_functions")
+        import_report_judge_patch = _patch_judge_functions(judge_root)
+        broken_metrics = _metrics_calling_undefined_helpers(judge_root)
         rows_by_split: dict[str, list[dict[str, Any]]] = {
             split: [] for split in RUNTIME_SPLITS
         }
@@ -1267,7 +1269,7 @@ def import_all(*, force_download: bool = False) -> dict[str, Any]:
             "excluded_count_by_reason": {},
             "url_rewrite_count": 0,
         }
-        context = _ImportContext(snapshot=snapshot)
+        context = _ImportContext(snapshot=snapshot, broken_metrics=broken_metrics)
         for source_name, runtime_split in (
             ("generated_tasks", "train"),
             ("rl_tasks", "rl"),
@@ -1299,6 +1301,7 @@ def import_all(*, force_download: bool = False) -> dict[str, Any]:
             "patched": len(import_report_judge_patch["patched"]),
             "already_patched": len(import_report_judge_patch["already_patched"]),
         }
+        import_report["broken_metrics"] = sorted(context.broken_metrics)
         import_report["normalization_notes"] = dict(sorted(context.normalization_notes.items()))
         (staging / "import_report.json").write_text(
             json.dumps(import_report, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
@@ -1340,8 +1343,9 @@ def import_all(*, force_download: bool = False) -> dict[str, Any]:
 
 
 class _ImportContext:
-    def __init__(self, *, snapshot: Path):
+    def __init__(self, *, snapshot: Path, broken_metrics: frozenset[str]):
         self.snapshot = snapshot
+        self.broken_metrics = broken_metrics
         self.action_before: dict[str, Counter] = defaultdict(Counter)
         self.action_after: dict[str, Counter] = defaultdict(Counter)
         self.excluded_count_by_reason: Counter = Counter()
@@ -1459,6 +1463,7 @@ def _row_from_payload(
         inherited_exclusion=inherited_exclusion,
         unsupported=unsupported,
         runtime_split=runtime_split,
+        broken_metrics=context.broken_metrics,
     )
     if exclude_reason:
         exclude_reason = exclude_reasons.validate(exclude_reason)
@@ -1495,6 +1500,7 @@ def _exclude_reason(
     inherited_exclusion: str | None,
     unsupported: list[str],
     runtime_split: str,
+    broken_metrics: frozenset[str],
 ) -> str | None:
     del inherited_exclusion
     actions = _action_types(payload)
@@ -1535,6 +1541,12 @@ def _exclude_reason(
     if _has_upstream_generated_eval_bug(task_id=task_id, runtime_split=runtime_split):
         return "upstream_generated_eval_bug"
     if _has_uncompilable_python_heredoc(payload, runtime_split=runtime_split):
+        return "upstream_generated_eval_bug"
+    if _has_metric_with_undefined_helper(
+        payload,
+        runtime_split=runtime_split,
+        broken_metrics=broken_metrics,
+    ):
         return "upstream_generated_eval_bug"
     if unsupported:
         first = unsupported[0]
@@ -1624,6 +1636,95 @@ def _has_uncompilable_python_heredoc(
             except SyntaxError:
                 continue
     return False
+
+
+def _metrics_calling_undefined_helpers(judge_root: Path) -> frozenset[str]:
+    """Generated metric functions that call a helper this overlay never defines.
+
+    The generated shards were split from a larger source and some kept calls to
+    module-level helpers that did not come with them; ``judges`` injects 20 such
+    names back, but not these. The call raises ``NameError`` at scoring time, and
+    ``verify.evaluate_scalecua_task`` degrades any metric exception to 0.0 -- so
+    the row scores zero no matter what the agent did, and (before that handler
+    started logging) left no trace to tell it apart from a hard task.
+
+    Derived, not an id list: a future overlay refresh that fixes or breaks more
+    shards is picked up without anyone re-curating.
+    """
+    import ast
+    import builtins
+
+    from lite.gym.envs.lite.scalecua.src.osworld import judges
+
+    if not judge_root.is_dir():
+        raise RuntimeError(f"no ScaleCUA judge overlay under {judge_root}")
+    roots = [judge_root / split for split in RUNTIME_SPLITS if (judge_root / split).is_dir()]
+    if not roots:
+        raise RuntimeError(f"no ScaleCUA judge overlay under {judge_root}")
+    paths = sorted(pth for r in roots for pth in r.rglob("verigen_metrics/*.py"))
+    if not paths:
+        raise RuntimeError(f"no ScaleCUA metric overlay under {judge_root}")
+    trees: dict[Path, ast.Module] = {}
+    # judges injects a fixed set of helpers back into every shard; those names
+    # resolve at runtime even though the shard never defines them.
+    defined: set[str] = set(judges._INJECTED_HELPER_NAMES)
+    for path in paths:
+        try:
+            tree = ast.parse(path.read_text(errors="replace"), str(path))
+        except SyntaxError:
+            continue
+        trees[path] = tree
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                defined.add(node.name)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    defined.add((alias.asname or alias.name).split(".")[0])
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        defined.add(target.id)
+    known = defined | set(dir(builtins))
+    broken: set[str] = set()
+    for tree in trees.values():
+        for fn in tree.body:
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            local = {arg.arg for arg in fn.args.args}
+            local |= {
+                c.name for c in ast.walk(fn)
+                if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            local |= {
+                t.id for n in ast.walk(fn) if isinstance(n, ast.Assign)
+                for t in n.targets if isinstance(t, ast.Name)
+            }
+            for node in ast.walk(fn):
+                # Only CALL sites: a bare Name load can be a comprehension target or
+                # a nested-scope binding, and counting those over-reports wildly.
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id not in known
+                    and node.func.id not in local
+                ):
+                    broken.add(fn.name)
+    return frozenset(broken)
+
+
+def _has_metric_with_undefined_helper(
+    payload: dict[str, Any],
+    *,
+    runtime_split: str,
+    broken_metrics: frozenset[str],
+) -> bool:
+    """True iff the row is scored by a metric that cannot run (see above)."""
+    if runtime_split not in {"train", "rl"}:
+        return False
+    if not broken_metrics:
+        return False
+    blob = json.dumps(payload)
+    return any(f'"{name}"' in blob for name in broken_metrics)
 
 
 def _has_thunderbird_gmail_auth_gap(

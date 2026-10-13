@@ -20,7 +20,9 @@ Usage:
 
 from __future__ import annotations
 
+import copy
 import dataclasses
+import json
 from typing import Any, ClassVar
 
 from lite.agents.core.action_space import BaseActionSpace
@@ -43,6 +45,7 @@ from lite.core import (
     LiteCUAMetadata,
 )
 from lite.core.tools.calls import tool_call_name
+from lite.core.tools.schemas import validate_extra_tool_schemas
 
 # =============================================================================
 # System Prompt
@@ -65,6 +68,9 @@ Rules:
 - Be brief: one sentence for Action.
 - Do not output anything else outside those parts.
 - If finishing, use action=terminate in the tool call."""
+
+_EVOCUA_NAME_FOR_HUMAN = "computer_use"
+_EVOCUA_ARGS_FORMAT = "Format the arguments as a JSON object."
 
 # =============================================================================
 # Desktop + Browser Adapters
@@ -135,6 +141,41 @@ class EvoCUADesktopUseAdapter(
     natively_rendered_extra_tool_names: ClassVar[frozenset[str]] = frozenset({
         "terminate",
     })
+
+    def _build_tools_section(self, image_size: tuple[int, int] | None = None) -> str:
+        """Render EvoCUA's reference ``computer_use`` metadata in ``<tools>``."""
+        tool_schemas = self._tool_schemas_for_tools_section()
+        validate_extra_tool_schemas(
+            tool_schemas,
+            where="EvoCUADesktopUseAdapter._build_tools_section.tool_schemas",
+        )
+        rendered_schemas = copy.deepcopy(tool_schemas)
+        for schema in rendered_schemas:
+            function = schema["function"]
+            if function["name"] == "computer_use":
+                function["name_for_human"] = _EVOCUA_NAME_FOR_HUMAN
+                function["args_format"] = _EVOCUA_ARGS_FORMAT
+        tools_json = "\n".join(json.dumps(schema) for schema in rendered_schemas)
+        if image_size is not None:
+            W, H = image_size
+            tools_json = (
+                tools_json
+                .replace("{display_width_px}", str(W))
+                .replace("{display_height_px}", str(H))
+            )
+        return (
+            "# Tools\n\n"
+            "You may call one or more functions to assist with the user query.\n\n"
+            "You are provided with function signatures within <tools></tools> XML tags:\n"
+            "<tools>\n"
+            f"{tools_json}\n"
+            "</tools>\n\n"
+            "For each function call, return a json object with function name and arguments "
+            "within <tool_call></tool_call> XML tags:\n"
+            "<tool_call>\n"
+            '{"name": <function-name>, "arguments": <args-json-object>}\n'
+            "</tool_call>"
+        )
 
     def _tool_calls_to_agent_ordered(
         self, tool_calls: list[dict[str, Any]],

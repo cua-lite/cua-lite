@@ -1208,27 +1208,18 @@ class AndroidLabEnv(EnvServerPoolable, EnvServerResource):
                 self._judge = self._config.judge_class()
             if compressed_xml is None:
                 return
-            try:
-                result = self._judge.judge(compressed_xml, line)
-            except NotImplementedError:
-                return
-            except Exception as e:
-                logger.warning("judge() raised: %s", e)
-                return
+            result = self._judge.judge(compressed_xml, line)
         else:
             if compressed_xml is None:
                 return
             # Production path: round-trip via the in-container judge.
             if not self._judge_loaded or self._rpc is None:
                 return
-            try:
-                result = self._rpc.post("/task/judge", body={
-                    "compressed_xml": compressed_xml,
-                    "line": line,
-                })
-            except Exception as e:
-                logger.warning("judge() raised: %s", e)
-                return
+            # A failed evaluator must fail the rollout, not become a zero score.
+            result = self._rpc.post("/task/judge", body={
+                "compressed_xml": compressed_xml,
+                "line": line,
+            })
         if not isinstance(result, dict):
             return
         if not result.get("judge_page", True):

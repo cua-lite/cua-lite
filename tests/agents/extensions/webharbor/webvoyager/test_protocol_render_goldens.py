@@ -32,7 +32,13 @@ def _webvoyager_som_traj() -> list[dict]:
             "content": [
                 {
                     "type": "metadata",
-                    "data": {"web_text": "[1] <button> Search;\t[2] <input> Query"},
+                    "data": {
+                        "web_text": (
+                            "[1] <button> Search @ (10, 20);\t"
+                            "[2] <input> Query @ (30, 40)"
+                        ),
+                        "model_web_text": "DOM:\n[1] <button> Search;\t[2] <input> Query",
+                    },
                 },
                 {"type": "text", "text": "Find and search for jackets."},
                 {"type": "image", "index": 0},

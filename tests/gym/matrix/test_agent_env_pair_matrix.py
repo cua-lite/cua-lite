@@ -99,9 +99,14 @@ _CONFIG_ROOTS = (Path("scripts/configs"),)
 # vacuously passing.
 _MIN_CONFIG_YAMLS = 150
 _MIN_DISTINCT_PAIRS = 110
-_EXPECTED_AGENT_CONFIG_ROWS = 201
-_EXPECTED_ENV_CONFIG_ROWS = 196
-_EXPECTED_DISTINCT_PAIRS = 158
+# Exact counts: a new config yaml adds one agent row and, if it names an env, one
+# env row — the middle counter is len(PAIR_ROWS), rows that HAVE an env, not the
+# number of distinct envs. The distinct-pair count grows only when the (agent, env)
+# pair is new: a second config for a covered pair (e.g. gpt's `osworld_g.medium` /
+# `screenspot_pro.medium` grounding variants) leaves it unchanged.
+_EXPECTED_AGENT_CONFIG_ROWS = 217
+_EXPECTED_ENV_CONFIG_ROWS = 212
+_EXPECTED_DISTINCT_PAIRS = 172
 
 
 class ConfigRow:
@@ -155,9 +160,9 @@ PAIR_ROWS = [r for r in ROWS if r.env_id]
 # ``metadata.dims``. Most envs answer that from
 # the registry with no docker image and no VM; the few whose *module import*
 # is hard-gated on an uninstalled third-party package (browsergym, cua-bench)
-# or a provisioned task cache (lite.cuagym, lite.osworld) are pinned here so
-# the containment sweep still covers their rows on a partially-provisioned
-# host.
+# or a provisioned task cache (lite.cuagym, lite.cuaworld, lite.osworld) are
+# pinned here so the containment sweep still covers their rows on a partially
+# provisioned host.
 #
 # The pins are NOT trusted blindly: ``test_pinned_env_dims_match_live_registry``
 # re-derives every pin that IS importable and fails on drift, so a fully
@@ -170,7 +175,10 @@ _PINNED_ENV_DIMS: dict[str, tuple[str, ...]] = {
     "cua.bench.local.kicad": ("desktop", "use"),
     "cua.bench.local.workflows": ("desktop", "use"),
     "lite.cuagym": ("browser", "use"),
+    "lite.cuaworld.librecad": ("desktop", "use"),
+    "lite.cuaworld.pymol": ("desktop", "use"),
     "lite.osworld": ("desktop", "use"),
+    "osworld_g": ("desktop", "grounding.point"),
 }
 
 # Envs that end the episode on the FIRST step (single-step grounding). They are
@@ -896,8 +904,10 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/claude/default/lite.osworld.yaml",
     "scripts/configs/claude/default/osworld_2.yaml",
     "scripts/configs/claude/default/osworld.yaml",
+    "scripts/configs/claude/default/waa.yaml",
     "scripts/configs/evocua/default/lite.osworld.yaml",
     "scripts/configs/evocua/default/osworld.yaml",
+    "scripts/configs/evocua/default/waa.yaml",
     "scripts/configs/gemini/default/lite.osworld.yaml",
     "scripts/configs/gemini/default/osworld.yaml",
     "scripts/configs/gemini/default/osworld_2.yaml",
@@ -948,4 +958,6 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/ui_tars/default/osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/lite.osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/osworld.yaml",
+    "scripts/configs/ui_tars_15_v1/default/waa.yaml",
+    "scripts/configs/ui_venus_2/default/waa.yaml",
 }

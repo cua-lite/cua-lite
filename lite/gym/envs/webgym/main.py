@@ -56,7 +56,12 @@ from lite.core.tools.calls import (
 from lite.core.tools.extra_tools import LiteBrowserNavToolSet, LiteFinishToolSet
 from lite.core.tools.schemas import BaseTools, tool_schema_name
 from lite.gym.base import LiteBaseEnv
-from lite.gym.errors import CapacityExhausted, EnvBlocked, EnvDepsMissingError
+from lite.gym.errors import (
+    CapacityExhausted,
+    EnvBlocked,
+    EnvDepsMissingError,
+    TrueInfraFailure,
+)
 from lite.gym.registry import invalidate_services, register, registry
 from lite.gym.remote.reaper import SingletonContainerServices
 from lite.gym.services import register_services
@@ -124,8 +129,10 @@ try:
     from webgym.misc import is_white_image
 except ImportError:
     def is_white_image(img: Any) -> bool:  # type: ignore[misc]
-        """Fallback: treat all images as non-blank when webgym is unavailable."""
-        return False
+        """Fallback for hosts without the optional ``webgym`` package."""
+        image = img.convert("RGB")
+        extrema = image.getextrema()
+        return all(lo == hi == 255 for lo, hi in extrema)
 
 ENV_DIR = str(Path(__file__).parent)
 CFG = env_config.load(ENV_DIR)
@@ -200,10 +207,9 @@ _JUDGE_BATCH_SUBMISSION = CFG.server_kwargs["judge_batch_submission"]
 # Max frames per batched submission call. The batched filter emits a per-image YES/NO
 # line for EVERY frame, and long structured output degrades (the model drops/misorders
 # lines past ~30-40 → parse-miss → None → guard ERR). It's ALSO bounded by the provider's
-# ~50-image/request limit (stock caps its criterion call at 48). So chunk: eval tiers
-# (max_steps_eval 30/50/70) and a fully-stepped trajectory split into ceil(n/30) calls
-# rather than one oversized request that 400s deterministically. 30 keeps the common
-# eval-30 tier a single call; train (<=35) stays 1-2 calls. See _batched_judge_submission.
+# ~50-image/request limit (stock caps its criterion call at 48). So chunk: a fully-stepped
+# trajectory (<=35 frames by default for both train/eval) splits into at most 2 calls rather
+# than one oversized request that 400s deterministically. See _batched_judge_submission.
 _JUDGE_SUBMISSION_MAX_IMAGES_PER_CALL = 30
 # VLM-judge OpenAI client retry budget. At higher judge concurrency gpt-4.1 starts
 # returning 429s; the openai SDK default (2 retries) absorbs most, and the rest get
@@ -385,8 +391,8 @@ def _batched_judge_submission(evaluator: Any, trajectory: list[dict]) -> None:
     a silent wrong reward.
 
     Frames are CHUNKED at _JUDGE_SUBMISSION_MAX_IMAGES_PER_CALL: one oversized request
-    (eval trajectories reach ~70 frames) both degrades per-image parse reliability and
-    can exceed the provider's ~50-image/request limit → a deterministic 400 that no
+    (default trajectories can reach ~35 frames) both degrades per-image parse reliability
+    and can exceed the provider's ~50-image/request limit → a deterministic 400 that no
     retry can fix. Each chunk is one multi-image call; a chunk that hits the content
     filter falls back to per-image so only the offending frame is excluded."""
     keypoint_client, keypoint_model = evaluator._get_client_and_model(
@@ -900,8 +906,7 @@ class WebGymEnv(LiteBaseEnv):
         self._api_key = os.environ.get("WEBGYM_API_KEY", _API_KEY)
         diff = int(task.get("difficulty", 2))
         steps_map = _MAX_STEPS_TRAIN if split == "train" else _MAX_STEPS_EVAL
-        default_steps = 15 if diff <= 3 else (25 if diff <= 6 else 35) if split == "train" \
-            else 30 if diff <= 3 else (50 if diff <= 6 else 70)
+        default_steps = 15 if diff <= 3 else (25 if diff <= 6 else 35)
         self._max_steps = max_steps or steps_map.get(diff, default_steps)
         self._post_action_delay = post_action_delay
         self._cursor = cursor
@@ -1346,23 +1351,22 @@ class WebGymEnv(LiteBaseEnv):
         else:
             page_meta = {"title": "", "url": ""}
 
-        # L2 fail-fast on a dead pool: count CONSECUTIVE steps that
-        # could only fall back to a stale/blank screenshot. One is a transient
-        # blip (graceful degradation is right); N in a row means the env hasn't
-        # produced a real screenshot for N steps → the pool is effectively
-        # unreachable and every further step just burns a teacher turn on a
-        # trajectory that will score 0 while count/throughput stay deceptively
-        # normal. Truncate LOUDLY so the outage surfaces. A real screenshot resets
-        # the counter, so a recovering blip never trips this.
+        # Fail-fast on a site that keeps rendering blank: count CONSECUTIVE steps
+        # whose capture succeeded but returned an all-white page. One is a
+        # transient render race; N in a row means the site is not going to paint
+        # for this agent, and every further step burns a teacher turn on a
+        # trajectory that will score 0. Truncate so the budget is not wasted. A
+        # real frame resets the counter. (A dead POOL no longer reaches here —
+        # capture failures raise TrueInfraFailure in ``_take_screenshot``.)
         if self._is_fallback_screenshot:
             self._consecutive_fallback_steps += 1
             if (_POOL_UNREACHABLE_FALLBACK_STEPS > 0
                     and self._consecutive_fallback_steps >= _POOL_UNREACHABLE_FALLBACK_STEPS
                     and not truncated and not terminated):
                 logger.error(
-                    "webgym: %d consecutive fallback screenshots — OmniBoxes pool "
-                    "appears UNREACHABLE; truncating trajectory to stop burning "
-                    "teacher budget on a dead pool (master=%s)",
+                    "webgym: %d consecutive all-white page renders — the site is not "
+                    "painting for this agent; truncating trajectory to stop burning "
+                    "teacher budget (master=%s)",
                     self._consecutive_fallback_steps, self._master_url,
                 )
                 truncated = True
@@ -1393,10 +1397,11 @@ class WebGymEnv(LiteBaseEnv):
         # Generate observation text (reference async_webgym.py:1521-1581)
         obs_text = None
 
-        # Fallback screenshot: the env could not capture this step's page and
-        # re-appended the previous frame, so the last two frames are identical by
-        # construction. Change detection has no evidence here and must not run —
-        # an env capture failure is never reported as an ineffective action.
+        # Blank-page fallback: the capture SUCCEEDED but the page rendered all
+        # white, so the previous frame was re-appended and the last two frames are
+        # identical by construction. Change detection has no evidence here and must
+        # not run. Capture FAILURES never reach this branch — they raise
+        # TrueInfraFailure in ``_take_screenshot`` and void the trajectory.
         if self._is_fallback_screenshot:
             if last_action_is_navigate and last_navigate_url:
                 obs_text = (
@@ -1407,10 +1412,11 @@ class WebGymEnv(LiteBaseEnv):
                 )
             else:
                 obs_text = (
-                    "The environment could not capture a new screenshot after the action above, "
-                    "so the image shown is the previous page. This is an environment capture "
-                    "failure and says nothing about whether the action took effect. "
-                    f"The URL of the webpage after executing the action: {url_display}"
+                    "The page rendered blank after the action above, so the image shown is the "
+                    "previous page. The action may still have taken effect — the blank render "
+                    "says nothing either way. Consider navigating elsewhere or trying a "
+                    f"different approach. The URL of the webpage after executing the action: "
+                    f"{url_display}"
                 )
         elif len(self._screenshots) >= 2:
             images_identical = self._screenshots[-2] == self._screenshots[-1]
@@ -1613,24 +1619,20 @@ class WebGymEnv(LiteBaseEnv):
                 x, y = _px(coord_raw)
             else:
                 x, y = self._last_click_x, self._last_click_y
-            # fill_coords does click + type + optional enter in one call.
-            # ``press_enter`` is the MODEL's choice, not ours. It used to be
-            # hardcoded True "to match the reference implementation", which meant
-            # webgym advertised the argument on canonical ``type`` and then threw
-            # the model's value away -- there was no way to type without
-            # submitting, and fara's own prompt tells the model to send
-            # ``press_enter=False`` on auto-suggest search bars. The container
-            # already honors the parameter (``docker/patches/playwright_instance.py``
-            # reads it), so the capability was being discarded one layer above it.
-            # Default False across envs: the error is asymmetric -- a missing
-            # Enter costs one turn (the model sees the un-submitted field and
-            # sends ``key(["enter"])``), while a spurious Enter submits a form or
-            # navigates away irreversibly.
+            # fill_coords does click + type + optional enter in one call. The
+            # container's ``press_enter`` is THIS TRANSPORT's spelling of the
+            # trailing newline canonical uses; strip it here so the flag the
+            # container already honours stays the single carrier of "submit".
+            # Only a trailing newline submits -- an interior one is part of the
+            # value, and Playwright's ``keyboard.type`` presses Enter for it.
+            press_enter = text.endswith("\n")
+            if press_enter:
+                text = text[:-1]
             return {"fill_coords": {
                 "x": x,
                 "y": y,
                 "value": text,
-                "press_enter": bool(args.get("press_enter", False)),
+                "press_enter": press_enter,
                 "delete_existing": True,
             }}
 
@@ -1699,11 +1701,17 @@ class WebGymEnv(LiteBaseEnv):
     # -----------------------------------------------------------------------
 
     async def _take_screenshot(self) -> bytes:
-        """Take a screenshot and return raw PNG bytes.
+        """Capture the current page as PNG bytes, or void the trajectory.
 
-        Includes blank detection (#1), file size validation (#8), and retry logic.
-        Falls back to the previous frame on persistent blank after a navigate
-        action.
+        Raises ``TrueInfraFailure`` (retryable) when the env owed an observation
+        and could not deliver one: a non-PNG body, a truncated frame, an
+        undecodable PNG, or a raised exception, each after
+        ``blank_screenshot_max_retries`` attempts. Those are env faults, not model
+        faults, so the trajectory is void and re-run rather than scored 0.
+
+        The ONE non-raising failure is an all-white page that captured fine: the
+        site's own render, so the previous frame is re-served and the model is
+        told (see ``_fallback_to_previous_screenshot``).
 
         Records the frame as :attr:`_last_frame` but NOT in
         :attr:`_screenshots`: a step captures one frame per action and only its
@@ -1728,7 +1736,11 @@ class WebGymEnv(LiteBaseEnv):
                     if attempt < _BLANK_SCREENSHOT_MAX_RETRIES - 1:
                         await asyncio.sleep(_BLANK_SCREENSHOT_WAIT)
                         continue
-                    return await asyncio.to_thread(self._fallback_to_previous_screenshot)
+                    raise TrueInfraFailure(
+                        f"webgym: screenshot API returned non-PNG data "
+                        f"({len(png_bytes)} bytes) after "
+                        f"{_BLANK_SCREENSHOT_MAX_RETRIES} attempts"
+                    )
 
                 # Screenshot file size validation (#8)
                 if len(png_bytes) <= _MIN_SCREENSHOT_SIZE:
@@ -1737,7 +1749,10 @@ class WebGymEnv(LiteBaseEnv):
                     if attempt < _BLANK_SCREENSHOT_MAX_RETRIES - 1:
                         await asyncio.sleep(_BLANK_SCREENSHOT_WAIT)
                         continue
-                    return await asyncio.to_thread(self._fallback_to_previous_screenshot)
+                    raise TrueInfraFailure(
+                        f"webgym: screenshot truncated ({len(png_bytes)} bytes) after "
+                        f"{_BLANK_SCREENSHOT_MAX_RETRIES} attempts"
+                    )
 
                 # Blank screenshot detection (#1)
                 try:
@@ -1760,29 +1775,51 @@ class WebGymEnv(LiteBaseEnv):
                     if attempt < _BLANK_SCREENSHOT_MAX_RETRIES - 1:
                         await asyncio.sleep(_BLANK_SCREENSHOT_WAIT)
                         continue
-                    return await asyncio.to_thread(self._fallback_to_previous_screenshot)
+                    raise TrueInfraFailure(
+                        f"webgym: screenshot PNG undecodable after "
+                        f"{_BLANK_SCREENSHOT_MAX_RETRIES} attempts"
+                    )
 
                 self._last_frame = png_bytes
                 return png_bytes
 
+            except TrueInfraFailure:
+                raise
             except Exception as e:
                 logger.warning("Screenshot failed (attempt %d/%d): %s",
                                attempt + 1, _BLANK_SCREENSHOT_MAX_RETRIES, e)
                 if attempt < _BLANK_SCREENSHOT_MAX_RETRIES - 1:
                     await asyncio.sleep(_BLANK_SCREENSHOT_WAIT)
                     continue
-                return await asyncio.to_thread(self._fallback_to_previous_screenshot)
+                raise TrueInfraFailure(
+                    f"webgym: screenshot capture failed after "
+                    f"{_BLANK_SCREENSHOT_MAX_RETRIES} attempts: {e}"
+                ) from e
 
-        return await asyncio.to_thread(self._fallback_to_previous_screenshot)
+        raise TrueInfraFailure(
+            f"webgym: screenshot capture exhausted "
+            f"{_BLANK_SCREENSHOT_MAX_RETRIES} attempts without a frame"
+        )
 
     def _fallback_to_previous_screenshot(self) -> bytes:
-        """Return the last captured frame as fallback, setting the flag (#17).
+        """Re-serve the last frame for a page that legitimately rendered blank.
 
-        The returned frame is a repeat of ``_last_frame`` by construction, which
-        is why ``_is_fallback_screenshot`` exists: change detection must not read
-        an env capture failure as an ineffective action. If nothing has been
-        captured yet (first call during reset), generates a blank placeholder so
-        the episode can still start.
+        ONE caller: the all-white detection above, after its retries. That is a
+        property of the SITE, not of the env — the capture succeeded, the page
+        really is blank — so the episode continues and the model is told so
+        (see the ``_is_fallback_screenshot`` branch in ``step``, which explains
+        the blank page and suggests navigating elsewhere).
+
+        Capture FAILURES do not come here: a non-PNG body, a truncated frame, an
+        undecodable PNG, or a raised exception are all ``TrueInfraFailure`` —
+        the env owed an observation and did not produce one, so the trajectory
+        is void and retryable rather than a model failure scored 0. Re-serving a
+        stale frame there made the model act on a page it was no longer looking
+        at, which read downstream as a repetitive-action loop.
+
+        ``_is_fallback_screenshot`` also suppresses change detection: the last
+        two frames are identical by construction here, and that is not evidence
+        of an ineffective action.
         """
         self._is_fallback_screenshot = True
         if self._last_frame is not None:

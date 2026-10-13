@@ -14,6 +14,7 @@ agent_kwargs:
 
 env_id: "online_mind2web"
 env_kwargs:
+  include_page_context_text: false
   # Online-Mind2Web is NOT a pure-QA benchmark: its 300 tasks carry no
   # reference answer (data/tasks.json fields: confirmed_task / level /
   # reference_length / website) and most are imperatives ("Add a Box Combo to

@@ -1,6 +1,6 @@
 # Lite.CUAGym Teacher-Data Pipeline
 
-This directory owns the Lite.CUAGym GPT teacher-data workflow.
+This directory owns the Lite.CUAGym teacher-data workflow.
 
 Lite.CUAGym imports CUA-Gym web, cross-app, and desktop task bundles. Its
 Docker image extends `cua-lite/lite.osworld:latest`, and its desktop tasks use
@@ -8,6 +8,26 @@ the same screenshot, coordinate-action, terminal, and 30-turn interaction
 substrate as Lite.OSWorld. It therefore reuses the shared quality filter at
 `devs/data/lite.osworld/filter.py`; its task pool, prompt, rollout logs, and
 published dataset remain separate.
+
+Lite.CUAGym publishes trajectories from THREE teachers into one HF repo. It spans
+two platforms, so each teacher lands in TWO configs — one per platform, six in all. Per-teacher collection and annotation live in their own
+runbooks; everything below the annotated log roots is dataset-level and covers
+all of them at once.
+
+| Teacher | Runbook | Model |
+|---|---|---|
+| `gpt5_5` | [`gpt5_5/AGENTS.md`](/devs/data/lite.cuagym/gpt5_5/AGENTS.md) | `gpt-5.5` (API) |
+| `qwen3_8_27b` | [`qwen3_8_27b/AGENTS.md`](/devs/data/lite.cuagym/qwen3_8_27b/AGENTS.md) | `Qwen/Qwen3.8-27B` (local, sglang) |
+| `qwen3_5_27b` | [`qwen3_5_27b/AGENTS.md`](/devs/data/lite.cuagym/qwen3_5_27b/AGENTS.md) | `Qwen/Qwen3.5-27B` (local, sglang, **thinking on**) |
+
+The handoff between a teacher runbook and this one is exactly:
+
+    .data/rollout/lite.cuagym/<teacher>/$COMMIT/{browser,desktop}/train_annotated
+    .data/rollout/lite.cuagym/gpt5_5/$COMMIT/{browser,desktop}/train_annotated.think
+
+`gpt5_5` hands over the `.think` sibling: its Internalize Reasoning step runs after
+`filter.py`, and the stage command below reads that root, not the plain `_annotated`
+one. The other teachers have no `.think` root at all; their `_annotated` root is the handoff.
 
 ## Collection Targets
 
@@ -18,13 +38,15 @@ an explicitly frozen sample/seed/task-id list. The full registered train split
 includes known upstream setup/reward failures, so a seed alone does not define a
 publishable collection.
 
-**494 of those 10,910 rows are unusable as default training signals** and carry
+**513 of those 10,910 rows are unusable as default training signals** and carry
 a task-level `metadata.others.exclude_reason` from the closed vocabulary in
 [/lite/gym/envs/lite/cuagym/src/utils/dataset.py](/lite/gym/envs/lite/cuagym/src/utils/dataset.py)
-(broken/empty/no-sentinel/mismatched `reward.py`, unbuildable GitHub/Trello
-mocks, Google Drive blank-render rows, and deterministic pinned setup defects).
+(broken/empty/no-sentinel/mismatched `reward.py`, `broken_mock:blank_render`
+rows whose pinned mock builds but renders empty, and deterministic pinned setup
+defects). GitHub and Trello are NOT among them — they build unchanged from the
+pinned snapshot (`/devs/envs/lite.cuagym/UPSTREAM_ISSUES.md`).
 Nothing is dropped — the rows are annotated and you filter them out, leaving
-10,416 default-collectable tasks:
+10,397 default-collectable tasks:
 
 ```bash
 --filter "lambda m: not m.others.get('exclude_reason')"
@@ -48,31 +70,16 @@ rollout ([Shared Filter](#shared-filter)). They never collide — the first live
 on registry task metadata, the second on collected trajectory metadata — but do
 not read a count of one as a count of the other.
 
-## Prompt Design
-
-Canonical recipe:
-`scripts/configs/gpt/recipes/collect/lite.cuagym.yaml`.
-
-The policy requires:
-
-1. A concise `Thought` grounded in the current screenshot, prior action result,
-   exact task values, and remaining global requirements.
-2. At most three mechanically coupled tool calls per turn. Any action that
-   changes the next UI surface ends the turn; do not predict unseen controls.
-3. GUI-first execution. Terminal use is limited to explicitly command-line,
-   inherently OS-level, or simple filesystem tasks with no suitable GUI.
-   Interpreters, dependency installs, multiline scripts, complex shell logic,
-   hidden config edits, and guessed internal paths are forbidden.
-4. Exact custom-color hex values, clean temporary state, application-level
-   saves, and committed settings.
-5. At most one harmless reversible mistake, only when the task is simple,
-   stable, and safely within budget. Never mention training or an intentional
-   mistake in the inline reasoning.
-6. Final completion only after the requested state is visibly verified and
-   saved. Do not combine an ordinary state-changing action with termination.
-
-The effective agent policy should remain aligned with the Lite.OSWorld recipe,
-but environment-specific changes belong in this file.
+Lite.CUAGym spans TWO platforms — `register_jsonl_tasks` registers the web pool
+as `browser` and the desktop pool as `desktop` under one split — so each teacher
+collects into one log root PER PLATFORM (the teacher runbooks slice them with
+`--filter "lambda m: m.dims[0] == ..."`). That gives four log roots and four
+configs, `<platform>.use.<teacher>`, and keeps the log-root path
+(`.../gpt5_5/$COMMIT/browser/...`) readable off its config name
+(`browser.use.gpt5_5`). `--config-names` is positional and 1:1 with `--log-roots`, and stage
+only checks that the two lists are the same LENGTH — mislabelling a teacher is
+otherwise silent, so keeping the tokens identical is what makes the pairing
+checkable by eye.
 
 ## Shared Filter
 
@@ -81,9 +88,10 @@ It is mostly an **annotation** pass: it keeps trajectories and tags quality gate
 in the *trajectory-level* `metadata.others.exclude_reason` (comma-joined; the key
 is omitted when clean) — a separate namespace from the *task-level*
 `exclude_reason` on catalog rows (see [Collection Targets](#collection-targets)).
-Two publish-invalid classes are physically dropped before staging: trajectories
-whose agent typed a `/opt/env/` path, and trajectories with GUI coordinates
-outside normalized `[0, 1000]`. Downstream consumers filter with
+Four publish-invalid classes are physically dropped before staging: trajectories
+whose agent typed a `/opt/env/` path, trajectories with GUI coordinates outside
+normalized `[0, 1000]`, a call naming a tool the row never declared, and an
+action-batch child naming an action that does not exist. Downstream consumers filter with
 `not m.others.get('exclude_reason')`.
 
 ```bash
@@ -107,8 +115,11 @@ It tags, in `exclude_reason`:
 - `footgun:no_submit` — no explicit final submit tool (`terminate`/`response`),
   only when `--drop-no-submit` is passed; this is separate from the default
   content-only final turn policy (normalized to one plain `text` part, not preserved as emitted);
-- `oob_coordinate` — a coordinate outside normalized `[0, 1000]`;
-- `reward_vision_disagree` — scalar reward and multi-frame visual judgement disagree.
+- `reward_vision_disagree` — SOFT tag, emitted UNCONDITIONALLY (no `--drop` flag gates it):
+  the scalar checker reward and the multi-frame vision verdict disagree. It never overwrites
+  `episode_return`, and stage publishes the row either way — but the export filter this runbook
+  uses (`not m.others.get('exclude_reason')`) drops it, so a tagged row reaches the Hub and not
+  the training set.
 
 Reward is deliberately **not** a tag: `episode_return` is already in
 `metadata.others.episode_return`, so a consumer thresholds it directly.
@@ -130,7 +141,8 @@ PYTHONPATH="$PWD" uv run pytest -n 0 \
 
 ## Complete Workflow
 
-Run from the repository root. Freeze the code revision, audited task parquet,
+Run from the repository root. Pipeline: collect → filter/annotate → stage →
+upload/download → `export_sft`. Freeze the code revision, audited task parquet,
 prompt, and log root for each batch. A resume must use the identical command.
 
 ### 1. Install And Configure
@@ -139,8 +151,9 @@ prompt, and log root for each batch. A resume must use the identical command.
 uv sync --locked --extra quick-start --extra gym
 uv run --no-sync bash lite/gym/envs/lite/cuagym/scripts/install.sh
 
-# Default agent + reward-judge route. Set these before starting the env-server;
-# the CUA-Gym reward judge defaults to the same endpoint settings.
+# Reward-judge route, needed for EVERY teacher (it also doubles as the gpt5_5
+# agent route). Set these before starting the env-server; the CUA-Gym reward
+# judge defaults to the same endpoint settings.
 : "${OPENAI_API_KEY:?set OPENAI_API_KEY before collection}"
 # Optional; set only for a custom endpoint.
 # export OPENAI_BASE_URL="..."
@@ -173,72 +186,147 @@ if local mock dists or the image may be stale.
 Sanity-check the import line before building: it must report ~1505 web tasks
 across **31 apps** — `across 0 apps` means the catalog is broken.
 
-### 2. Collect
+Beyond the shared judge credentials above, each teacher needs its own agent
+credentials or serving step — the `OPENAI_API_KEY` route for `gpt5_5`, and an sglang
+server for each of `qwen3_8_27b` / `qwen3_5_27b`. Those live in the teacher runbooks.
 
-```bash
-uv run python scripts/rollout.py \
-  --model-id gpt-5.5 \
-  --env-id lite.cuagym \
-  --prompt-data "$CUAGYM_INPUT" \
-  --concurrency 15 \
-  --max-attempts 3 \
-  --save-data true \
-  --save-video false \
-  --save-gif false \
-  --config-path scripts/configs/gpt/recipes/collect/lite.cuagym.yaml \
-  --log-root ".data/rollout/lite.cuagym/gpt/$COMMIT"
-```
+### 2. Collect And Annotate (per teacher)
 
-For a fresh sampled pool, freeze `--sample`, `--seed`, and the resolved task
-IDs. Re-run the identical command to resume.
+Run [`gpt5_5/AGENTS.md`](/devs/data/lite.cuagym/gpt5_5/AGENTS.md),
+[`qwen3_8_27b/AGENTS.md`](/devs/data/lite.cuagym/qwen3_8_27b/AGENTS.md) and
+[`qwen3_5_27b/AGENTS.md`](/devs/data/lite.cuagym/qwen3_5_27b/AGENTS.md). All
+end with annotated log roots under
+`.data/rollout/lite.cuagym/<teacher>/$COMMIT/`.
 
-### 3. Annotate And Review
+Every teacher runs the SAME `filter.py` with the SAME flags. That is deliberate:
+it makes the published subsets comparable, so a measured quality difference is a
+property of the teacher rather than of the annotation pass.
 
-`filter.py` keeps every trajectory except the `/opt/env/` and OOB-coordinate
-hard-drop cases and writes `metadata.others.exclude_reason` (see
-[Shared Filter](#shared-filter)).
+### 3. Stage, Upload Transport, And Download
 
-```bash
-uv run python devs/data/lite.osworld/filter.py \
-  --log-root ".data/rollout/lite.cuagym/gpt/$COMMIT/train" \
-  --out ".data/rollout/lite.cuagym/gpt/$COMMIT/train_annotated" \
-  --drop-loops --drop-undo-storm
-```
-
-The `$COMMIT/train` path exists only when every row of the frozen
-`--prompt-data` parquet carries `split: "train"`; rows without a `split` field
-land under `$COMMIT/parquet/` instead (see
-[/lite/infer/rollout.py](/lite/infer/rollout.py)), so freeze the parquet with an
-explicit `train` split on every row.
-
-Review the `exclude_reason` tag counts and sample every tag class, plus a sample
-of clean (untagged) and terminal trajectories, before publishing.
-
-### 4. Stage, Upload Transport, And Download
+> **Upload is a declarative full sync, not an append.** It plans the whole repo
+> from the LOCAL staging dir and deletes everything else, so staging one teacher
+> and uploading DELETES the other's published shards. Adding a teacher (or any
+> config) to an already-published repo therefore has one shared procedure —
+> read what the repo actually holds, then stage all of it in one call:
+> [Add A Config To A Published Dataset](/devs/data/AGENTS.md#add-a-config-to-a-published-dataset).
 
 ```bash
 export CUA_LITE_DATASETS_ROOT="$PWD/.data/huggingface"
 READBACK_ROOT="$PWD/.data/huggingface-readback"
 
+# The gpt5_5 roots below are the `.think` siblings its teacher runbook produced: reasoning
+# canonicalized into `reasoning_content` before staging, so the PUBLISHED rows carry one
+# reasoning shape. `qwen3_8_27b` runs thinking off and has none to move, so its roots are
+# used as-is, and `qwen3_5_27b` needs none either — it is sampled with thinking ON, so its
+# native <think> is already in `reasoning_content` at collection time. Only gpt5_5 has a
+# step between filter and stage. See /devs/data/lite.cuagym/gpt5_5/AGENTS.md.
+# DELETE the qwen3_5_27b lines below until that teacher is actually collected — they are
+# LIVE as written, and a shell comment cannot be used here (a `#` after a `\` continuation
+# swallows the rest of the command). Once it IS published they are MANDATORY again, and
+# NOTHING WILL TELL YOU IF YOU FORGET: stage rglobs each
+# root and only errors when ALL of them are empty, so a missing one contributes zero rows
+# and stage still exits 0 (verified) — then upload sweeps and deletes that teacher's
+# published shards. Re-read the blockquote above before every re-stage.
 uv run python -m lite.data.hf.stage \
-  --log-roots ".data/rollout/lite.cuagym/gpt/$COMMIT/train_annotated" \
+  --log-roots ".data/rollout/lite.cuagym/gpt5_5/$COMMIT/browser/train_annotated.think" \
+              ".data/rollout/lite.cuagym/gpt5_5/$COMMIT/desktop/train_annotated.think" \
+              ".data/rollout/lite.cuagym/qwen3_8_27b/$COMMIT/browser/train_annotated" \
+              ".data/rollout/lite.cuagym/qwen3_8_27b/$COMMIT/desktop/train_annotated" \
+              ".data/rollout/lite.cuagym/qwen3_5_27b/$COMMIT/browser/train_annotated" \
+              ".data/rollout/lite.cuagym/qwen3_5_27b/$COMMIT/desktop/train_annotated" \
+  --config-names browser.use.gpt5_5       desktop.use.gpt5_5 \
+                 browser.use.qwen3_8_27b  desktop.use.qwen3_8_27b \
+                 browser.use.qwen3_5_27b  desktop.use.qwen3_5_27b \
   --name Lite.CUAGym \
-  --repo-dir devs/data/lite.cuagym
+  --repo-dir devs/data/lite.cuagym \
+  --overwrite   # the default out dir is $CUA_LITE_DATASETS_ROOT/cua-lite/Lite.CUAGym;
+                # stage refuses a non-empty one, so a re-stage needs this
 
 : "${HF_ORG:?set HF_ORG to your Hub user/org for the private smoke repo}"
 uv run python -m lite.data.hf.upload Lite.CUAGym --org "$HF_ORG" --private --tag "$COMMIT"
 
+# Consumer / verification: pull the uploaded revision into canonical local layout.
+# NOTE: download verifies LAYOUT only; row content was already gated by stage above.
+# upload/download are transport/layout steps, and export_sft below is a conversion smoke.
 uv run python -m lite.data.hf.download Lite.CUAGym \
   --org "$HF_ORG" \
   --revision "$COMMIT" \
   --out "${READBACK_ROOT}/cua-lite/Lite.CUAGym"
 ```
 
+**`--config-names` changes the published config set.** With it, the card takes
+the override path (`_build_configs_override` in
+[/lite/data/hf/card.py](/lite/data/hf/card.py)): the emitted configs are
+`default` plus each label VERBATIM, and the auto-derived
+`<platform>.<task_type>` cohort configs are NOT emitted. Lite.CUAGym spans two
+platforms, so the derived path gave it five configs — `default`, `browser`,
+`desktop`, `browser.use`, `desktop.use` (the platform-only pair is redundant
+here: each platform carries exactly one task_type, so `browser` and
+`browser.use` select the same files). That switch has already happened — the
+published repo carries `default` plus the teacher-suffixed labels below. Kept as
+a migration record for consumers still pinning an old name:
+
+| was | now (published) |
+|---|---|
+| `browser.use` | `browser.use.gpt5_5`, `browser.use.qwen3_8_27b` |
+| `desktop.use` | `desktop.use.gpt5_5`, `desktop.use.qwen3_8_27b` |
+| `browser`, `desktop` | gone — they duplicated the `.use` pair |
+
+`qwen3_5_27b` joins each row once that teacher is collected and staged.
+
+The labels keep the `<platform>.<task_type>` stem because collection is split by
+platform (one log root each), so every label names exactly the cohort it covers.
+
+A consumer who wants one teacher pulls only that teacher's shards, either
+through the HF config (`load_dataset("cua-lite/Lite.CUAGym",
+"desktop.use.qwen3_8_27b")`) or with
+`hf.download --allow-patterns '*/*/*/*.use.qwen3_8_27b/*'`. A teacher spans TWO
+configs here, one per platform, so no single config name means "all of this
+teacher" — the allow-pattern is how you pull both platforms at once.
+
 Record `stage`'s final `seen=... kept=... dropped_by_filter=...` line and the
 per-config row lines as the publish gate. Upload/download are transport/layout
-smokes only; row content was already gated by `stage`.
+smokes only; row content was already gated by `stage`. Use the release org only
+after the private upload/readback/export smoke is approved.
 
-### 5. Export SFT Parquet
+### 4. Export SFT Parquet
+
+The three teachers publish DIFFERENT kinds of row, and a consumer that mixes them
+should know which it is training on:
+
+| Teacher | Rows carry | Reasoning |
+|---|---|---|
+| `gpt5_5` | `inline_reasoning` + `action_description` + `tool_calls` | prompted `Thought:` line |
+| `qwen3_8_27b` | `action_description` + `tool_calls` | none — runs with thinking off, per its runbook |
+| `qwen3_5_27b` | `reasoning_content` + `action_description` + `tool_calls` | native `<think>`, written straight to the canonical field |
+
+The table is what each teacher COLLECTS. `gpt5_5`'s last step before staging
+([Internalize Reasoning](/devs/data/lite.cuagym/gpt5_5/AGENTS.md#internalize-reasoning))
+moves its prompted `Thought:` out of the `inline_reasoning` content part and into
+the `reasoning_content` FIELD — the same one a teacher sampled with
+`enable_thinking` writes natively. So the PUBLISHED rows carry one vocabulary and
+consumers run no extra step.
+
+`qwen3_8_27b` has no reasoning to internalize (it runs thinking off and writes
+prose into `action_description`), so a thinking-enabled config on those rows
+would train an empty `<think>` block — pair them with a thinking-off config.
+
+`qwen3_5_27b` needs no internalize pass either, for the opposite reason: it is
+sampled with `enable_thinking: true`, so the adapter parses its native `<think>`
+straight into `reasoning_content` at collection time. Three teachers, three
+collection recipes, one published vocabulary — only `gpt5_5` has a step between
+filter and stage.
+
+One published root serves both recipes for a reasoning teacher: a thinking-on
+config renders the reasoning, and a thinking-off one strips `reasoning_content`
+at the model boundary (`lite/train/export/sft_tokenize.py`), which is
+byte-identical to exporting from a root that never carried any. Nothing under
+`scripts/configs/*/default/` sets `enable_thinking: true` for these envs, so the
+command below is the thinking-off recipe; the thinking-on twins live with the
+campaign that trains them
+([`/devs/exps/train/desktop/configs/qwen3_5/`](/devs/exps/train/desktop/configs/qwen3_5/),
+[`/examples/lite/v1/configs/qwen3_5/`](/examples/lite/v1/configs/qwen3_5/)).
 
 ```bash
 uv run python -m lite.train.export.export_sft \

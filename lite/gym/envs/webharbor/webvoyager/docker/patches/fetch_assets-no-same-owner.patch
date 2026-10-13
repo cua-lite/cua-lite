@@ -1,11 +1,48 @@
 --- a/scripts/fetch_assets.sh
 +++ b/scripts/fetch_assets.sh
-@@ -47,7 +47,7 @@
-     site=$(basename "$tarball" .tar.gz)
-     if [[ -n "$ONLY_SITE" && "$site" != "$ONLY_SITE" ]]; then continue; fi
-     echo "[fetch] extracting $site"
+@@ -33,0 +34 @@
++declare -a SITES_TO_FETCH=()
+@@ -35 +36 @@
+-    INCLUDE="$ONLY_SITE.tar.gz"
++    SITES_TO_FETCH=("$ONLY_SITE")
+@@ -38 +39,4 @@
+-    INCLUDE="*.tar.gz"
++    while IFS= read -r site_dir; do
++        SITES_TO_FETCH+=("$(basename "$site_dir")")
++    done < <(find sites -mindepth 1 -maxdepth 1 -type d ! -name .cache | sort)
++    echo "[fetch] scope: ${#SITES_TO_FETCH[@]} site(s) declared by the pinned WebHarbor checkout"
+@@ -40,0 +45,10 @@
++if (( ${#SITES_TO_FETCH[@]} == 0 )); then
++    echo "fetch_assets: no site directories found under sites/" >&2
++    exit 1
++fi
++
++declare -a INCLUDE_ARGS=()
++for site in "${SITES_TO_FETCH[@]}"; do
++    INCLUDE_ARGS+=(--include "$site.tar.gz")
++done
++
+@@ -42 +56 @@
+-    --include "$INCLUDE" --local-dir "$CACHE_DIR"
++    "${INCLUDE_ARGS[@]}" --local-dir "$CACHE_DIR"
+@@ -46,3 +60,8 @@
+-for tarball in "$CACHE_DIR"/*.tar.gz; do
+-    site=$(basename "$tarball" .tar.gz)
+-    if [[ -n "$ONLY_SITE" && "$site" != "$ONLY_SITE" ]]; then continue; fi
++missing=0
++for site in "${SITES_TO_FETCH[@]}"; do
++    tarball="$CACHE_DIR/$site.tar.gz"
++    if [[ ! -f "$tarball" ]]; then
++        echo "  MISSING (required): $tarball" >&2
++        missing=$((missing + 1))
++        continue
++    fi
+@@ -50 +69 @@
 -    tar -xzf "$tarball" -C sites/
 +    tar --no-same-owner -xzf "$tarball" -C sites/
-     extracted=$((extracted + 1))
- done
- 
+@@ -52,0 +72,5 @@
++
++if (( missing > 0 )); then
++    echo "[fetch] $missing required tarball(s) missing from $REPO @ $REVISION" >&2
++    exit 1
++fi

@@ -26,14 +26,16 @@
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/androidlab/run.sh Tongyi-MAI/MAI-UI-8B
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/androidlab/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/androidlab/run.sh Qwen/Qwen3.5-27B
+#   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/androidlab/run.sh Qwen/Qwen3.5-27B
 #
-# tp_size is inferred from the GPU count in CUDA_VISIBLE_DEVICES.
+# tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
+# GPU count; serve_sglang.py derives dp_size = visible // tp_size, so the GPUs you expose
+# set the REPLICA count. This script never passes --engine-kwargs, so tp is unchangeable here.
 # Pre-req: docker image cua-lite/androidlab:latest must exist (see lite/gym/envs/androidlab/README.md).
 #
 # Known OOM / contention cases (see devs/exps/eval/AGENTS.md):
 #   - Qwen/Qwen3.5-{4,9}B at tp=1: sglang dies SIGKILL under androidlab's
-#     long history (history_n=100). **Pass 2 GPUs** (`CUDA_VISIBLE_DEVICES=<g1>,<g2>`)
+#     long history (protocol default history_n=100, image_max=4). **Pass 2 GPUs** (`CUDA_VISIBLE_DEVICES=<g1>,<g2>`)
 #     so sglang launches as dp_size=2 — confirmed working at this commit.
 #   - `subprocess.TimeoutExpired ... 'docker run ... --device /dev/kvm' timed out
 #     after 180 seconds`: host load_avg too high. Symptoms: 0 / 138 finishes for
@@ -41,7 +43,7 @@
 #       (a) reduce concurrent android jobs (1 instead of 4 parallel models),
 #       (b) lower --concurrency below the 8 set here, or
 #       (c) wait for the contending workload to finish.
-#   - --concurrency lowered from sglang default 16 → 8 to reduce both mamba
+#   - --concurrency lowered from rollout default 16 → 8 to reduce both mamba
 #     state pressure and docker-spawn contention.
 
 set -euo pipefail
@@ -121,8 +123,11 @@ fi
 # model-family → rollout config
 case "$MODEL" in
   gpt-*)                            CFG=scripts/configs/gpt/default/androidlab.yaml ;;
+  claude-*)                         CFG=scripts/configs/claude/default/androidlab.yaml ;;
   Qwen/Qwen3-VL-*-Instruct)        CFG=scripts/configs/qwen3_vl/default/androidlab.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/androidlab.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/androidlab.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/androidlab.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/androidlab.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/androidlab.yaml ;;
   Tongyi-MAI/MAI-UI-*)             CFG=scripts/configs/mai_ui/default/androidlab.yaml ;;
@@ -139,7 +144,7 @@ echo "         config=$CFG"
 HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   --model-id "$MODEL" \
   --env-id androidlab --splits eval \
-  --concurrency 8 \
+  --concurrency "${EVAL_CONCURRENCY:-8}" \
   --env-kwargs '{"step_timeout": 180}' \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"

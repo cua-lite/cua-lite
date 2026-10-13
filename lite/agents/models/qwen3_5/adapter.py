@@ -218,7 +218,9 @@ def _fallback_json_type(key: str) -> str | None:
     return None
 
 
-def _coerce_param_value(key: str, raw: str, json_type: str | None = None) -> Any:
+def _coerce_param_value(
+    key: str, raw: str, json_type: str | None = None, *, action: str | None = None
+) -> Any:
     """Best-effort conversion of a ``<parameter=KEY>VALUE</parameter>`` body
     string to a Python value, driven by the parameter's DECLARED JSON type.
 
@@ -272,7 +274,14 @@ def _coerce_param_value(key: str, raw: str, json_type: str | None = None) -> Any
     # Strings (and undeclared params): strip wrapping quotes the model may add
     # verbatim. A numeric-looking value stays a string — browsergym ``bid``s
     # ("12") are strings by schema and must not become ints.
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+    #
+    # ``type``'s text is exempt: it is CONTENT to be typed, so a wrapping quote
+    # pair is part of the payload (35 real actions arrived mangled without this).
+    # Scoped to the ACTION, not the parameter name -- ``answer``/``call_user``
+    # also spell their payload ``text``, and there the quotes are the model's.
+    if not (key == "text" and action == "type") and (
+        len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'")
+    ):
         value = value[1:-1]
     return value
 
@@ -345,7 +354,9 @@ def _parse_xml_tool_calls(
         arguments: dict[str, Any] = {}
         for pkey, praw in raw_params:
             pkey, praw = _reclaim_swallowed_parameter(pkey, praw, declared)
-            arguments[pkey] = _coerce_param_value(pkey, praw, declared.get(pkey))
+            arguments[pkey] = _coerce_param_value(
+                pkey, praw, declared.get(pkey), action=acted_on
+            )
         calls.append({"name": name, "arguments": arguments})
     return calls
 
@@ -653,6 +664,16 @@ class Qwen3_5BaseAdapter(
 
         if "</think>" in response:
             clean = response.split("</think>", 1)[-1]
+        elif "<think>" in _TOOL_CALL_RE.sub("", response):
+            # An unclosed opener: everything after it is reasoning, and must
+            # not fall through into published content. Both the test and the
+            # split run on the tool-call-scrubbed text, because a ``type``
+            # payload may contain the literal characters ``<think>``.
+            head, _, tail = _TOOL_CALL_RE.sub("", response).partition("<think>")
+            trailing = tail.strip()
+            if trailing:
+                result["reasoning_content"] = trailing
+            clean = head
         else:
             clean = response
         clean = re.sub(r"<think>.*?</think>", "", clean, flags=re.DOTALL)
@@ -789,10 +810,16 @@ class Qwen3_5UseAdapter(Qwen3_5BaseAdapter):
             if m:
                 action_text = m.group(1).strip()
             else:
-                action_text = next(
-                    (ln.strip() for ln in raw_text.splitlines() if ln.strip()),
-                    raw_text.strip(),
-                )
+                # No ``Action:`` marker: the WHOLE reply is the action
+                # description. Keeping only its first line used to drop the
+                # model's reasoning -- 17% of tool-call turns, a median of 232
+                # characters each -- and this teacher runs with thinking OFF, so
+                # that prose IS its reasoning. Nothing at runtime wanted the
+                # truncation either: same-family replay re-renders
+                # ``raw_response.text`` verbatim, so it only ever cost the
+                # durable record, which is exactly what a cross-family student
+                # is trained on.
+                action_text = raw_text.strip()
             parts = make_assistant_content(
                 inline_reasoning=inline_reasoning, action_description=action_text,
             )

@@ -138,6 +138,22 @@ def _normalized_gpt_output_records(
         if item_type in {"computer_call", "function_call"} and not provider_call_id:
             parse_error = f"missing provider id for {name or '<unknown>'}"
 
+        # A call the provider marked ``incomplete`` carries no action to run: the
+        # Responses API emits this shape when the item is cut off at
+        # ``max_output_tokens`` mid-emission. Without a parse error the turn parses
+        # to ZERO tool calls and no feedback, so the loop reads it as a DELIBERATE
+        # content-only final and ends the episode -- a truncated turn is scored as
+        # an agent that chose to stop, on an env it never touched.
+        if (
+            item_type in {"computer_call", "function_call"}
+            and parse_error is None
+            and str(item.get("status", "")) == "incomplete"
+        ):
+            parse_error = (
+                f"truncated {item_type} for {name or '<unknown>'}: the provider "
+                "cut the item off (max_output_tokens); emit a shorter action"
+            )
+
         records.append(
             _GPTOutputRecord(
                 item=item,

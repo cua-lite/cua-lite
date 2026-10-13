@@ -28,7 +28,7 @@ quick-start = [
     # Source-pinned in [tool.uv.sources] for the Qwen3.5 GDN kernel fix while
     # staying on the CUDA-12 host stack.
     "sglang[all]",
-    "litellm>=1.72",
+    "litellm>=1.102.0",
 ]
 
 # Env-server/direct-gym runtime. Env install.sh scripts install into this venv;
@@ -50,6 +50,7 @@ gym = [
 
 data = [
     "datasets>=4.8.5",
+    "huggingface-hub>=1.17",  # lite/data/hf imports it; floor is for the `hf repos` CLI
     "jsonschema>=4.23",
     "numpy>=1.26",
     "pillow>=10.0",
@@ -71,6 +72,8 @@ environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 prerelease = "allow"
 override-dependencies = [
     "nvidia-cudnn-cu12==9.16.0.29",
+    # The pinned SGLang revision pins 2.6.1; LiteLLM Messages needs >=2.20.
+    "openai>=2.20.0,<3",
     # Guard the unified venv's model-stack floor during uv resolution.
     "transformers>=5.0",
     # Keep hub-kernels API compatibility with the resolved transformers tier.
@@ -119,8 +122,11 @@ testpaths = ["tests", "examples"]
 python_files = ["test_*.py"]
 pythonpath = [".", "tests"]
 # Keep default test runs bounded and skip live/stress suites unless requested.
-# Add `-n <workers>` locally or in CI when parallelism is useful for that host.
-addopts = "-v -ra --strict-markers -m 'not live and not stress'"
+# `-n 32` is the default worker count: an explicit value, not `-n auto`, so a
+# run costs the same on any host. Override with `-n <workers>`, or `-n 0` for a
+# serial run -- NOT `-p no:xdist`, which unloads the plugin that owns `-n` and
+# makes this line an unrecognized argument.
+addopts = "-v -ra --strict-markers -n 32 -m 'not live and not stress'"
 asyncio_mode = "auto"
 markers = [
     "live: requires production-like environment (live env-server on port 30200 OR real docker daemon)",

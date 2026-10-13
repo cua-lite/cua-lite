@@ -1,6 +1,8 @@
 [{'role': 'system', 'content': [{'type': 'text', 'text': 'You are a web agent.'}]},
  {'role': 'user',
-  'content': [{'type': 'metadata', 'data': {'web_text': '[1] <button> Search;\t[2] <input> Query'}},
+  'content': [{'type': 'metadata',
+               'data': {'web_text': '[1] <button> Search @ (10, 20);\t[2] <input> Query @ (30, 40)',
+                        'model_web_text': 'DOM:\n[1] <button> Search;\t[2] <input> Query'}},
               {'type': 'text',
                'text': 'Please generate the next move according to the UI screenshot, instruction '
                        'and previous actions.\n'
@@ -9,5 +11,6 @@
                        '\n'
                        'Previous actions:\n'
                        'None\n'
+                       'DOM:\n'
                        '[1] <button> Search;\t[2] <input> Query'},
               {'type': 'image', 'index': 0}]}]

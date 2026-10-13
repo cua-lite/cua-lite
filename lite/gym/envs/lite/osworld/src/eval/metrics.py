@@ -838,15 +838,20 @@ def compare_font_names_loose(docx_file, rules) -> float:
         except AttributeError:
             return None
 
+    checked_any = False
     for paragraph in doc.paragraphs:
         for run in paragraph.runs:
             # Skip whitespace-only / empty runs — they don't render glyphs so
             # their font is irrelevant to the visible result.
             if not (run.text or "").strip():
                 continue
+            checked_any = True
             if _effective_font(run, paragraph) != expected_font:
                 return 0.0
-    return 1.0
+    # A document with nothing visible left proves nothing about its font, and this
+    # loop can only ever REJECT: without the guard, `Ctrl+A → Delete → Ctrl+S`
+    # falls through to 1.0 on every row whose sole metric is this one.
+    return 1.0 if checked_any else 0.0
 
 
 def compare_references(file1: str, file2: str, **options) -> float:

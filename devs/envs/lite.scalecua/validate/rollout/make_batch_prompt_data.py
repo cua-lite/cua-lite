@@ -25,8 +25,10 @@ from lite.utils.parquet import write_records_to_parquet
 os.environ.pop("CUA_LITE_ENV_SERVER_URL", None)
 os.environ.pop("CUA_LITE_ENV_SERVER_TOKEN", None)
 
-import lite.gym as gym  # noqa: E402
 from common import catalog_index, payload_for_exclusion  # noqa: E402
+
+import lite.gym as gym  # noqa: E402
+from lite.gym.envs.lite.scalecua.src.osworld import judges  # noqa: E402
 from lite.gym.envs.lite.scalecua.src.utils import dataset  # noqa: E402
 
 
@@ -38,7 +40,13 @@ def _task_domain(env_id: str, task_id: str) -> str:
     return str(domain)
 
 
-def _is_runnable(env_id: str, task_id: str, catalog: dict[str, dict[str, Any]]) -> bool:
+def _is_runnable(
+    env_id: str,
+    task_id: str,
+    catalog: dict[str, dict[str, Any]],
+    *,
+    broken_metrics: frozenset[str],
+) -> bool:
     meta = gym.registry.task_metadata(env_id, task_id)
     if meta.others.get("exclude_reason"):
         return False
@@ -55,6 +63,7 @@ def _is_runnable(env_id: str, task_id: str, catalog: dict[str, dict[str, Any]]) 
         inherited_exclusion=(current_md.get("others") or {}).get("exclude_reason"),
         unsupported=[],
         runtime_split=current_split,
+        broken_metrics=broken_metrics,
     )
     return not bool(reason)
 
@@ -66,10 +75,16 @@ def _sample_split(
     per_domain: int,
     rng: random.Random,
     catalog: dict[str, dict[str, Any]],
+    broken_metrics: frozenset[str],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     buckets: dict[str, list[str]] = defaultdict(list)
     for task_id in gym.registry.task_ids(env_id, split=split):
-        if not _is_runnable(env_id, task_id, catalog):
+        if not _is_runnable(
+            env_id,
+            task_id,
+            catalog,
+            broken_metrics=broken_metrics,
+        ):
             continue
         buckets[_task_domain(env_id, task_id)].append(task_id)
 
@@ -110,6 +125,7 @@ def main() -> None:
 
     rng = random.Random(args.seed)
     catalog = catalog_index()
+    broken_metrics = dataset._metrics_calling_undefined_helpers(judges.overlay_root())
     all_records: list[dict[str, Any]] = []
     manifest: dict[str, Any] = {
         "env_id": args.env_id,
@@ -126,6 +142,7 @@ def main() -> None:
             per_domain=args.per_domain,
             rng=rng,
             catalog=catalog,
+            broken_metrics=broken_metrics,
         )
         all_records.extend(records)
         manifest["split_reports"][split] = split_manifest

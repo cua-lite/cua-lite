@@ -1,13 +1,13 @@
 """What the grounding reward is allowed to score, and what must not zero it.
 
-The rule these envs implement: **the reward scores the ANSWER.** It is 0.0 when
-the answer is missing, ambiguous, or malformed -- and only then. An error on a
-call that is not an answer (an unknown tool, a ``terminate`` the task never
-advertised) is reported to the model as feedback but must leave the score alone.
+The rule these envs implement: **the reward scores the first usable ANSWER.**
+It is 0.0 when no usable answer is present, or when the first usable answer is
+wrong. Rejected or malformed calls are reported to the model as feedback but do
+not poison a surviving first-valid answer.
 
 Nothing distinguished these cases before: the gate was
 ``had_model_action_error or action_errors or unsupported_reasons``, so ANY
-errored call zeroed a correct, unambiguous click. Both halves are pinned here
+errored call zeroed a correct first-valid click. Both halves are pinned here
 because both are silent -- a wrong reward looks exactly like a right one in
 aggregate.
 
@@ -90,29 +90,41 @@ async def test_screenspot_single_point_scores_normally() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Half A -- ambiguity. Two points is not an answer, even if one of them hits.
+# Half A -- first-valid scoring. Later answers do not change the score.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_screenspot_two_points_score_zero_even_when_the_first_hits() -> None:
-    """Hedging must not pay.
-
-    Taking the first point (the pre-refactor behaviour) lets a model emit
-    several candidate clicks and rely on the grader to find the hit, which
-    turns a single-shot grounding benchmark into a multiple-choice one.
-    """
+async def test_screenspot_first_point_scores_when_followed_by_miss() -> None:
     result = await _screenspot_env().step([
         make_tool_call("point", {"coordinate": _INSIDE}, call_id="first"),
         make_tool_call("point", {"coordinate": _OUTSIDE}, call_id="second"),
+    ])
+    assert result.reward == 1.0
+
+
+@pytest.mark.asyncio
+async def test_screenspot_first_point_miss_stays_zero_when_followed_by_hit() -> None:
+    result = await _screenspot_env().step([
+        make_tool_call("point", {"coordinate": _OUTSIDE}, call_id="first"),
+        make_tool_call("point", {"coordinate": _INSIDE}, call_id="second"),
     ])
     assert result.reward == 0.0
 
 
 @pytest.mark.asyncio
-async def test_osworld_g_two_points_score_zero_even_when_the_first_hits() -> None:
+async def test_osworld_g_first_point_scores_when_followed_by_miss() -> None:
     result = await _osworld_g_env().step([
         make_tool_call("point", {"coordinate": _INSIDE}, call_id="first"),
         make_tool_call("point", {"coordinate": _OUTSIDE}, call_id="second"),
+    ])
+    assert result.reward == 1.0
+
+
+@pytest.mark.asyncio
+async def test_osworld_g_first_point_miss_stays_zero_when_followed_by_hit() -> None:
+    result = await _osworld_g_env().step([
+        make_tool_call("point", {"coordinate": _OUTSIDE}, call_id="first"),
+        make_tool_call("point", {"coordinate": _INSIDE}, call_id="second"),
     ])
     assert result.reward == 0.0
 
@@ -127,7 +139,7 @@ async def test_screenspot_no_point_scores_zero() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Half B -- a NON-answer error must not zero a correct, unambiguous click.
+# Half B -- a NON-answer error must not zero a correct first-valid click.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -145,7 +157,7 @@ async def test_screenspot_inactive_finish_tool_does_not_zero_a_correct_point() -
     ])
 
     assert result.reward == 1.0, (
-        "an unrelated rejected call must not zero a correct, unambiguous answer"
+        "an unrelated rejected call must not zero a correct first-valid answer"
     )
     errors = {r.tool_call_id: r.error for r in result.results}
     assert "terminate is not available" in (errors["stray"] or ""), (
@@ -190,47 +202,34 @@ async def test_screenspot_non_answer_error_still_zeroes_an_INCORRECT_point() -> 
 
 
 # ---------------------------------------------------------------------------
-# ...but an error on the ANSWER itself still zeroes.
+# ...and malformed/rejected attempts are ignored once a valid answer survives.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_screenspot_malformed_point_alongside_a_good_one_scores_zero() -> None:
-    """Two point ATTEMPTS is still an ambiguous answer.
-
-    The malformed one is dropped before ``_evaluate``, so without an explicit
-    answer-error gate the surviving good point would look like a lone answer
-    and score 1.0 -- paying a model for spraying malformed candidates.
-    """
+async def test_screenspot_malformed_point_alongside_a_good_one_scores_first_valid() -> None:
     result = await _screenspot_env().step([
         make_tool_call("point", {"coordinate": "abc"}, call_id="bad"),
         make_tool_call("point", {"coordinate": _INSIDE}, call_id="good"),
     ])
-    assert result.reward == 0.0
+    assert result.reward == 1.0
 
 
 @pytest.mark.asyncio
-async def test_osworld_g_malformed_point_alongside_a_good_one_scores_zero() -> None:
+async def test_osworld_g_malformed_point_alongside_a_good_one_scores_first_valid() -> None:
     result = await _osworld_g_env().step([
         make_tool_call("point", {"coordinate": "abc"}, call_id="bad"),
         make_tool_call("point", {"coordinate": _INSIDE}, call_id="good"),
     ])
-    assert result.reward == 0.0
+    assert result.reward == 1.0
 
 
 # ---------------------------------------------------------------------------
-# The crux: both cases are "a correct point plus one rejected call", and they
-# must score DIFFERENTLY. Keep them adjacent -- the whole gate is this contrast.
+# The crux: a correct first valid point remains the answer even when another
+# rejected call is present.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_stray_finish_tool_and_wrong_answer_wrapper_score_differently() -> None:
-    """Same shape, opposite scores, because only one is an attempt to ANSWER.
-
-    ``terminate`` is not an answer -- the point stands alone, so it scores.
-    ``computer(actions=[{"action": "point", ...}])`` IS an answer, routed
-    through a wrapper this task does not accept: the model made two answer
-    attempts, so the surviving point is not a lone answer and must not score.
-    """
+async def test_rejected_calls_do_not_poison_the_first_valid_answer() -> None:
     stray_finish = await _screenspot_env().step([
         make_tool_call("point", {"coordinate": _INSIDE}, call_id="answer"),
         make_tool_call("terminate", {"status": "success"}, call_id="stray"),
@@ -245,4 +244,4 @@ async def test_stray_finish_tool_and_wrong_answer_wrapper_score_differently() ->
     ])
 
     assert stray_finish.reward == 1.0, "a non-answer call must not poison the score"
-    assert wrong_wrapper.reward == 0.0, "a second answer attempt must poison it"
+    assert wrong_wrapper.reward == 1.0, "a rejected wrapper must not poison it"

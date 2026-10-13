@@ -24,6 +24,12 @@
 #                         lite/gym/envs/browsergym/.cache). Webarena tars live
 #                         at its root; miniwob clone at
 #                         $BROWSERGYM_CACHE/miniwob-plusplus.
+#   WEBARENA_IMAGES_MIRROR_DIR
+#                         local directory containing official WebArena resource
+#                         files. Used before network mirrors when set.
+#   WEBARENA_IMAGES_MIRROR_BASE_URL
+#                         HTTP(S) mirror base whose paths are
+#                         $WEBARENA_IMAGES_MIRROR_BASE_URL/<resource>.
 #   WEBARENA_INSTALL_MAP  set to 0 to skip the ~200GB OpenStreetMap assets.
 
 set -euo pipefail
@@ -42,9 +48,396 @@ OPENSTREETMAP_TEMPLATES_DIR="$BROWSERGYM_CACHE/openstreetmap-templates"
 source "$SCRIPT_DIR/../../../scripts/image_build.sh"
 
 # ─── WebArena image set (shared by webarena + visualwebarena) ────────────────
+resource_is_valid() {
+    local resource="$1"
+    local path="$2"
+
+    [ -s "$path" ] || return 1
+    case "$resource" in
+        shopping_final_0712.tar|shopping_admin_final_0719.tar|postmill-populated-exposed-withimg.tar|gitlab-populated-final-port8023.tar|openstreetmap-website-db.tar.gz|openstreetmap-website-web.tar.gz)
+            python - "$resource" "$path" <<'PY'
+import json
+import tarfile
+import sys
+
+resource, path = sys.argv[1:3]
+expected_tags = {
+    "shopping_final_0712.tar": "shopping_final_0712:latest",
+    "shopping_admin_final_0719.tar": "shopping_admin_final_0719:latest",
+    "postmill-populated-exposed-withimg.tar": "postmill-populated-exposed-withimg:latest",
+    "gitlab-populated-final-port8023.tar": "gitlab-populated-final-port8023:latest",
+    "openstreetmap-website-db.tar.gz": "openstreetmap-website-db:latest",
+    "openstreetmap-website-web.tar.gz": "openstreetmap-website-web:latest",
+}
+try:
+    with tarfile.open(path, "r:*") as archive:
+        manifest_file = archive.extractfile("manifest.json")
+        if manifest_file is None:
+            raise SystemExit(1)
+        manifest = json.load(manifest_file)
+        tags = {
+            tag
+            for image in manifest
+            for tag in (image.get("RepoTags") or [])
+        }
+        if expected_tags[resource] not in tags:
+            raise SystemExit(1)
+        required = ["manifest.json"]
+        layers = []
+        for image in manifest:
+            config = image.get("Config")
+            if config:
+                required.append(config)
+            image_layers = image.get("Layers") or []
+            layers.extend(image_layers)
+            required.extend(image_layers)
+        if len(required) == 1:
+            raise SystemExit(1)
+
+        layer_names = set(layers)
+        for member_name in dict.fromkeys(required):
+            member_file = archive.extractfile(member_name)
+            if member_file is None:
+                raise SystemExit(1)
+            if member_name in layer_names:
+                with tarfile.open(fileobj=member_file, mode="r|*") as layer_archive:
+                    for _ in layer_archive:
+                        pass
+            else:
+                while member_file.read(1024 * 1024):
+                    pass
+except (OSError, EOFError, json.JSONDecodeError, tarfile.TarError, KeyError):
+    raise SystemExit(1)
+PY
+            ;;
+        openstreetmap-website.tar.gz)
+            python - "$path" <<'PY'
+import tarfile
+import sys
+
+path = sys.argv[1]
+required = {
+    "openstreetmap-website/docker-compose.yml",
+    "openstreetmap-website/config/settings.yml",
+    "openstreetmap-website/vendor/assets/leaflet/leaflet.osm.js",
+    "openstreetmap-website/app/assets/javascripts/index/directions/fossgis_osrm.js",
+}
+try:
+    with tarfile.open(path, "r:gz") as archive:
+        names = set(archive.getnames())
+    if not required <= names:
+        raise SystemExit(1)
+except (OSError, EOFError, tarfile.TarError):
+    raise SystemExit(1)
+PY
+            ;;
+        classifieds_docker_compose.zip)
+            python - "$path" <<'PY'
+import sys
+import zipfile
+
+path = sys.argv[1]
+required = {
+    "classifieds_docker_compose/docker-compose.yml",
+    "classifieds_docker_compose/mysql/init_db.sh",
+    "classifieds_docker_compose/mysql/osclass_craigslist.sql",
+}
+try:
+    with zipfile.ZipFile(path) as archive:
+        if archive.testzip() is not None:
+            raise SystemExit(1)
+        names = set(archive.namelist())
+    if not required <= names:
+        raise SystemExit(1)
+except (OSError, zipfile.BadZipFile):
+    raise SystemExit(1)
+PY
+            ;;
+        wikipedia_en_all_maxi_2022-05.zim)
+            python - "$path" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+expected_size = 95199730590
+try:
+    if os.stat(path).st_size != expected_size:
+        raise SystemExit(1)
+    with open(path, "rb") as fh:
+        raise SystemExit(0 if fh.read(4) == b"ZIM\x04" else 1)
+except OSError:
+    raise SystemExit(1)
+PY
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+stage_local_resource() {
+    local resource="$1"
+    local output="$2"
+    local partial="$output.part"
+    local mirror_dir
+    local mirror_file
+    local mirror_real
+
+    [ -n "${WEBARENA_IMAGES_MIRROR_DIR:-}" ] || return 1
+    if ! mirror_dir="$(cd -- "$WEBARENA_IMAGES_MIRROR_DIR" 2>/dev/null && pwd -P)"; then
+        echo "  WARN WEBARENA_IMAGES_MIRROR_DIR is not readable: $WEBARENA_IMAGES_MIRROR_DIR" >&2
+        return 1
+    fi
+
+    mirror_file="$mirror_dir/$resource"
+    if ! resource_is_valid "$resource" "$mirror_file"; then
+        echo "  WARN WEBARENA_IMAGES_MIRROR_DIR lacks valid $resource" >&2
+        return 1
+    fi
+
+    if ! mirror_real="$(readlink -f -- "$mirror_file" 2>/dev/null)"; then
+        echo "  WARN failed to resolve $mirror_file" >&2
+        return 1
+    fi
+    if ! resource_is_valid "$resource" "$mirror_real"; then
+        echo "  WARN WEBARENA_IMAGES_MIRROR_DIR resolved $resource to an invalid file" >&2
+        return 1
+    fi
+
+    echo "  Staging $resource from WEBARENA_IMAGES_MIRROR_DIR ..."
+    rm -f "$output" "$partial"
+    if ln -f "$mirror_real" "$output" 2>/dev/null && resource_is_valid "$resource" "$output"; then
+        return 0
+    fi
+    rm -f "$output"
+    if ln -sf "$mirror_real" "$output" 2>/dev/null && resource_is_valid "$resource" "$output"; then
+        return 0
+    fi
+    rm -f "$output"
+    if cp -f --reflink=auto "$mirror_real" "$partial" && resource_is_valid "$resource" "$partial"; then
+        mv -f "$partial" "$output"
+        return 0
+    fi
+    rm -f "$partial"
+    echo "  WARN failed to stage $resource from $mirror_file" >&2
+    return 1
+}
+
+template_is_valid() {
+    local resource="$1"
+    local path="$2"
+    [ -s "$path" ] || return 1
+    case "$resource" in
+        docker-compose.yml)
+            grep -q "MAP_PORT:3000" "$path" && grep -q "POSTGRES_DB: openstreetmap" "$path"
+            ;;
+        leaflet.osm.js)
+            grep -q "L.OSM" "$path"
+            ;;
+        fossgis_osrm.js)
+            grep -q "__OSMCarSuffix__" "$path"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+classifieds_dir_is_valid() {
+    local dir="$1"
+    [ -f "$dir/docker-compose.yml" ] &&
+        [ -f "$dir/mysql/init_db.sh" ] &&
+        [ -f "$dir/mysql/osclass_craigslist.sql" ]
+}
+
+pull_docker_image_if_missing() {
+    local image="$1"
+    if docker image inspect "$image" >/dev/null 2>&1; then
+        echo "  SKIP $image (image already loaded)"
+        return 0
+    fi
+    echo "  Pulling $image ..."
+    docker pull "$image"
+}
+
+install_classifieds_images() {
+    # These are the exact images referenced by the upstream Classifieds compose.
+    # Pulling them during install keeps start.sh from doing a surprise network
+    # fetch on the first VWA rollout.
+    pull_docker_image_if_missing "jykoh/classifieds:latest"
+    pull_docker_image_if_missing "mysql:8.1"
+}
+
+openstreetmap_dir_is_valid() {
+    local dir="$1"
+    [ -f "$dir/docker-compose.yml" ] &&
+        [ -f "$dir/config/settings.yml" ] &&
+        [ -f "$dir/vendor/assets/leaflet/leaflet.osm.js" ] &&
+        [ -f "$dir/app/assets/javascripts/index/directions/fossgis_osrm.js" ]
+}
+
+download_template_file() {
+    local resource="$1"
+    local url="$2"
+    local output="$3"
+    local partial="$output.part"
+
+    if [ -e "$output" ] && ! template_is_valid "$resource" "$output"; then
+        echo "  WARN removing invalid OpenStreetMap template $resource" >&2
+        rm -f "$output"
+    fi
+    if template_is_valid "$resource" "$output"; then
+        return 0
+    fi
+    rm -f "$partial"
+    if wget -q "$url" -O "$partial" && template_is_valid "$resource" "$partial"; then
+        mv -f "$partial" "$output"
+        return 0
+    fi
+    rm -f "$partial"
+    echo "  ERROR failed to download valid OpenStreetMap template $resource" >&2
+    return 1
+}
+
+partial_is_resumable() {
+    local path="$1"
+    [ -s "$path" ] || return 1
+    python - "$path" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+try:
+    with path.open("rb") as fh:
+        head = fh.read(2048).lstrip().lower()
+except OSError:
+    raise SystemExit(1)
+
+error_prefixes = (b"<!doctype html", b"<html", b"<?xml")
+error_needles = (
+    b"403 forbidden",
+    b"404 not found",
+    b"access denied",
+    b"not found",
+)
+if head.startswith(error_prefixes) or any(needle in head for needle in error_needles):
+    raise SystemExit(1)
+raise SystemExit(0)
+PY
+}
+
+download_resource_from_urls() {
+    local resource="$1"
+    local output="$2"
+    shift 2
+    local partial="$output.part"
+    local url
+
+    if [ -e "$output" ] && ! resource_is_valid "$resource" "$output"; then
+        echo "  WARN removing invalid $resource at $output" >&2
+        rm -f "$output"
+    fi
+    if resource_is_valid "$resource" "$output"; then
+        return 0
+    fi
+    if resource_is_valid "$resource" "$partial"; then
+        mv -f "$partial" "$output"
+        return 0
+    fi
+    if [ -e "$partial" ] && ! partial_is_resumable "$partial"; then
+        echo "  WARN removing non-resumable partial $partial" >&2
+        rm -f "$partial"
+    fi
+
+    if stage_local_resource "$resource" "$output"; then
+        return 0
+    fi
+
+    for url in "$@"; do
+        if [[ "$url" == gdrive:* ]]; then
+            echo "  Downloading $resource from Google Drive (${url#gdrive:}) ..."
+            if python -m gdown --continue "${url#gdrive:}" -O "$partial" && resource_is_valid "$resource" "$partial"; then
+                mv -f "$partial" "$output"
+                return 0
+            fi
+        else
+            echo "  Downloading $resource from $url ..."
+            if wget -q -c "$url" -O "$partial" && resource_is_valid "$resource" "$partial"; then
+                mv -f "$partial" "$output"
+                return 0
+            fi
+        fi
+        if [ -e "$partial" ]; then
+            if partial_is_resumable "$partial"; then
+                echo "  WARN keeping partial $partial for resume" >&2
+            else
+                echo "  WARN removing non-resumable partial $partial" >&2
+                rm -f "$partial"
+            fi
+        fi
+        echo "  WARN failed to download valid $resource from $url" >&2
+    done
+
+    return 1
+}
+
+webarena_resource_urls() {
+    local resource="$1"
+    local metis="http://metis.lti.cs.cmu.edu/webarena-images/$resource"
+    if [ -n "${WEBARENA_IMAGES_MIRROR_BASE_URL:-}" ]; then
+        printf '%s\n' "${WEBARENA_IMAGES_MIRROR_BASE_URL%/}/$resource"
+    fi
+    case "$resource" in
+        shopping_final_0712.tar)
+            printf '%s\n' \
+                "gdrive:1gxXalk9O0p9eu1YkIJcmZta1nvvyAJpA" \
+                "https://archive.org/download/webarena-env-shopping-image/$resource" \
+                "$metis"
+            ;;
+        shopping_admin_final_0719.tar)
+            printf '%s\n' \
+                "gdrive:1See0ZhJRw0WTTL9y8hFlgaduwPZ_nGfd" \
+                "https://archive.org/download/webarena-env-shopping-admin-image/$resource" \
+                "$metis"
+            ;;
+        postmill-populated-exposed-withimg.tar)
+            printf '%s\n' \
+                "gdrive:17Qpp1iu_mPqzgO_73Z9BnFjHrzmX9DGf" \
+                "https://archive.org/download/postmill-populated-exposed-withimg/$resource" \
+                "https://archive.org/download/webarena-env-forum-image/$resource" \
+                "$metis"
+            ;;
+        gitlab-populated-final-port8023.tar)
+            printf '%s\n' \
+                "gdrive:19W8qM0DPyRvWCLyQe0qtnCWAHGruolMR" \
+                "https://archive.org/download/webarena-env-gitlab-image/$resource" \
+                "$metis"
+            ;;
+        wikipedia_en_all_maxi_2022-05.zim)
+            printf '%s\n' \
+                "gdrive:1Um4QLxi_bGv5bP6kt83Ke0lNjuV9Tm0P" \
+                "https://archive.org/download/webarena-env-wiki-image/$resource" \
+                "$metis"
+            ;;
+        *)
+            printf '%s\n' "$metis"
+            ;;
+    esac
+}
+
+download_webarena_resource() {
+    local resource="$1"
+    local output="$IMAGES_DIR/$resource"
+    local -a urls
+
+    mapfile -t urls < <(webarena_resource_urls "$resource")
+    download_resource_from_urls "$resource" "$output" "${urls[@]}" && return 0
+    echo "  ERROR failed to download $resource from all configured WebArena sources" >&2
+    return 1
+}
+
 install_webarena_images() {
     mkdir -p "$IMAGES_DIR"
-    local base="http://metis.lti.cs.cmu.edu/webarena-images"
     local tars=(shopping_final_0712.tar shopping_admin_final_0719.tar \
                 postmill-populated-exposed-withimg.tar gitlab-populated-final-port8023.tar)
     local zim="wikipedia_en_all_maxi_2022-05.zim"
@@ -63,36 +456,42 @@ install_webarena_images() {
         fi
     done
 
-    # Download only the tars for missing images (+ the wikipedia .zim data file if absent).
+    # Stage/download only the tars for missing images (+ the wikipedia .zim data
+    # file if absent).
     local dl=()
     for tar in "${missing[@]}"; do
-        [ -f "$IMAGES_DIR/$tar" ] || dl+=("$tar")
+        resource_is_valid "$tar" "$IMAGES_DIR/$tar" || dl+=("$tar")
     done
-    [ -f "$IMAGES_DIR/$zim" ] || dl+=("$zim")
+    resource_is_valid "$zim" "$IMAGES_DIR/$zim" || dl+=("$zim")
     if [ ${#dl[@]} -gt 0 ]; then
         echo "Downloading ${#dl[@]} missing WebArena resource(s) to $IMAGES_DIR ..."
+        local failed=0
         for f in "${dl[@]}"; do
-            # Download to a ``.part`` file and atomic-rename only on success, so
-            # the FINAL path exists iff the download completed. A killed /
-            # interrupted wget (e.g. a 90GB .zim aborted midway) then leaves the
-            # ``.part`` for ``-c`` to resume next run, instead of leaving a
-            # truncated file at the final path that the ``[ -f ]`` existence
-            # check above would wrongly treat as "present, nothing to download".
-            ( wget -q -c "$base/$f" -O "$IMAGES_DIR/$f.part" \
-                && mv -f "$IMAGES_DIR/$f.part" "$IMAGES_DIR/$f" ) &
+            # Download to a ``.part`` file and atomic-rename only after the
+            # resource-specific validator passes, so the final path exists iff
+            # the artifact is usable. Failed or invalid partials are removed
+            # before trying the next source.
+            download_webarena_resource "$f" || failed=1
         done
-        wait
+        if [ "$failed" = "1" ]; then
+            return 1
+        fi
     else
         echo "All WebArena images already loaded and wikipedia .zim present — nothing to download."
     fi
 
     # Load only the missing images.
     for tar in "${missing[@]}"; do
-        if [ -f "$IMAGES_DIR/$tar" ]; then
+        if resource_is_valid "$tar" "$IMAGES_DIR/$tar"; then
             echo "  Loading $tar ..."
             docker load --input "$IMAGES_DIR/$tar"
+            if ! docker image inspect "${tar%.tar}" >/dev/null 2>&1; then
+                echo "  ERROR docker load did not create expected image ${tar%.tar}" >&2
+                return 1
+            fi
         else
-            echo "  WARN ${tar%.tar} not loaded and $tar absent (download may have failed)" >&2
+            echo "  ERROR ${tar%.tar} not loaded and no valid $tar present" >&2
+            return 1
         fi
     done
 }
@@ -115,66 +514,87 @@ install_map_assets() {
     for f in "${archives[@]}"; do
         case "$f" in
             "$db_archive")
-                docker image inspect openstreetmap-website-db >/dev/null 2>&1 || [ -f "$IMAGES_DIR/$f" ] || dl+=("$f")
+                docker image inspect openstreetmap-website-db >/dev/null 2>&1 || resource_is_valid "$f" "$IMAGES_DIR/$f" || dl+=("$f")
                 ;;
             "$web_archive")
-                docker image inspect openstreetmap-website-web >/dev/null 2>&1 || [ -f "$IMAGES_DIR/$f" ] || dl+=("$f")
+                docker image inspect openstreetmap-website-web >/dev/null 2>&1 || resource_is_valid "$f" "$IMAGES_DIR/$f" || dl+=("$f")
                 ;;
             "$source_archive")
-                [ -d "$OPENSTREETMAP_DIR" ] || [ -f "$IMAGES_DIR/$f" ] || dl+=("$f")
+                openstreetmap_dir_is_valid "$OPENSTREETMAP_DIR" || resource_is_valid "$f" "$IMAGES_DIR/$f" || dl+=("$f")
                 ;;
         esac
     done
 
     if [ ${#dl[@]} -gt 0 ]; then
         echo "Downloading ${#dl[@]} OpenStreetMap resource(s) to $IMAGES_DIR ..."
+        local failed=0
         for f in "${dl[@]}"; do
-            ( wget -q -c "$base/$f" -O "$IMAGES_DIR/$f.part" \
-                && mv -f "$IMAGES_DIR/$f.part" "$IMAGES_DIR/$f" ) &
+            download_resource_from_urls "$f" "$IMAGES_DIR/$f" "$base/$f" || failed=1
         done
-        wait
+        if [ "$failed" = "1" ]; then
+            return 1
+        fi
     else
         echo "OpenStreetMap archives/images already present — nothing to download."
     fi
 
     if ! docker image inspect openstreetmap-website-db >/dev/null 2>&1; then
-        if [ ! -f "$IMAGES_DIR/$db_archive" ]; then
-            echo "  WARN openstreetmap-website-db image missing and $db_archive absent" >&2
+        if ! resource_is_valid "$db_archive" "$IMAGES_DIR/$db_archive"; then
+            echo "  ERROR openstreetmap-website-db image missing and no valid $db_archive present" >&2
+            return 1
         else
             echo "  Loading $db_archive ..."
             docker load --input "$IMAGES_DIR/$db_archive"
+            if ! docker image inspect openstreetmap-website-db >/dev/null 2>&1; then
+                echo "  ERROR docker load did not create expected image openstreetmap-website-db" >&2
+                return 1
+            fi
         fi
     else
         echo "  SKIP openstreetmap-website-db (image already loaded)"
     fi
 
     if ! docker image inspect openstreetmap-website-web >/dev/null 2>&1; then
-        if [ ! -f "$IMAGES_DIR/$web_archive" ]; then
-            echo "  WARN openstreetmap-website-web image missing and $web_archive absent" >&2
+        if ! resource_is_valid "$web_archive" "$IMAGES_DIR/$web_archive"; then
+            echo "  ERROR openstreetmap-website-web image missing and no valid $web_archive present" >&2
+            return 1
         else
             echo "  Loading $web_archive ..."
             docker load --input "$IMAGES_DIR/$web_archive"
+            if ! docker image inspect openstreetmap-website-web >/dev/null 2>&1; then
+                echo "  ERROR docker load did not create expected image openstreetmap-website-web" >&2
+                return 1
+            fi
         fi
     else
         echo "  SKIP openstreetmap-website-web (image already loaded)"
     fi
 
-    if [ ! -d "$OPENSTREETMAP_DIR" ]; then
-        if [ ! -f "$IMAGES_DIR/$source_archive" ]; then
-            echo "  WARN OpenStreetMap source missing and $source_archive absent" >&2
+    if openstreetmap_dir_is_valid "$OPENSTREETMAP_DIR"; then
+        echo "  SKIP openstreetmap-website source (already extracted)"
+    else
+        if [ -d "$OPENSTREETMAP_DIR" ]; then
+            echo "  WARN removing invalid OpenStreetMap source extract at $OPENSTREETMAP_DIR" >&2
+            rm -rf "$OPENSTREETMAP_DIR"
+        fi
+        if ! resource_is_valid "$source_archive" "$IMAGES_DIR/$source_archive"; then
+            echo "  ERROR OpenStreetMap source missing and no valid $source_archive present" >&2
+            return 1
         else
             echo "  Extracting $source_archive ..."
             tar -xzf "$IMAGES_DIR/$source_archive" -C "$IMAGES_DIR"
+            if ! openstreetmap_dir_is_valid "$OPENSTREETMAP_DIR"; then
+                echo "  ERROR OpenStreetMap source extract is incomplete at $OPENSTREETMAP_DIR" >&2
+                return 1
+            fi
         fi
-    else
-        echo "  SKIP openstreetmap-website source (already extracted)"
     fi
 
     local template_base="https://raw.githubusercontent.com/gasse/webarena-setup/main/webarena/openstreetmap-templates"
     local templates=(docker-compose.yml leaflet.osm.js fossgis_osrm.js)
     for f in "${templates[@]}"; do
-        if [ ! -f "$OPENSTREETMAP_TEMPLATES_DIR/$f" ]; then
-            wget -q -c "$template_base/$f" -O "$OPENSTREETMAP_TEMPLATES_DIR/$f"
+        if ! download_template_file "$f" "$template_base/$f" "$OPENSTREETMAP_TEMPLATES_DIR/$f"; then
+            return 1
         fi
     done
     echo "OpenStreetMap templates installed at $OPENSTREETMAP_TEMPLATES_DIR"
@@ -183,18 +603,30 @@ install_map_assets() {
 # ─── Classifieds (VisualWebArena only) ───────────────────────────────────────
 install_classifieds() {
     mkdir -p "$IMAGES_DIR"
+    local resource="classifieds_docker_compose.zip"
     local zip="$IMAGES_DIR/classifieds_docker_compose.zip"
+    local -a urls=(
+        "gdrive:1m79lp84yXfqdTBHr6IS7_1KkL4sDSemR"
+        "https://archive.org/download/classifieds_docker_compose/classifieds_docker_compose.zip"
+    )
     # Idempotent: skip if already extracted (start.sh unpacks it) or the zip is here.
-    if [ -d "$IMAGES_DIR/classifieds_docker_compose" ]; then
+    if classifieds_dir_is_valid "$IMAGES_DIR/classifieds_docker_compose"; then
         echo "Classifieds already extracted at $IMAGES_DIR/classifieds_docker_compose; skipping download."
         return
     fi
-    if [ -f "$zip" ]; then
+    if [ -d "$IMAGES_DIR/classifieds_docker_compose" ]; then
+        echo "  WARN removing invalid Classifieds extract at $IMAGES_DIR/classifieds_docker_compose" >&2
+        rm -rf "$IMAGES_DIR/classifieds_docker_compose"
+    fi
+    if resource_is_valid "$resource" "$zip"; then
         echo "Classifieds zip already present at $zip; skipping download."
         return
     fi
     echo "Downloading VisualWebArena Classifieds zip to $IMAGES_DIR ..."
-    wget -q -c "https://archive.org/download/classifieds_docker_compose/classifieds_docker_compose.zip" -O "$zip"
+    if ! download_resource_from_urls "$resource" "$zip" "${urls[@]}"; then
+        echo "  ERROR failed to download VisualWebArena Classifieds zip" >&2
+        return 1
+    fi
     echo "Classifieds zip downloaded. (docker-compose build happens at start.sh time.)"
 }
 
@@ -301,7 +733,7 @@ install_python_deps() {
     # upstream scopes the check to the cwd sys.path entry.
     require_uv
     uv pip install -q --override "$ENV_DIR/overrides.txt" \
-        "browsergym==0.14.3" "flask>=2.0" "nltk<3.10.1"
+        "browsergym==0.14.3" "flask>=2.0" "gdown>=5,<6" "nltk<3.10.1"
 }
 
 # BrowserGym drives WA/VWA/MiniWoB pages via Playwright on THIS host (the browser
@@ -358,6 +790,7 @@ case "${1:-}" in
         install_webarena_images
         install_map_assets
         install_classifieds
+        install_classifieds_images
         install_homepage
         ;;
     miniwob)

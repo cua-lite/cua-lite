@@ -31,6 +31,10 @@ DESKTOP_CASES: dict[str, dict] = {
     "click_right": LiteDesktopActionSpace.click(coordinate=[500, 300], button="right"),
     "click_double": LiteDesktopActionSpace.click(coordinate=[500, 300], clicks=2),
     "type": LiteDesktopActionSpace.type(text="hello"),
+    # Gemini's wire has a native ``press_enter``; canonical spells it as the
+    # trailing newline, so this case is the one that exercises the projection.
+    "type_submitting": LiteDesktopActionSpace.type(text="hello\n"),
+    "type_multiline": LiteDesktopActionSpace.type(text="line one\nline two"),
     "key": LiteDesktopActionSpace.key(keys=["ctrl", "c"]),
     "key_ctrl_plus": LiteDesktopActionSpace.key(keys=["ctrl", "+"]),
     "key_down": LiteDesktopActionSpace.key_down(keys=["shift"]),

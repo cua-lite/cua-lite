@@ -501,20 +501,28 @@ class TestActionTranslation:
             }
         }
 
-    def test_type_honors_the_models_press_enter(self):
-        """The model owns `press_enter`; webgym must not discard or override it.
+    def test_type_projects_a_trailing_newline_onto_the_container_flag(self):
+        """The model owns whether to submit; webgym must not override it.
 
-        This used to be hardcoded True, so a model that explicitly asked NOT to
-        submit got Enter anyway with no feedback -- and fara's own prompt tells
-        the model to send `press_enter=False` on auto-suggest search bars. The
-        container always honored the parameter; only the host threw it away.
+        Canonical spells "submit" as a trailing newline inside ``text``. The
+        container's own wire keeps a ``press_enter`` flag, so the host strips
+        the newline and sets the flag -- rather than letting the newline ride
+        along, which would leave the value one character long and depend on the
+        container's typing path. Only a TRAILING newline submits; an interior
+        one is part of the value.
         """
         env = _make_env()
         env._viewport = (1280, 768)
         env._last_click_x, env._last_click_y = 640, 384
-        for sent, expected in ((True, True), (False, False)):
-            cmd = env._translate_action("type", {"text": "q", "press_enter": sent})
-            assert cmd["fill_coords"]["press_enter"] is expected, sent
+        for text, value, submits in (
+            ("q\n", "q", True),
+            ("q", "q", False),
+            ("a\nb", "a\nb", False),
+            ("", "", False),
+        ):
+            cmd = env._translate_action("type", {"text": text})
+            assert cmd["fill_coords"]["value"] == value, text
+            assert cmd["fill_coords"]["press_enter"] is submits, text
 
     def test_type_with_coordinate(self):
         """Type action with explicit coordinate uses it instead of last click."""
@@ -1384,12 +1392,12 @@ async def test_fallback_counter_resets_on_real_screenshot():
 
 
 @pytest.mark.asyncio
-async def test_fallback_screenshot_reports_capture_failure_not_ineffective_action():
+async def test_blank_page_fallback_is_not_reported_as_an_ineffective_action():
     """Two identical consecutive frames mean different things, and the model-visible
     text must say which one happened.
 
-    A fallback re-appends the previous frame, so the frames are identical BY
-    CONSTRUCTION and change detection has no evidence: the step must be described
+    A blank-page fallback re-appends the previous frame, so the frames are identical
+    BY CONSTRUCTION and change detection has no evidence: the step must be described
     as an env capture failure. A real capture that happens to match the previous
     frame IS evidence, and only that step may be described as an ineffective
     action. Both steps below end with ``_screenshots[-2] == _screenshots[-1]``.
@@ -1414,7 +1422,10 @@ async def test_fallback_screenshot_reports_capture_failure_not_ineffective_actio
     )
     fallback_text = fallback.results[0].text or ""
     assert env._screenshots[-2] == env._screenshots[-1]
-    assert "could not capture a new screenshot" in fallback_text
+    assert "rendered blank" in fallback_text
+    # NOT the old capture-failure wording: a capture failure now raises
+    # TrueInfraFailure and never reaches this branch.
+    assert "could not capture" not in fallback_text
     assert "not effective" not in fallback_text
     assert "did not change" not in fallback_text
     # The capture-failure prose is env feedback keyed to the call it answers, not
@@ -1539,16 +1550,65 @@ async def test_action_failure_continues():
 
 
 @pytest.mark.asyncio
-async def test_screenshot_failure_returns_none():
-    """Screenshot failure should return None, not crash."""
+async def test_all_white_page_falls_back_instead_of_raising():
+    """The one capture outcome that must NOT raise.
+
+    An all-white PNG means the capture SUCCEEDED and the site rendered blank —
+    a property of the page, not of the env. The episode continues on the previous
+    frame so the model can route around it. This pins the split that
+    ``test_screenshot_failure_raises_retryable_infra_error`` pins from the other
+    side; without it, "finishing the job" by converting the last fallback call
+    site would go green.
+    """
+    import io as _io
+
+    from PIL import Image
+
+    from lite.gym.errors import TrueInfraFailure
+
+    buf = _io.BytesIO()
+    Image.new("RGB", (1280, 720), (255, 255, 255)).save(buf, format="PNG")
+    white = buf.getvalue()
+
+    env = _make_env()
+    env._client = _make_mock_client()
+    await env.reset()
+    real = env._last_frame
+    assert real is not None and real != white
+
+    env._client.screenshot.side_effect = None
+    env._client.screenshot.return_value = white
+    try:
+        got = await env._take_screenshot()          # must not raise
+        assert got == real, "all-white page must re-serve the previous frame"
+        assert env._is_fallback_screenshot is True
+        assert env._last_frame == real, "a blank render must not become _last_frame"
+    except TrueInfraFailure:
+        raise AssertionError("an all-white page is the site's render, not an env fault")
+    finally:
+        await env.close()
+
+
+@pytest.mark.asyncio
+async def test_screenshot_failure_raises_retryable_infra_error():
+    """A capture failure is the env owing an observation and not delivering it.
+
+    It must surface as ``TrueInfraFailure`` (retryable) so the trajectory is
+    void and re-run, NOT be papered over by re-serving the previous frame. The
+    stale frame made the model act on a page it was no longer looking at, which
+    read downstream as a repetitive-action loop and scored 0 as a MODEL failure.
+    """
+    from lite.gym.errors import TrueInfraFailure, is_retryable
+
     env = _make_env()
     env._client = _make_mock_client()
     env._client.screenshot.side_effect = Exception("screenshot failed")
-    await env.reset()
-
-    # Reset screenshot should be None due to failure
-    # (but reset still succeeds)
-    await env.close()
+    try:
+        with pytest.raises(TrueInfraFailure) as excinfo:
+            await env.reset()
+        assert is_retryable(excinfo.value)
+    finally:
+        await env.close()
 
 
 @pytest.mark.asyncio
@@ -1569,6 +1629,15 @@ async def test_multiple_actions_per_step():
     # reset's visit_page + 3 actions = 4 calls
     assert env._client.execute.call_count == 4
     await env.close()
+
+
+def test_default_max_steps_match_train_eval_budget():
+    """Default WebGym train/eval budgets stay aligned by difficulty tier."""
+    expected = {1: 15, 3: 15, 4: 25, 6: 25, 7: 35, 8: 35}
+    for split in ("train", "eval"):
+        for difficulty, max_steps in expected.items():
+            env = WebGymEnv(task={"task_id": "t", "difficulty": difficulty}, split=split)
+            assert env._max_steps == max_steps
 
 
 # ---------------------------------------------------------------------------

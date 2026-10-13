@@ -187,7 +187,13 @@ def _params() -> dict:
 _PROJECTED_NATIVE_MISMATCH = "does not match projected native text/error"
 
 
-def test_parse_failure_summary_is_terminal_error_not_retry_pending(tmp_path: Path):
+def test_parse_failure_summary_is_a_scored_measurement_not_an_error(tmp_path: Path):
+    """A parse failure is a measurement: not re-run, and scored at the env's return.
+
+    The env evaluates the parse-failure turn (the agent sends it as a ``response``
+    finish call), so its ``episode_return`` is real. Only ``error`` marks a summary
+    as unmeasured; a durable ``stop_reason`` must not.
+    """
     spec = TaskSpec(task_id="task_0", env_id="test.env")
     sample_dir = spec.sample_dir(tmp_path, 0)
     sample_dir.mkdir(parents=True)
@@ -202,8 +208,60 @@ def test_parse_failure_summary_is_terminal_error_not_retry_pending(tmp_path: Pat
     assert get_pending(tmp_path, [spec], group_size=1) == []
 
     results = rebuild_results(tmp_path, [spec], group_size=1)
-    assert results[0]["error"] == "terminal model_output_error: parse_failure"
+    assert results[0]["error"] is None
     assert results[0]["stop_reason"] == "parse_failure"
+    assert results[0]["episode_return"] == 0.0
+
+    stats = print_results(results, [spec], group_size=1)
+    assert stats["num_valid"] == 1
+    assert stats["mean_episode_return"] == 0.0
+    assert stats["stop_reasons"] == {"parse_failure": 1}
+
+
+def test_parse_failure_that_solved_the_task_keeps_its_score(tmp_path: Path):
+    """The env's verdict decides, not the status: a 1.0 parse failure scores 1.0."""
+    spec = TaskSpec(task_id="task_0", env_id="test.env")
+    sample_dir = spec.sample_dir(tmp_path, 0)
+    sample_dir.mkdir(parents=True)
+    (sample_dir / "summary.json").write_text(json.dumps({
+        "n_turns": 3,
+        "episode_return": 1.0,
+        "terminated": True,
+        "truncated": False,
+        "stop_reason": "parse_failure",
+    }))
+
+    results = rebuild_results(tmp_path, [spec], group_size=1)
+    assert results[0]["error"] is None
+
+    stats = print_results(results, [spec], group_size=1)
+    assert stats["num_valid"] == 1
+    assert stats["mean_episode_return"] == 1.0
+
+
+def test_terminal_error_summary_stays_out_of_the_score(tmp_path: Path):
+    """A summary carrying ``error`` is a tombstone: resolved, but never scored.
+
+    The counterpart to the two parse-failure tests above — the whole change turns
+    on ``error`` vs ``stop_reason``, so both sides belong here.
+    ``test_task_resolution.py`` pins the resolved/error half; this pins the
+    ``num_valid`` half, which is the number the change moves.
+    """
+    spec = TaskSpec(task_id="task_0", env_id="test.env")
+    sample_dir = spec.sample_dir(tmp_path, 0)
+    sample_dir.mkdir(parents=True)
+    (sample_dir / "summary.json").write_text(json.dumps({
+        "n_turns": 0,
+        "episode_return": 0.0,
+        "terminated": False,
+        "truncated": False,
+        "error": "EnvBlocked: task is unscoreable",
+    }))
+
+    assert get_pending(tmp_path, [spec], group_size=1) == []
+
+    results = rebuild_results(tmp_path, [spec], group_size=1)
+    assert results[0]["error"] == "EnvBlocked: task is unscoreable"
 
     stats = print_results(results, [spec], group_size=1)
     assert stats["num_valid"] == 0

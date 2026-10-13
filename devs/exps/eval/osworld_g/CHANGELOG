@@ -1,3 +1,24 @@
+## 1996121 ← b13995c  (2026-09-25)
+
+- Align UI-Venus grounding with its official non-thinking, temperature-0, 1024-token setup; rerun the full evaluation. Retain other models with per-row provenance.
+
+## b13995c ← b1d4b6b  (2026-09-25)
+
+- Set GPT and Claude grounding defaults to Medium; rerun GPT-5.5, GPT-5.6 Sol and Claude Opus 5. Retain other models with per-row provenance.
+
+## 04b1716 <- f873f3c  (2026-09-17)
+
+- Evaluate GPT-5.5, GPT-5.6 Sol, and local models with their default grounding configurations.
+
+## restore-first-valid ← 74e80687  (2026-09-11)
+
+- Restores OSWorld-G scoring to the first well-formed answer: `point` for
+  spatial tasks and `report_infeasible` for refusal tasks. Later answers or
+  malformed/rejected calls remain logged as feedback, but they no longer poison
+  a valid first answer. This keeps migration results comparable with the
+  original first-valid grounding metric; an exactly-one anti-hedging metric
+  would need a separate future eval-definition entry and new snapshots.
+
 ## e32c7948 ← 1bdef611  (2026-04-28)
 
 env-side grounding harness rebuilt as `grounding.point`:

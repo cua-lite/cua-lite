@@ -1,0 +1,57 @@
+# Qwen3.5 desktop.use — 1280x720 screenshot, image_max 4, Action-only.
+#
+# `i4` names the knob that is actually set: `image_max: 4`. history_n stays at the
+# protocol default (100), so TEXT history is uncapped for any episode this campaign
+# runs; only screenshots are capped. Do not read `i4` vs `h1` as one knob — h1 caps
+# turns (which forces one image), i4 caps images and keeps every turn's text.
+#
+# The visible-image count SAWTOOTHS 1,2,3,4,1,2,3,4: the fold budget is spent over
+# the whole trajectory, so every fold_size-th step drops back to one image. That is
+# the reference behaviour, and it is also what makes this the cheapest of the three
+# campaign profiles to TRAIN, despite having the largest per-step peak:
+# fold_size == image_max keeps four consecutive steps prefix-compatible, so
+# build_segment_samples packs them into one sequence and each screenshot is encoded
+# once -- analytically exact under fold_size == image_max, and measured at 3.54
+# steps/segment over 20 qwen3_8_27b trajectories (198 encodings for 198 steps).
+# Setting fold_size BELOW image_max advances the folded prefix every step instead of
+# every fold_size steps, so packing collapses: at fold_size 1 that is 1.43
+# steps/segment and 2.8x the image encodings (1.6x at 2, 1.2x at 3).
+#
+#                                        resolution        img  text hist  mode
+#                                                               (turns kept)
+#   desktop.use.default.yaml             native 1920x1080  1-4  all turns  Action
+#   desktop.use.default.reasoning.yaml   native 1920x1080  1-4  all turns  <think>
+#   desktop.use.lowr.i4.yaml             1280x720          1-4  all turns  Action   <- this file
+#   desktop.use.lowr.i4.reasoning.yaml   1280x720          1-4  all turns  <think>
+#   desktop.use.lowr.h1.yaml             1280x720            1  1 turn     Action
+#   desktop.use.lowr.h1.reasoning.yaml   1280x720            1  1 turn     <think>
+#   desktop.use.lowr.i1.yaml             1280x720            1  all turns  Action
+#   desktop.use.lowr.i1.reasoning.yaml   1280x720            1  all turns  <think>
+#   desktop.use.highr.h1.yaml            native 1920x1080    1  1 turn     Action
+#   desktop.use.highr.h1.reasoning.yaml  native 1920x1080    1  1 turn     <think>
+#   desktop.use.highr.i1.yaml            native 1920x1080    1  all turns  Action
+#   desktop.use.highr.i1.reasoning.yaml  native 1920x1080    1  all turns  <think>
+#
+# No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row
+# from metadata.dims. system_prompt omitted -> the adapter's canonical USE_SYSTEM_PROMPT.
+
+agent_id: "qwen3_5"
+agent_kwargs:
+  sampling_kwargs:  # rollout.py only; export_sft drops it, RL sets sampling in the trainer
+    temperature: 0.0
+  resolution: [1280, 720]  # smart_resize rounds to x32 -> the model sees 1280x704
+  protocol_kwargs:
+    # Pinned, not inherited: the `i4` in the filename IS image_max, so a change to the
+    # protocol default must not silently rename this profile. history_n omitted -> 100.
+    # fold_size must track image_max: below it, adjacent steps stop being prefix-
+    # compatible and build_segment_samples can no longer pack them: at fold_size 1 that is
+    # 1.43 steps/segment and 2.8x the image encodings (1.6x at 2, 1.2x at 3).
+    image_max: 4
+    fold_size: 4
+
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  # Required, not cosmetic: without it the env rejects both as inactive extras and the
+  # model can never end an episode. Qwen's native `answer` lowers to `response`.
+  extra_tools: ["response", "terminate"]

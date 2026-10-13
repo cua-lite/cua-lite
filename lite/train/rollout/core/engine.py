@@ -964,11 +964,13 @@ async def _eval_rollout(
 
         n_trajs_expected = len(tasks)
 
-        # Collect results with inline retry: when a task finishes as
-        # "errored" (all turns FAILED / empty tokens — env crash or
-        # a11y failure), immediately re-queue it at the back of the pending
-        # set instead of waiting for a separate retry round. This avoids
-        # wasting an extra batch of concurrency slots.
+        # Collect results with inline retry: when a task produces no
+        # token-carrying turn at all (env crash, abort, or a trajectory that
+        # segmented to nothing), immediately re-queue it at the back of the
+        # pending set instead of waiting for a separate retry round. This avoids
+        # wasting an extra batch of concurrency slots. A model-side parse failure
+        # is NOT errored — it carries tokens and is scored at whatever the env
+        # awarded, see below.
         max_eval_retries = getattr(args, "max_eval_retries", 3)
         retry_counts: dict[int, int] = {}   # index → retries so far
         data = []
@@ -1002,16 +1004,14 @@ async def _eval_rollout(
                     pbar.update(1)
                     continue
                 idx = samples[0].index
-                valid_turns = [
-                    s for s in samples
-                    if s.tokens and s.status != Sample.Status.FAILED
-                ]
+                valid_turns = [s for s in samples if s.tokens]
                 # Only re-queue errored trajectories whose error is retryable.
                 # is_retryable was evaluated at catch time (the exception is gone
                 # here) and cached on the empty sample's metadata; a non-retryable
                 # error (e.g. a bot-blocked site) re-runs identically, so retrying
-                # only burns rollouts. Default True covers samples not built via
-                # the exception path (no-turns / FAILED-but-no-exception).
+                # only burns rollouts. The True default is still reachable: slime's
+                # abort short-circuit returns the original prompt Sample without
+                # entering generate(), so it carries no cached verdict.
                 retryable = samples[0].metadata.get("lite_error_retryable", True)
                 if (not valid_turns and retryable
                         and retry_counts.get(idx, 0) < max_eval_retries):
@@ -1058,9 +1058,17 @@ async def _eval_rollout(
         # or cancellation outside ``generate()``'s normal Exception path.
         n_trajs_missing = max(0, n_trajs_expected - len(rollouts_per_traj))
 
-        # FAILED-status turns may carry partial valid output per slime's
-        # ``Sample.Status`` docstring — fine for train (loss_mask handles it)
-        # but not trustworthy as a task-success signal for eval.
+        # FAILED-status turns are KEPT here, matching the train path. Under
+        # slime's generic ``Sample.Status`` a FAILED turn may be partial output.
+        # Among the TOKEN-CARRYING samples that reach this loop the only producer
+        # is the parse-failure final (``agent/utils/final.py``) — the model could
+        # not drive the tool surface, which is a task failure, not an env error.
+        # (``_empty_sample`` / ``dummy_sample`` also set FAILED but carry no
+        # tokens, so ``s.tokens`` already excludes them.) Excluding parse failures
+        # would drop them from the eval denominator and bias every reported return
+        # upward. Caveat: ``examples/grounding``'s adapter also writes FAILED and
+        # fabricates ``reward=0.0`` without stepping the env, so for that producer
+        # the 0 is structural, not measured.
         episode_returns: list[float] = []
         truncated_per_rollout: list[bool] = []
         # Prompt id per rollout: ``index // n`` recovers the prompt because eval
@@ -1075,14 +1083,12 @@ async def _eval_rollout(
             # ``if r else -1`` mirrors the empty-group guard in the sort above; a
             # (degenerate) empty rollout lands in a sentinel bucket, never IndexErrors.
             prompt_ids.append((r[0].index // n_eval) if r else -1)
-            valid_turns = [
-                s for s in r
-                if s.tokens and s.status != Sample.Status.FAILED
-            ]
+            valid_turns = [s for s in r if s.tokens]
             if not valid_turns:
-                # errored (env crashed / all turns FAILED). Keep a dense 0.0 at this
-                # index — slime's compute_pass_rate reshapes the returned rewards list
-                # positionally — but mark it invalid so OUR stats exclude it.
+                # errored: no token-carrying turn at all (env crash or abort).
+                # Keep a dense 0.0 at this index — slime's compute_pass_rate reshapes
+                # the returned rewards list positionally — but mark it invalid so OUR
+                # stats exclude it.
                 episode_returns.append(0.0)
                 truncated_per_rollout.append(False)
                 is_valid.append(False)
@@ -1138,10 +1144,16 @@ async def _eval_rollout(
         nonzero_return_rate = sum(1 for r in episode_returns if r > 0) / max(n_trajs_valid, 1)
         n_truncated = sum(truncated_per_rollout)
 
+        # return_mean is the number to read: slime also logs a bare
+        # ``eval/{ds}`` (rollout.py), but that one averages over the DENSE list,
+        # so every errored rollout dilutes it as a 0.0. Printing the valid-only
+        # mean next to the valid/errored counts means a diluted comparison is
+        # visible in the log itself, not only in wandb.
         logger.info(
-            "Eval %s: %d valid / %d errored / %d missing / %d expected"
-            " (retried %d), nonzero_return_rate=%.2f",
-            dataset_cfg.name, n_trajs_valid, n_trajs_errored, n_trajs_missing,
+            "Eval %s: return_mean=%.4f (std=%.4f stderr=%.4f), %d valid / %d errored"
+            " / %d missing / %d expected (retried %d), nonzero_return_rate=%.2f",
+            dataset_cfg.name, return_mean, return_std, return_stderr,
+            n_trajs_valid, n_trajs_errored, n_trajs_missing,
             n_trajs_expected, n_trajs_retried, nonzero_return_rate,
         )
 
@@ -1246,8 +1258,9 @@ def _filter_errored_rollouts(
     N dummies (loss_mask=[0]) so slime's pipeline still gets a batch for a
     no-op gradient step.
 
-    Train path only. Eval has index-ordering and FAILED-status requirements
-    that make a shared helper awkward — see the inline loop in ``_eval_rollout``.
+    Train path only. Eval applies the same ``s.tokens`` predicate but has
+    index-ordering and dense-reward requirements that make a shared helper
+    awkward — see the inline loop in ``_eval_rollout``.
 
     Returns (valid_rollouts, n_errored). ``n_errored`` is always the
     true count of dropped rollouts (not diluted by dummy injection).
@@ -1451,7 +1464,36 @@ def flatten_and_align(rollouts: list[list[Sample]], args: Any) -> dict:
     group_total_mask: dict[int, int] = {}
     for gid, ms in zip(group_ids, mask_sums, strict=True):
         group_total_mask[gid] = group_total_mask.get(gid, 0) + ms
-    train_data["group_mask_sums"] = [group_total_mask[gid] for gid in group_ids]
+
+    # CUA_LITE_NORM_BY_TURNS=1 switches the per-trajectory denominator from
+    # "total masked tokens" to "turn count, scaled by the batch's mean tokens per
+    # turn". Ablation knob for the multi-turn setting — default is unchanged.
+    #
+    # Why it matters here: with the token denominator, a trajectory that writes
+    # FEWER tokens per turn raises its own per-token gradient (A / N), so the
+    # objective rewards compressing each turn's output. Measured on 8-task
+    # train=eval: response length fell 80% while turn count rose 56% with no
+    # accuracy gain. Scaling by the batch mean keeps ``sum(denoms)`` equal to
+    # ``sum(mask_sums)``, so only the RELATIVE weighting changes, not the
+    # gradient scale — otherwise this would confound normalization with a ~300x
+    # effective LR change.
+    #
+    # Still packing-invariant: ``_segment_steps`` packs WHOLE turns (its unit is
+    # the turn index), so a turn never spans segments and the per-trajectory turn
+    # count is independent of how segments are packed.
+    if os.environ.get("CUA_LITE_NORM_BY_TURNS") == "1":
+        group_turns: dict[int, int] = {}
+        for gid, s in zip(group_ids, flat, strict=True):
+            n_turns = ((s.metadata or {}).get("n_turns")) or 1
+            group_turns[gid] = max(group_turns.get(gid, 0), int(n_turns))
+        total_tokens = sum(group_total_mask.values())
+        total_turns = sum(group_turns.values()) or 1
+        mean_tokens_per_turn = total_tokens / total_turns
+        train_data["group_mask_sums"] = [
+            max(group_turns[gid] * mean_tokens_per_turn, 1.0) for gid in group_ids
+        ]
+    else:
+        train_data["group_mask_sums"] = [group_total_mask[gid] for gid in group_ids]
 
     if flat[0].rollout_log_probs is not None:
         train_data["rollout_log_probs"] = [s.rollout_log_probs for s in flat]

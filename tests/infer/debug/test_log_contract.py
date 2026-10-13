@@ -24,6 +24,7 @@ from lite.core import LiteGenericMetadata
 from lite.core.tools.calls import (
     make_tool_call,
 )
+from lite.core.tools.results import project_tool_result_text
 from lite.core.tools.schemas import make_tool_schema
 from lite.utils.parquet import write_records_to_parquet
 
@@ -1124,6 +1125,64 @@ def test_log_contract_gate_accepts_unknown_tool_error_only_result(tmp_path: Path
         arguments={},
         text=None,
         error="unknown tool: foo",
+    )
+
+    assert check_log_contract(tmp_path) == []
+
+
+def test_log_contract_gate_accepts_extra_tool_invalid_arguments_result(tmp_path: Path):
+    from lite.infer.debug.log_contract import check_log_contract
+
+    sample_dir = tmp_path / "sample_00"
+    sample_dir.mkdir(parents=True)
+    (sample_dir / "screen.png").write_bytes(b"png")
+    error = "invalid arguments for click: click.arguments.index must be an integer"
+    click_schema = make_tool_schema(
+        "click",
+        parameters={
+            "type": "object",
+            "properties": {"index": {"type": "integer"}},
+            "required": ["index"],
+        },
+    )
+    projected = project_tool_result_text("obs", error)
+    assert projected is not None
+    _write_trajectory(
+        sample_dir,
+        [
+            {"role": "user", "content": _text("task")},
+            {
+                "role": "assistant",
+                "content": [],
+                "tool_calls": [
+                    make_tool_call("click", {"index": "[3]"}, call_id="click_0")
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "click_0",
+                "content": [
+                    {"type": "image", "index": 0},
+                    {"type": "text", "text": projected},
+                    {"type": "metadata", "data": {"is_error": True}},
+                ],
+            },
+            {"role": "assistant", "content": _text("Done.")},
+        ],
+        metadata=_metadata(
+            platform="browser",
+            extra_tool_schemas=[click_schema],
+        ),
+        images=["screen.png"],
+        json_fields=("messages", "metadata"),
+    )
+    _write_turn_debug_payload(
+        sample_dir,
+        call_id="click_0",
+        tool_name="click",
+        arguments={"index": "[3]"},
+        text="obs",
+        error=error,
     )
 
     assert check_log_contract(tmp_path) == []

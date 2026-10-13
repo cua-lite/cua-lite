@@ -1,0 +1,50 @@
+# Qwen3.5 browser.use — image_max 4, Action-only.
+#
+# webgym renders at 1280x720 natively, so there is NO resolution axis here — every profile
+# sees the same pixels (smart_resize rounds to 1280x704, 880 vision tokens). The only knobs
+# left are how many screenshots survive and whether <think> is on, which is why these are
+# named for `image_max` alone and there is no lowr/highr pair.
+#
+# `i4` keeps the protocol default: the visible-image count sawtooths 1,2,3,4 and four adjacent
+# steps stay prefix-compatible, so build_segment_samples packs them and each screenshot is
+# encoded once.
+#
+#                                  img  text hist  mode
+#                                       (turns kept)
+#   browser.use.i4.yaml            1-4  all turns  Action   <- this file
+#   browser.use.i4.reasoning.yaml  1-4  all turns  <think>
+#   browser.use.i1.yaml              1  all turns  Action
+#   browser.use.i1.reasoning.yaml    1  all turns  <think>
+##
+# No env_id: rollout picks the env via --env-id, export_sft picks the adapter per row from
+# metadata.dims (webgym rows are ('browser','use')). system_prompt omitted -> the adapter's
+# canonical USE_SYSTEM_PROMPT.
+
+agent_id: "qwen3_5"
+agent_kwargs:
+  sampling_kwargs:  # rollout.py only; export_sft drops it, RL sets sampling in the trainer
+    temperature: 0.0
+  # Fixed across WebGym/WebHarbor-style browser envs. WebGym's own viewport is
+  # 1280x720; smart_resize rounds the model input to 1280x704 (880 vision tokens).
+  resolution: [1280, 720]
+  protocol_kwargs:
+    # Pinned, not inherited: the `i4` in the filename IS image_max, so a change to the
+    # protocol default must not silently rename this profile. history_n omitted -> 100.
+    # fold_size must track image_max: below it, adjacent steps stop being prefix-compatible
+    # and build_segment_samples packs fewer of them. Measured on 150 exported webgym rows --
+    # steps/segment, then total train tokens relative to fold_size 4:
+    #   fold_size 4 -> 3.10, 1.00x    3 -> 2.93, 1.15x    2 -> 2.70, 1.40x    1 -> 2.27, 2.13x
+    image_max: 4
+    fold_size: 4
+
+env_kwargs:
+  # max_steps omitted on purpose: webgym sets it per difficulty and per split
+  #   train: easy(1-3) 15, medium(4-6) 25, hard(7+) 35
+  #   eval:  easy(1-3) 15, medium(4-6) 25, hard(7+) 35
+  # Passing one here would flatten that and silently change the eval budget.
+  loop_detect: 5
+  # No-goto browser surface for WebHarbor/WebVoyager transfer: WebVoyager is an
+  # offline mirror, so direct URL navigation escapes the mirrored site. The SFT
+  # data must be prefiltered with devs/exps/train/browser/filter.py; export_sft
+  # then replays this same no-goto, no-WebGym-wrapper surface.
+  extra_tools: ["back", "response"]

@@ -1,0 +1,229 @@
+# Lite.ScaleCUA — Collect With `qwen3_5_27b`
+
+Teacher runbook for the `Qwen/Qwen3.5-27B` rows of Lite.ScaleCUA. Dataset-level
+setup, staging, upload, and export live in
+[`../AGENTS.md`](/devs/data/lite.scalecua/AGENTS.md); run its §1 first.
+
+This runbook ends at the annotated log roots. They are the only thing the
+dataset runbook consumes:
+
+    .data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT/{rl,train}_annotated
+
+## Serve The Model
+
+Unlike `gpt5_5` (an API model), this teacher is local weights and needs a running
+sglang server first. `tp_size` is pinned PER MODEL in `LOCAL_AGENTS`
+([/lite/agents/factory.py](/lite/agents/factory.py)) — 2 for this one — and the
+launcher derives `dp_size = visible_gpus // tp_size`.
+
+**How many GPUs is your call, not this runbook's.** Any multiple of `tp_size`
+works, and each extra `tp_size`-sized group is one more replica behind the same
+port. Pick from what `nvidia-smi` actually shows free and what the host's other
+tenants are doing. The collect step below starts at `--concurrency 32`, which
+assumes ONE replica; raise it roughly in step with the replicas you actually got,
+and watch the env-server / Docker error rates rather than trusting the number.
+
+```bash
+# Pick FREE devices; the COUNT must be a multiple of tp_size (2 here).
+# --port 0 picks a free port and prints PORT=<actual> on the first line.
+CUDA_VISIBLE_DEVICES=<free devices> uv run python scripts/serve_sglang.py \
+  --model-id Qwen/Qwen3.5-27B --host 127.0.0.1 --port 0
+```
+
+Export the address the launcher printed before collecting:
+
+```bash
+export SGLANG_URL="http://127.0.0.1:<the PORT it printed>"
+```
+
+Readiness is `GET /health` returning 200 — the same probe `lite/infer/serving.py`
+polls when it launches a server for you. Bind `127.0.0.1` on shared hosts; the
+launcher defaults to `0.0.0.0`.
+
+## Reasoning Channel
+
+Thinking is ON, and it is the only `agent_kwargs` override this runbook makes:
+
+```
+--agent-kwargs '{"enable_thinking": true}'
+```
+
+The adapter defaults to thinking OFF (`enable_thinking: bool = False`,
+[/lite/agents/models/qwen3_vl/adapter.py](/lite/agents/models/qwen3_vl/adapter.py),
+inherited by the qwen3_5 adapters), so without the override this teacher would
+collect the same Action-only rows `qwen3_8_27b` does.
+
+With it on, the model's native `<think>...</think>` is parsed straight into the
+canonical `reasoning_content` FIELD (`lite/agents/models/qwen3_5/adapter.py`), so
+**this teacher needs no `internalize_cot.py` pass** — its published rows are
+already in the one vocabulary. That is the whole difference from `gpt5_5`, which
+is PROMPTED for a `Thought:` line and lands it in an `inline_reasoning` content
+part that must be moved before staging.
+
+Keep the override on the command line rather than forking a yaml: the rollout
+config stays the shared, unmodified one, and `metadata.others.command` records
+the full argv (`_cli_command()`, `lite/infer/rollout.py`), so the override reads
+straight off the row. A forked yaml's setting is not on the row — recovering it
+means taking the row's `config_path` + `commit` back to the checkout and reading
+the file.
+
+## Task Set
+
+Every teacher on this dataset collects the SAME tasks, and each run is
+STANDALONE — the set is pinned by the same `--sample` count (`$TRAIN_N`, derived in
+§1 of the dataset runbook) against the same `--seed` (`--seed` drives subset
+selection, so an identical seed redraws an identical subset), not by replaying
+another teacher's output. On `train` that count equals the runnable total, so every
+teacher gets every task and only the execution order is drawn. Run the teachers
+in any order, or at the same time; none waits on the others.
+
+To CHECK coverage after the fact (retries, skips, or an interrupted batch can
+still leave them uneven), compare the task ids each run actually produced —
+they are the sample directory names, and are also recorded in each trajectory's
+`metadata.others.task_id`:
+
+```bash
+ids() { find "$1" -name summary.json -path "*/sample_*" \
+  | xargs -n1 dirname | xargs -n1 dirname | xargs -n1 basename | sort -u; }
+for T in gpt5_5 qwen3_8_27b qwen3_5_27b; do
+  printf "%-12s %s\n" "$T" "$(ids ".data/rollout/lite.scalecua/$T/$COMMIT" | wc -l)"
+done
+# then diff any pair that disagrees, e.g.
+diff <(ids ".data/rollout/lite.scalecua/gpt5_5/$COMMIT") \
+     <(ids ".data/rollout/lite.scalecua/qwen3_8_27b/$COMMIT")
+```
+
+A non-empty diff means one side is short; re-run that side's collect command
+(it resumes) rather than narrowing the other.
+
+## Collect
+
+Collect each source into its own subfolder (`rl` / `train`), keeping HF config
+names separable at stage time.
+
+```bash
+uv run python scripts/rollout.py \
+  --model-id Qwen/Qwen3.5-27B \
+  --agent-kwargs '{"enable_thinking": true}' \
+  --sglang-server-url "$SGLANG_URL" \
+  --env-id lite.scalecua \
+  --splits rl \
+  --filter "$TASK_FILTER" \
+  --concurrency 32 \
+  --max-attempts 2 \
+  --save-data true \
+  --save-video false \
+  --save-gif false \
+  --config-path scripts/configs/qwen3_5/default/lite.osworld.yaml \
+  --log-root ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT"
+
+uv run python scripts/rollout.py \
+  --model-id Qwen/Qwen3.5-27B \
+  --agent-kwargs '{"enable_thinking": true}' \
+  --sglang-server-url "$SGLANG_URL" \
+  --env-id lite.scalecua \
+  --splits train \
+  --filter "$TASK_FILTER" \
+  --sample "$TRAIN_N" \
+  --concurrency 32 \
+  --max-attempts 2 \
+  --save-data true \
+  --save-video false \
+  --save-gif false \
+  --config-path scripts/configs/qwen3_5/default/lite.osworld.yaml \
+  --log-root ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT"
+```
+
+**Token budget: 3072 clears the measured ceiling.** The rollout default is
+`max_new_tokens: 2048` (`lite/infer/serving.py`), and with thinking on the reply carries the
+whole `<think>` body ahead of the action. Measured with the model's own tokenizer over the
+257,002 assistant turns of a full `rl` + `train` collection (17,539 trajectories): the longest
+whole reply was **2336 tokens**, **2** turns exceeded 2048, and **0** exceeded 3072. So the
+default truncates about one turn in 130,000 — rare, but silent in the aggregate — while 3072
+sits 24% above the observed maximum. Anything larger is headroom over a ceiling nothing
+approached. The reasoning body alone runs p50 1289 / p99 1923 characters with an
+8327-character tail; note that this content tokenizes at roughly 4.1 characters per token, so
+character counts overstate the budget if read as tokens. Lowering it is visible rather than
+silent: `lite/agents/core/agent/base.py` maps a `finish_reason` of `length` / `max_tokens` /
+`context_length_exceeded` to a truncated step. Extend the SAME `--agent-kwargs`
+object; it is one flag, so a second one would drop `enable_thinking` and silently collect
+Action-only rows:
+
+```
+--agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"max_new_tokens": 3072}}'
+```
+
+There is no `scripts/configs/qwen3_5/default/lite.scalecua.yaml`, for the same
+reason the Export section of the dataset runbook gives for `qwen3_5`:
+`lite.scalecua` is an OSWorld-task adapter riding the `lite.osworld` desktop
+substrate, so the family's `default/lite.osworld.yaml` is the matching rollout
+config and `--env-id lite.scalecua` selects the task catalog.
+
+`--sample "$TRAIN_N"` shuffles the whole runnable `train` set so any partial or
+resumed run stays domain-balanced; the rationale is spelled out in
+[`gpt5_5/AGENTS.md`](/devs/data/lite.scalecua/gpt5_5/AGENTS.md). (`rl` is small
+enough to leave in catalog order.)
+
+Re-run the identical command to resume.
+
+## Annotate And Review
+
+```bash
+uv run python devs/data/lite.osworld/filter.py \
+  --log-root ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT/rl" \
+  --out ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT/rl_annotated" \
+  --drop-loops --drop-undo-storm
+
+uv run python devs/data/lite.osworld/filter.py \
+  --log-root ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT/train" \
+  --out ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT/train_annotated" \
+  --drop-loops --drop-undo-storm
+```
+
+Same script, same flags as `gpt5_5` (see
+[Shared Filter](/devs/data/lite.scalecua/AGENTS.md#shared-filter)). The filter
+runs on canonical Lite rows — the adapter has already projected this family's
+wire format — so it carries no model-family branch and needs none.
+
+Review the `exclude_reason` tag counts and sample every tag class, plus a sample
+of clean (untagged) and terminal trajectories, before publishing.
+
+## Screen For Unpublishable Rows
+
+Run the shared pre-stage check on the annotated roots before handing them to the
+dataset runbook's §3:
+
+```bash
+uv run python devs/data/prestage_check.py \
+  --log-roots ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT/rl_annotated" \
+              ".data/rollout/lite.scalecua/qwen3_5_27b/$COMMIT/train_annotated"
+```
+
+This teacher needs it and the other two do not. Measured on the full `rl` +
+`train` collection:
+**17 of 17,556 trajectories (0.1%)** carry a tool call whose ARGUMENTS violate the
+schema, while the same check over all 35,300 published `gpt5_5` and `qwen3_8_27b`
+rows found **zero**. Two shapes, both from thinking-on Qwen:
+
+- `terminate(status="fail")` — `status` is `enum ["success", "failure"]` (6 rows);
+- `hold_key` without its required `duration` (11 rows).
+
+`filter.py` does not catch them. Its four hard-drop classes check tool and action
+NAMES (an undeclared tool, an invented action); these are declared names with
+invalid arguments, so they pass the annotation pass and reach `stage`, which
+refuses the row and ends the run.
+
+The trajectories are not otherwise bad — the env rejected each malformed call
+visibly and the model corrected itself on the next turn:
+
+```
+[29] hold_key(keys=["ctrl"])
+     -> "## Error from previous action: invalid arguments for hold_key:
+         hold_key.duration is required"
+[33] hold_key(keys=["ctrl"], duration=0.1)
+```
+
+`stage` still refuses the whole row, because publication validates every call in
+the sequence and not just the ones the env accepted. Set the named trajectories
+aside (move the task directory out of the annotated root) and stage the rest;
+at 0.1% the loss is not worth a repair pass.

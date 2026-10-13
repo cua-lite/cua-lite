@@ -16,7 +16,7 @@ Tests verify that every family's grounding.action adapter:
   4. Round-trips an SFT-style multi-action sample without dropping calls.
 
 Run:
-    uv run pytest tests/agents/core/adapter/test_grounding_action.py -n auto
+    uv run pytest tests/agents/core/adapter/test_grounding_action.py -n 0
 """
 
 from __future__ import annotations
