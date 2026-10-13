@@ -220,7 +220,7 @@ def test_write_at_desktop_expands_to_one_canonical_batch() -> None:
     assert _actions(calls[0]) == [
         {"action": "click", "coordinate": [420, 310]},
         {"action": "key", "keys": ["ctrl", "a"]},
-        {"action": "type", "text": "hello", "press_enter": True},
+        {"action": "type", "text": "hello\n"},
     ]
 
 
@@ -302,6 +302,36 @@ def test_desktop_canonical_calls_render_as_holo_calls() -> None:
         "click_desktop",
         "hotkey_desktop",
         "write_desktop",
+    ]
+    # Canonical type's trailing newline projects back onto press_enter.
+    assert rendered[2]["arguments"] == {
+        "content": "hello",
+        "overwrite": False,
+        "press_enter": True,
+    }
+
+
+def test_desktop_write_round_trips_press_enter_through_canonical_type() -> None:
+    space = Holo4DesktopActionSpace()
+    lowered = space.convert_tool_calls_from_agent(
+        [{"name": "write_desktop", "arguments": {"content": "hello", "press_enter": True}}]
+    )
+    assert _actions(lowered[0]) == [{"action": "type", "text": "hello\n"}]
+    assert space.convert_tool_calls_to_agent(lowered) == [
+        {
+            "name": "write_desktop",
+            "arguments": {"content": "hello", "overwrite": False, "press_enter": True},
+        }
+    ]
+    no_enter = space.convert_tool_calls_from_agent(
+        [{"name": "write_desktop", "arguments": {"content": "hello"}}]
+    )
+    assert _actions(no_enter[0]) == [{"action": "type", "text": "hello"}]
+    assert space.convert_tool_calls_to_agent(no_enter) == [
+        {
+            "name": "write_desktop",
+            "arguments": {"content": "hello", "overwrite": False, "press_enter": False},
+        }
     ]
 
 

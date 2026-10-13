@@ -276,7 +276,8 @@ class Holo4DesktopActionSpace(
         calls = []
         if overwrite:
             calls.append(LiteDesktopActionSet.key(keys=["ctrl", "a"]))
-        calls.append(LiteDesktopActionSet.type(text=content, press_enter=press_enter))
+        # Canonical ``type`` carries submit as a trailing newline in the text.
+        calls.append(LiteDesktopActionSet.type(text=f"{content}\n" if press_enter else content))
         return merge_adjacent_lite_action_batches(calls)[0]
 
     @staticmethod
@@ -300,7 +301,8 @@ class Holo4DesktopActionSpace(
         calls = [LiteDesktopActionSet.click(coordinate=[x, y])]
         if overwrite:
             calls.append(LiteDesktopActionSet.key(keys=["ctrl", "a"]))
-        calls.append(LiteDesktopActionSet.type(text=content, press_enter=press_enter))
+        # Canonical ``type`` carries submit as a trailing newline in the text.
+        calls.append(LiteDesktopActionSet.type(text=f"{content}\n" if press_enter else content))
         return merge_adjacent_lite_action_batches(calls)[0]
 
     @staticmethod
@@ -501,13 +503,18 @@ class Holo4DesktopActionSpace(
                         {"name": "hotkey_desktop", "arguments": {"keys": arguments["keys"]}}
                     )
                 elif name == "type":
+                    # Canonical ``type``'s trailing newline is Holo4's
+                    # ``press_enter``; project it back so replayed history
+                    # reads like the model's own calls.
+                    content = arguments["text"]
+                    press_enter = content.endswith("\n")
                     result.append(
                         {
                             "name": "write_desktop",
                             "arguments": {
-                                "content": arguments["text"],
+                                "content": content[:-1] if press_enter else content,
                                 "overwrite": False,
-                                "press_enter": bool(arguments.get("press_enter")),
+                                "press_enter": press_enter,
                             },
                         }
                     )
