@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "env": "browsergym.miniwob",
+  "commit_dir": "2026-09-21T08-10_a0c2997",
+  "run_id": "run_0_qwen38_think_xhigh",
+  "commit": {
+    "short_sha": "a0c2997",
+    "subject": "Allow MiniWoB Qwen3.8 thinking evals"
+  },
+  "artifact_root": ".exps/eval/browsergym.miniwob/2026-09-21T08-10_a0c2997/run_0_qwen38_think_xhigh",
+  "result_count": 1,
+  "status_counts": {
+    "complete": 1,
+    "partial": 0,
+    "empty": 0
+  },
+  "runtime": {
+    "env_server_url_present": false,
+    "env_server_token_present": false
+  },
+  "results": [
+    {
+      "model": "Qwen/Qwen3.8-27B",
+      "slug": "Qwen_Qwen3.8-27B__think_xhigh",
+      "base_slug": "Qwen_Qwen3.8-27B",
+      "config_id": "think_xhigh",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.6,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T08-10_a0c2997/run_0_qwen38_think_xhigh/Qwen_Qwen3.8-27B__think_xhigh/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T08-10_a0c2997/run_0_qwen38_think_xhigh/Qwen_Qwen3.8-27B__think_xhigh"
+    }
+  ]
+}

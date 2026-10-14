@@ -20,6 +20,8 @@ import shutil
 import tarfile
 import tempfile
 import uuid
+from collections import Counter
+from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from pathlib import Path
 
@@ -35,6 +37,7 @@ REVISION = _PIN.revision
 _PARQUET = _PIN.component_path("task_table")
 _TAR = _PIN.component_path("task_bundles")
 _HUB_TAR = _PIN.component_path("mock_hub")
+CATALOG_LOCK_PATH = _ENV_DIR / "data" / "catalog.lock.json"
 VALIDATION_EXCLUDES_PATH = _ENV_DIR / "data" / "validation_excludes.json"
 
 
@@ -51,6 +54,104 @@ def asset_snapshot() -> dict[str, str]:
 def asset_identity() -> str:
     """Stable stamp for every lock field that controls imported task bytes."""
     return json.dumps(asset_snapshot(), sort_keys=True, separators=(",", ":"))
+
+
+def load_catalog_lock() -> dict:
+    """Load the tracked count lock for imported CUA-Gym catalogs."""
+    return json.loads(CATALOG_LOCK_PATH.read_text())
+
+
+def row_count_summary(rows: Iterable[dict]) -> dict:
+    """Summarize registered / excluded rows using the canonical reason vocabulary."""
+    total = 0
+    reasons: Counter[str] = Counter()
+    for row in rows:
+        total += 1
+        reason = (
+            row.get("metadata", {})
+            .get("others", {})
+            .get("exclude_reason")
+        )
+        if reason:
+            if reason not in EXCLUDE_REASONS:
+                raise RuntimeError(
+                    f"unknown exclude_reason {reason!r} "
+                    f"(known: {sorted(EXCLUDE_REASONS)})"
+                )
+            reasons[reason] += 1
+    excluded = sum(reasons.values())
+    return {
+        "rows": total,
+        "excluded_rows": excluded,
+        "collectable_rows": total - excluded,
+        "exclude_reasons": dict(sorted(reasons.items())),
+    }
+
+
+def catalog_count_summary(path: Path) -> dict:
+    """Read a generated JSONL catalog and summarize its registered/excluded rows."""
+    with path.open() as stream:
+        return row_count_summary(
+            json.loads(line) for line in stream if line.strip()
+        )
+
+
+def catalog_count_lock(backends: Mapping[str, Path]) -> dict:
+    """Build the tracked count lock shape from generated backend catalogs."""
+    backend_counts = {
+        name: catalog_count_summary(path)
+        for name, path in sorted(backends.items())
+    }
+    reasons: Counter[str] = Counter()
+    rows = 0
+    excluded = 0
+    collectable = 0
+    for summary in backend_counts.values():
+        rows += summary["rows"]
+        excluded += summary["excluded_rows"]
+        collectable += summary["collectable_rows"]
+        reasons.update(summary["exclude_reasons"])
+    return {
+        "version": 1,
+        "generated": True,
+        "sources": {
+            "generator": "scripts/utils/import_tasks.py",
+            "asset_identity": asset_identity(),
+        },
+        "splits": {
+            "train": {
+                "rows": rows,
+                "excluded_rows": excluded,
+                "collectable_rows": collectable,
+                "exclude_reasons": dict(sorted(reasons.items())),
+                "backends": backend_counts,
+            }
+        },
+    }
+
+
+def write_catalog_count_lock(backends: Mapping[str, Path]) -> dict:
+    """Refresh ``data/catalog.lock.json`` after importing both backend catalogs."""
+    lock = catalog_count_lock(backends)
+    CATALOG_LOCK_PATH.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
+    return lock
+
+
+def maybe_write_catalog_count_lock(backends: Mapping[str, Path]) -> dict | None:
+    """Refresh the count lock when both backend catalogs are present."""
+    if not all(path.is_file() for path in backends.values()):
+        return None
+    return write_catalog_count_lock(backends)
+
+
+def validate_catalog_count_lock(backends: Mapping[str, Path]) -> None:
+    """Validate generated backend catalogs against the tracked count lock."""
+    actual = catalog_count_lock(backends)
+    expected = load_catalog_lock()
+    if actual != expected:
+        raise RuntimeError(
+            f"{CATALOG_LOCK_PATH}: imported catalog counts do not match lock"
+        )
 
 
 def task_cache_digest(root: Path) -> str:
@@ -109,9 +210,10 @@ def write_jsonl_atomic(path: Path, rows: list[dict]) -> None:
 #: from a genuine agent failure in an FN/TN analysis. The curated
 #: ``broken_reward:instruction_mismatch`` class covers a reward/spec mismatch that
 #: runs but silently penalizes an otherwise plausible completion. Measured on the
-#: pinned snapshot: 494 of 10910
-#: rows (4.53%) — 152 broken_reward:empty, 81 broken_mock:blank_render, 42
+#: pinned snapshot: 513 of 10910
+#: rows (4.70%) — 152 broken_reward:empty, 81 broken_mock:blank_render, 42
 #: broken_reward:no_sentinel (26 desktop + 16 web), 26 broken_reward:syntax_error,
+#: 19 broken_reward:missing_golden,
 #: 1 broken_setup:unsatisfiable_gate, 8 broken_setup:external_dependency,
 #: 1 broken_setup:wrong_backend, 2 broken_setup:missing_seed_file,
 #: 1 broken_setup:syntax_error, 1 broken_setup:no_task_window, 178
@@ -135,6 +237,11 @@ EXCLUDE_REASONS: dict[str, str] = {
     "broken_reward:instruction_mismatch": (
         "upstream reward.py and task.json disagree on a material success "
         "criterion, making the reward unsafe as a default training signal"
+    ),
+    "broken_reward:missing_golden": (
+        "upstream reward.py compares against a `*_golden.*` artifact that only its "
+        "authoring run had; setup builds the same file WITHOUT the suffix, so the "
+        "comparison target never exists and every trajectory scores a silent zero"
     ),
     "broken_reward:nonzero_baseline": (
         "a live reset + immediate terminate scores above zero before the agent acts"
@@ -245,7 +352,44 @@ def reward_defect(reward_path: Path) -> str | None:
         # CuaGymTaskError(kind="no_reward") on every trajectory. These rows compile
         # fine, so the two checks above miss them.
         return "broken_reward:no_sentinel"
+    if _reads_an_unbuilt_golden(source, reward_path.parent):
+        return "broken_reward:missing_golden"
     return None
+
+
+#: ``/home/user/<name>_golden.<ext>`` — the upstream generator renamed the artifact for
+#: its solution run and the reward script kept that path.
+_GOLDEN_PATH_RE = re.compile(r"""['"](/home/user/[^'"\n]{2,200}_golden\.[A-Za-z0-9]{2,5})['"]""")
+
+
+def _reads_an_unbuilt_golden(source: str, bundle: Path) -> bool:
+    """True when the reward compares against a ``*_golden.*`` nothing ever creates.
+
+    Setup writes ``X.ext`` and the reward opens ``X_golden.ext``, so
+    ``os.path.exists`` is False on every trajectory and the script returns 0.0 —
+    SILENTLY, which is what makes it worse than a crash: the row looks like an agent
+    that earned nothing, and a perfect trajectory is published as a confident zero.
+
+    Structural, not an id list, so a future asset revision carrying more of them is
+    annotated without anyone curating.
+    """
+    setups = sorted(bundle.glob("initial_setup.*"))
+    if not setups:
+        return False
+    setup = setups[0].read_text(errors="replace")
+    for golden in set(_GOLDEN_PATH_RE.findall(source)):
+        if golden in setup:
+            continue  # setup really does build it
+        name = golden.rsplit("/", 1)[-1]
+        pattern = (
+            r"(save|write|copy|move|to_excel|to_csv)\([^)]{0,120}"
+            + re.escape(name)
+        )
+        if re.search(pattern, source):
+            continue  # the reward builds its own reference
+        if golden.replace("_golden.", ".") in setup:
+            return True  # setup builds the same artifact WITHOUT the suffix
+    return False
 
 
 def catalog_task_ids(

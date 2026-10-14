@@ -26,9 +26,11 @@
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/osworld/run.sh Qwen/Qwen3-VL-8B-Instruct
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/osworld/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/osworld/run.sh Qwen/Qwen3.5-27B
+#   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/osworld/run.sh Qwen/Qwen3.5-27B
 #
-# tp_size is inferred from the GPU count in CUDA_VISIBLE_DEVICES.
+# tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
+# GPU count; serve_sglang.py derives dp_size = visible // tp_size, so the GPUs you expose
+# set the REPLICA count. This script never passes --engine-kwargs, so tp is unchangeable here.
 # Env-server prereq (enforced by devs/exps/eval/utils/runtime_mode.sh, sourced
 # below): export CUA_LITE_ENV_SERVER_URL + CUA_LITE_ENV_SERVER_TOKEN before
 # invoking; missing vars fail fast. Set EVAL_ALLOW_DIRECT=1 for an explicit
@@ -114,10 +116,13 @@ fi
 case "$MODEL" in
   Qwen/Qwen3-VL-*-Instruct)        CFG=scripts/configs/qwen3_vl/default/osworld.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/osworld.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/osworld.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/osworld.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/osworld.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/osworld.yaml ;;
   meituan/EvoCUA-*)                CFG=scripts/configs/evocua/default/osworld.yaml ;;
   gpt-*)                           CFG=scripts/configs/gpt/default/osworld.yaml ;;
+  claude-*)                        CFG=scripts/configs/claude/default/osworld.yaml ;;
   *) echo "unknown model: $MODEL — add a case in $0" >&2; exit 1 ;;
 esac
 
@@ -136,5 +141,6 @@ HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   `# false-positive give-up calls on tasks that DO have a target.` \
   --filter "lambda m: not m.others.get('exclude_reason')" \
   --env-kwargs '{"step_timeout": 180}' \
+  --concurrency "${EVAL_CONCURRENCY:-16}" \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"

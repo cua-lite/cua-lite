@@ -3,7 +3,7 @@
 #
 # Qwen3.8 has no upstream AndroidWorld agent; we reuse the desktop
 # rolling-window + image-fold protocol (Qwen3_5HistoryProtocol) with
-# history_n=50 / image_max=4 / fold_size=4 — consistent with
+# history_n=100 / image_max=4 / fold_size=4 — consistent with
 # lite.osworld / osworld (the Qwen3_5HistoryProtocol defaults).
 #
 # Related configs (sync env_kwargs when changing):

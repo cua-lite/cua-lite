@@ -117,6 +117,7 @@ import shutil
 import subprocess
 import time
 import uuid
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -181,6 +182,10 @@ from lite.utils.registry import split_key
 # task-specific soft state in both direct and server cold-spawn paths.
 
 logger = logging.getLogger(__name__)
+
+_LOOP_STALL_INTERVAL_S = 1.0
+_LOOP_STALL_WARN_AFTER_S = 5.0
+_LOOP_STALL_WINDOW_S = 60.0
 
 
 # =============================================================================
@@ -441,6 +446,12 @@ class State:
         # ``cua_lite_conflict_503_total``. A high value = heavy same-stack
         # serialization pressure (raise --max-attempts / use N stacks).
         self.conflict_503_total: int = 0
+        # Event-loop stall telemetry for /host_status. Lifetime max helps
+        # postmortems; the recent window decays after one bad boot so operators
+        # can tell whether the server is still unhealthy.
+        self.loop_stall_max_seconds: float = 0.0
+        self.loop_stall_max_at: float | None = None
+        self.loop_stalls: deque[tuple[float, float]] = deque()
 
     @classmethod
     def for_env_server(
@@ -475,6 +486,40 @@ class State:
                 env_id, asyncio.Semaphore(self.reset_concurrency),
             )
         return sema
+
+    def record_loop_stall(
+        self,
+        stall_s: float,
+        *,
+        observed_at: float | None = None,
+        window_s: float = _LOOP_STALL_WINDOW_S,
+    ) -> None:
+        observed_at = time.time() if observed_at is None else observed_at
+        if stall_s > self.loop_stall_max_seconds:
+            self.loop_stall_max_seconds = stall_s
+            self.loop_stall_max_at = observed_at
+        self.loop_stalls.append((observed_at, stall_s))
+        self._prune_loop_stalls(now=observed_at, window_s=window_s)
+
+    def _prune_loop_stalls(self, *, now: float, window_s: float) -> None:
+        cutoff = now - window_s
+        while self.loop_stalls and self.loop_stalls[0][0] < cutoff:
+            self.loop_stalls.popleft()
+
+    def loop_stall_snapshot(
+        self,
+        *,
+        now: float | None = None,
+        window_s: float = _LOOP_STALL_WINDOW_S,
+    ) -> dict[str, float | None]:
+        now = time.time() if now is None else now
+        self._prune_loop_stalls(now=now, window_s=window_s)
+        recent_max = max((stall for _, stall in self.loop_stalls), default=0.0)
+        return {
+            "stall_max_seconds": self.loop_stall_max_seconds,
+            "stall_max_at": self.loop_stall_max_at,
+            "stall_max_60s": recent_max,
+        }
 
     @staticmethod
     def _observe_duration(
@@ -1479,6 +1524,42 @@ async def _reap_idle(state: State) -> None:
 
 
 # =============================================================================
+# Event-loop stall watchdog (background task)
+# =============================================================================
+
+async def _watch_loop_stalls(
+    state: State,
+    *,
+    interval_s: float = _LOOP_STALL_INTERVAL_S,
+    warn_after_s: float = _LOOP_STALL_WARN_AFTER_S,
+    window_s: float = _LOOP_STALL_WINDOW_S,
+) -> None:
+    """Record event-loop stalls so /host_status can show loop health."""
+    loop = asyncio.get_running_loop()
+    expected = loop.time() + interval_s
+    while True:
+        try:
+            await asyncio.sleep(interval_s)
+            now = loop.time()
+            stall_s = max(0.0, now - expected)
+            observed_at = time.time()
+            if stall_s >= warn_after_s:
+                state.record_loop_stall(
+                    stall_s,
+                    observed_at=observed_at,
+                    window_s=window_s,
+                )
+                logger.warning("event loop stalled for %.3fs", stall_s)
+            else:
+                state._prune_loop_stalls(now=observed_at, window_s=window_s)
+            expected = now + interval_s
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("loop-stall watchdog error (continuing)")
+
+
+# =============================================================================
 # Background warm-singleton (--warm-singleton)
 # =============================================================================
 # Non-blocking pre-warm: the server listens immediately, and this background task
@@ -1722,6 +1803,9 @@ def make_app(
         drift_task = asyncio.create_task(
             _reap_drift_dispatcher(state, state.scope), name="drift-reaper",
         )
+        loop_watch_task = asyncio.create_task(
+            _watch_loop_stalls(state), name="loop-stall-watchdog",
+        )
         # --warm-singleton: background pre-warm (non-blocking). Boots served SINGLETON
         # backends so ``available`` flips true on its own → a launcher can wait-for-hot
         # before rolling out (the only smooth path for WA gitlab's ~5-15 min boot,
@@ -1734,7 +1818,7 @@ def make_app(
         try:
             yield
         finally:
-            for t in (idle_task, drift_task, warm_task):
+            for t in (idle_task, drift_task, loop_watch_task, warm_task):
                 if t is None:
                     continue
                 t.cancel()
@@ -2582,6 +2666,7 @@ def make_app(
                 "frame_magic": FRAME_MAGIC,
                 "frame_version": FRAME_VERSION,
             },
+            "loop": state.loop_stall_snapshot(),
             "cpu": {
                 "count_logical": psutil.cpu_count(logical=True),
                 "count_physical": psutil.cpu_count(logical=False),

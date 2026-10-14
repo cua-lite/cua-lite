@@ -1,7 +1,7 @@
 # Qwen3.8 text+bid rollout on cua-lite browsergym.webarena.
 #
 # Sampling: greedy decode (temperature 0.0), no native thinking channel
-# (eval-matrix default; the factory pins enable_thinking=False for Qwen3.8).
+# (eval-matrix default; the Qwen3.8 adapters default enable_thinking=False).
 # max_new_tokens unset → the 2048 default (lite/infer/serving.py), sufficient
 # for non-thinking bid/answer turns.
 # Sister of `scripts/configs/qwen3_vl/default/browsergym.webarena/text_only.yaml`.
@@ -64,6 +64,7 @@ agent_kwargs:
 
 env_id: "browsergym.webarena"
 env_kwargs:
+  include_page_context_text: true
   # WebArena p_cot homepage hint: append homepage URL, site list, and
   # /password.html creds to the goal. WA-only; VWA does not accept this knob.
   with_homepage_hint: true

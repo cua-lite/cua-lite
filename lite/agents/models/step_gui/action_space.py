@@ -41,8 +41,12 @@ from lite.agents.core.action_space.utils.geometry import (
     compact_number,
     required_coord,
 )
+from lite.agents.core.action_space.utils.unknown_wrapper_action import unknown_wrapper_action_batch
 from lite.agents.core.action_space.utils.wrapper_enum import filter_wrapper_action_enum
-from lite.core.tools.action_space import merge_adjacent_lite_action_batches
+from lite.core.tools.action_space import (
+    LITE_MOBILE_ACTION_BATCH_TOOL_NAME,
+    merge_adjacent_lite_action_batches,
+)
 from lite.core.tools.calls import (
     make_tool_call,
     tool_call_arguments,
@@ -469,7 +473,7 @@ class STEPGUIMobileActionSpace(BaseActionSpace, key="step_gui@mobile"):
             )]
 
         logger.warning("Unknown STEP-GUI action: %s(%s)", action, args)
-        return []
+        return [unknown_wrapper_action_batch(LITE_MOBILE_ACTION_BATCH_TOOL_NAME, args)]
 
 
 # Ensure registry import side-effects

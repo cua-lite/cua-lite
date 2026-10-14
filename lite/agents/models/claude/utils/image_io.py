@@ -1,9 +1,8 @@
 """Claude image sizing helpers used before provider API calls.
 
 Anthropic's vision encoder works in 28px patches with model-specific long-edge
-and patch-count limits. The computer-use coordinate frame is the screenshot
-size declared in ``display_width_px`` / ``display_height_px``, so CUA-Lite
-resizes before the request and reports those sent dimensions in the tool schema.
+and patch-count limits. CUA-Lite resizes before the request so coordinates use
+the sent image size; legacy computer tools also declare that size explicitly.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ class _ClaudeImageLimits:
 
 
 CLAUDE_IMAGE_LIMITS = {
-    "opus_4_high_res": _ClaudeImageLimits(max_edge_px=2576, max_tokens=4784),
+    "high_res": _ClaudeImageLimits(max_edge_px=2576, max_tokens=4784),
     "default": _ClaudeImageLimits(max_edge_px=1568, max_tokens=1568),
 }
 
@@ -41,8 +40,8 @@ MANY_IMAGE_MAX_EDGE_PX = 2000
 
 
 def get_claude_image_limits(model_id: str) -> _ClaudeImageLimits:
-    if re.search(r"claude-opus-4-(7|8)", model_id, re.IGNORECASE):
-        return CLAUDE_IMAGE_LIMITS["opus_4_high_res"]
+    if re.search(r"(?:^|/)claude-(?:opus-4-(?:7|8)|(?:opus|sonnet)-5)$", model_id, re.IGNORECASE):
+        return CLAUDE_IMAGE_LIMITS["high_res"]
     return CLAUDE_IMAGE_LIMITS["default"]
 
 
@@ -126,25 +125,18 @@ def downscale_to_target(png: bytes, target: tuple[int, int]) -> tuple[str, int, 
 
     Takes raw encoded screenshot bytes (``obs.image``) and decodes once. Returns
     ``(b64, w, h)`` because the output feeds straight into the Claude API
-    data-URI payload, which every call site labels ``image/png``.
+    data-URI payload, which every call site labels ``image/webp``.
 
-    ``obs.image`` is not guaranteed PNG — mobilegym emits JPEG — so the
-    already-at-target path re-encodes anything else rather than passing the
-    source bytes through under a PNG label. Anthropic validates the declared
-    media type against the magic bytes and rejects the mismatch with a 400.
+    Lossless WebP preserves the resized pixels while reducing the accumulated
+    image history's contribution to the Messages API's 32 MB request limit.
     """
     img = Image.open(io.BytesIO(png))
     w, h = img.size
-    if (w, h) == target:
-        if img.format == "PNG":
-            return base64.b64encode(png).decode("utf-8"), w, h
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return base64.b64encode(buf.getvalue()).decode("utf-8"), w, h
-    img = img.resize(target, Image.Resampling.LANCZOS)
+    if (w, h) != target:
+        img = img.resize(target, Image.Resampling.LANCZOS)
+        logger.info("Claude resize: %dx%d -> %dx%d", w, h, target[0], target[1])
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    logger.info("Claude resize: %dx%d -> %dx%d", w, h, target[0], target[1])
+    img.save(buf, format="WEBP", lossless=True, exact=True)
     return base64.b64encode(buf.getvalue()).decode("utf-8"), target[0], target[1]
 
 

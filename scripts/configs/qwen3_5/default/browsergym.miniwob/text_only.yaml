@@ -37,6 +37,7 @@ agent_kwargs:
 
 env_id: "browsergym.miniwob"
 env_kwargs:
+  include_page_context_text: true
   max_steps: 10
   # Mark SVG children too; bid-only MiniWoB tasks like ascending-numbers need
   # individual <text> elements to receive bids.

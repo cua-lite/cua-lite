@@ -24,6 +24,8 @@ ZERO_COLLECTION_EDGE_CASES = {
     "pytest.importorskip for Slime-only rollout integration coverage",
     Path("tests/train/rollout/core/test_env_failure.py"): "module-level "
     "pytest.importorskip for Slime-only rollout failure coverage",
+    Path("tests/train/rollout/core/test_eval_rollout_parse_failure.py"): "module-level "
+    "pytest.importorskip for Slime-only eval keep/retry coverage",
     Path("tests/train/rollout/core/test_lazy_dp_split.py"): "module-level "
     "pytest.importorskip for Slime-only lazy-DP coverage",
     Path("tests/train/rollout/core/test_lazy_multimodal_format.py"): "module-level "
@@ -56,6 +58,30 @@ ZERO_COLLECTION_EDGE_CASES = {
     "for Slime-only dual-clip coverage",
     Path("tests/train/export/test_qwen3_5_mtp_alias.py"): "module-level pytest.importorskip "
     "for training-image megatron-bridge coverage",
+    Path("tests/agents/extensions/browsergym/test_browsergym_protocol.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_actions.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_env.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_health.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_helpers.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_isolation.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_own_stack.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_playwright.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_registration.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_browsergym_tool_schema.py"): "module-level "
+    "pytest.importorskip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/browsergym/test_port_autopick_exhaustion.py"): "module-level "
+    "allow_module_level skip for optional browsergym dependency coverage",
+    Path("tests/gym/envs/captcha/test_captcha.py"): "module-level "
+    "allow_module_level skip for optional captcha dependency coverage",
 }
 
 ZERO_COLLECTION_EDGE_MARKERS = ("pytest.importorskip(", "allow_module_level=True")
@@ -196,6 +222,13 @@ def _pytest_collected_test_counts(
         "-qq",
         "-p",
         "no:cacheprovider",
+        # Collection is what is being measured, so it must be serial: xdist
+        # distributes collection across workers and reports it in a shape this
+        # parser cannot read, which would score every file as zero. `-n 0`
+        # rather than `-p no:xdist` -- unloading the plugin would make the
+        # `addopts` default an unrecognized argument.
+        "-n",
+        "0",
     ]
     if marker_expression is not None:
         command.extend(["-m", marker_expression])

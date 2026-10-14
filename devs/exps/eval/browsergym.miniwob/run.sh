@@ -14,6 +14,9 @@
 # $EVAL_MODE selects the observation/action mode (config filename), default "default"
 # (screenshot + coord). Set to "text_only" for the text+AXTree bid-mode config.
 #
+# $EVAL_REASONING_EFFORT optionally overrides GPT api_kwargs.reasoning_effort
+# (none|minimal|low|medium|high|xhigh|max). It is valid only for gpt-* models.
+#
 # MiniWoB is stateless (125 tasks, local HTTP server — no shared mutable backend),
 # so this is a single fully-parallel pass, unlike the WA/VWA read/write split.
 # Reset timeouts appear at 32+ concurrent envs (see the browsergym README), so
@@ -32,18 +35,26 @@
 #   # or open a fresh campaign at this commit:
 #   export EVAL_RUN_ID="run_1"        # bump past any existing run_0 / run_1 / ...
 #   CUDA_VISIBLE_DEVICES=<gpus> ./devs/exps/eval/browsergym.miniwob/run.sh <model-id>
+#   # thinking-on variant (default screenshot+coord mode unless EVAL_MODE is set):
+#   EVAL_ENABLE_THINKING=true ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Thinking
+#   EVAL_ENABLE_THINKING=true ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3.8-27B
+#   # GPT reasoning override:
+#   EVAL_REASONING_EFFORT=xhigh ./devs/exps/eval/browsergym.miniwob/run.sh gpt-5.5
 #   # text+bid mode:
 #   EVAL_MODE=text_only ./devs/exps/eval/browsergym.miniwob/run.sh <model-id>
 #
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Instruct
-#   CUDA_VISIBLE_DEVICES=0       EVAL_MODE=text_only EVAL_RUN_ID=run_0_textonly EVAL_ENABLE_THINKING=false ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Thinking
+#   CUDA_VISIBLE_DEVICES=0       EVAL_ENABLE_THINKING=true ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-8B-Thinking
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3.5-27B
+#   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/browsergym.miniwob/run.sh Qwen/Qwen3.5-27B
 #   ./devs/exps/eval/browsergym.miniwob/run.sh gpt-5.5              # API model, no GPU
 #   ./devs/exps/eval/browsergym.miniwob/run.sh claude-opus-4-6      # API model, no GPU
 #
-# tp_size is inferred from the GPU count in CUDA_VISIBLE_DEVICES (local HF models only).
+# tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
+# GPU count; serve_sglang.py derives dp_size = visible // tp_size (local HF models only),
+# so the GPUs you expose set the REPLICA count. This script never passes --engine-kwargs,
+# so tp is unchangeable here.
 
 set -euo pipefail
 
@@ -65,23 +76,33 @@ case "${EVAL_ENABLE_THINKING:-false}" in
   0|false|FALSE|no|NO|off|OFF|"") ENABLE_THINKING=0 ;;
   *) echo "[run.sh] ERROR: EVAL_ENABLE_THINKING must be true/false, got: ${EVAL_ENABLE_THINKING}" >&2; exit 1 ;;
 esac
-if [[ "$ENABLE_THINKING" -eq 1 && "$MODE" != "text_only" ]]; then
-  echo "[run.sh] ERROR: EVAL_ENABLE_THINKING=true is only supported with EVAL_MODE=text_only" >&2
-  exit 1
-fi
 SUPPORTS_ENABLE_THINKING=0
 case "$MODEL" in
-  Qwen/Qwen3-VL-*-Thinking|Qwen/Qwen3.5-*) SUPPORTS_ENABLE_THINKING=1 ;;
+  Qwen/Qwen3-VL-*-Thinking|Qwen/Qwen3.5-*|Qwen/Qwen3.8-*) SUPPORTS_ENABLE_THINKING=1 ;;
 esac
 if [[ "$ENABLE_THINKING" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -ne 1 ]]; then
-  echo "[run.sh] ERROR: EVAL_ENABLE_THINKING=true is only supported for Qwen3-VL Thinking/Qwen3.5 local models, got: $MODEL" >&2
+  echo "[run.sh] ERROR: EVAL_ENABLE_THINKING=true is only supported for Qwen3-VL Thinking/Qwen3.5/Qwen3.8 local models, got: $MODEL" >&2
   exit 1
+fi
+REASONING_EFFORT="${EVAL_REASONING_EFFORT:-}"
+if [ -n "$REASONING_EFFORT" ]; then
+  case "$REASONING_EFFORT" in
+    none|minimal|low|medium|high|xhigh|max) ;;
+    *) echo "[run.sh] ERROR: EVAL_REASONING_EFFORT must be one of none|minimal|low|medium|high|xhigh|max, got: $REASONING_EFFORT" >&2; exit 1 ;;
+  esac
+  case "$MODEL" in
+    gpt-*) ;;
+    *) echo "[run.sh] ERROR: EVAL_REASONING_EFFORT is only supported for gpt-* models, got: $MODEL" >&2; exit 1 ;;
+  esac
 fi
 BASE_SLUG="${MODEL//\//_}"
 CONFIG_ID="${EVAL_CONFIG_ID:-}"
-if [[ -z "$CONFIG_ID" && "$MODE" == "text_only" && "$ENABLE_THINKING_ENV_SET" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -eq 1 ]]; then
+if [[ -z "$CONFIG_ID" && "$ENABLE_THINKING_ENV_SET" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -eq 1 ]]; then
   if [ "$ENABLE_THINKING" -eq 1 ]; then
-    CONFIG_ID="think_on"
+    case "$MODEL" in
+      Qwen/Qwen3.8-*) CONFIG_ID="think_xhigh" ;;
+      *) CONFIG_ID="think_on" ;;
+    esac
   else
     CONFIG_ID="think_off"
   fi
@@ -159,12 +180,15 @@ if [ ! -d "$COMMIT_DIR/$RUN_ID" ] && [ -d "$COMMIT_DIR" ]; then
   fi
 fi
 
-# model-family → rollout config dir; $MODE picks default.yaml vs text_only.yaml.
-# GPT and Claude currently have only default.yaml committed for this env,
-# so $MODE applies to the Qwen arms only.
+# model-family -> rollout config dir; $MODE picks default.yaml vs text_only.yaml
+# for Qwen-family arms that publish both. Other families use default.yaml only.
 case "$MODEL" in
   Qwen/Qwen3-VL-*-Instruct|Qwen/Qwen3-VL-*-Thinking) CFG=scripts/configs/qwen3_vl/default/browsergym.miniwob/${MODE}.yaml ;;
   Qwen/Qwen3.5-*)                                      CFG=scripts/configs/qwen3_5/default/browsergym.miniwob/${MODE}.yaml ;;
+  Qwen/Qwen3.8-*)                                      CFG=scripts/configs/qwen3_8/default/browsergym.miniwob/${MODE}.yaml ;;
+  ByteDance-Seed/UI-TARS-1.5-7B)                       CFG=scripts/configs/ui_tars_15_v1/default/browsergym.miniwob/default.yaml ;;
+  meituan/EvoCUA-*)                                    CFG=scripts/configs/evocua/default/browsergym.miniwob/default.yaml ;;
+  inclusionAI/UI-Venus-2-*)                            CFG=scripts/configs/ui_venus_2/default/browsergym.miniwob/default.yaml ;;
   gpt-*)                                               CFG=scripts/configs/gpt/default/browsergym.miniwob/default.yaml ;;
   claude-*)                                            CFG=scripts/configs/claude/default/browsergym.miniwob/default.yaml ;;
   *) echo "unknown model: $MODEL — add a case in $0" >&2; exit 1 ;;
@@ -178,6 +202,11 @@ if [[ "$ENABLE_THINKING" -eq 1 && "$SUPPORTS_ENABLE_THINKING" -eq 1 ]]; then
     --agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"max_new_tokens": 4096}}'
   )
 fi
+if [ -n "$REASONING_EFFORT" ]; then
+  EXTRA_ROLLOUT_ARGS+=(
+    --api-kwargs "{\"reasoning_effort\":\"$REASONING_EFFORT\"}"
+  )
+fi
 
 mkdir -p "$LOG_ROOT"
 echo "[run.sh] $MODEL"
@@ -188,6 +217,9 @@ fi
 echo "         log_root=$LOG_ROOT"
 echo "         config=$CFG"
 echo "         enable_thinking=$ENABLE_THINKING"
+if [ -n "$REASONING_EFFORT" ]; then
+  echo "         reasoning_effort=$REASONING_EFFORT"
+fi
 if [ "${#EXTRA_ROLLOUT_ARGS[@]}" -gt 0 ]; then
   echo "         extra_args=${EXTRA_ROLLOUT_ARGS[*]}"
 fi

@@ -372,8 +372,9 @@ async def dispatch_action(
     # Types forwarded to Flask server endpoints
     # ===================================================================
 
-    # --- execute/command → POST /execute ---
-    # OSWorld default: shell=False. Parameters must explicitly set shell=True.
+    # --- execute/command via exec-stdio run_command ---
+    # The legacy OSWorld ``shell`` flag is not a routing boundary here: strings
+    # and argv lists are both normalized to the command line sent to run_command.
     if t in ("execute", "command"):
         cmd = _replace_templates(p.get("command", ""))
         if isinstance(cmd, str):

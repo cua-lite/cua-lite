@@ -6,6 +6,7 @@ Mocks the docker subprocess helpers so no real docker is needed. Run:
 
 from __future__ import annotations
 
+import subprocess
 import time
 
 import pytest
@@ -240,3 +241,62 @@ def test_env_facing_surface_is_the_two_services_classes() -> None:
         "whole-module import of the reaper hides which names are reached "
         f"(and from a name grep): {sorted(set(aliases))}"
     )
+
+
+# ---------------------------------------------------------------------------
+# _try_orphan_rm: what the docker exit code means
+#
+# The tests above stub _try_orphan_rm out, so nothing above reaches the rm
+# itself. `rc != 0` is the daemon REFUSING the removal -- the container is still
+# running -- and it used to return True, which counted it as reaped.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def _clean_quarantine():
+    cr._RM_QUARANTINE.clear()
+    yield cr._RM_QUARANTINE
+    cr._RM_QUARANTINE.clear()
+
+
+def _fake_rm(monkeypatch, returncode: int, stderr: str = ""):
+    def run(argv, **kw):
+        return subprocess.CompletedProcess(argv, returncode, stdout="", stderr=stderr)
+    monkeypatch.setattr(cr.subprocess, "run", run)
+
+
+def test_a_refused_rm_is_not_reaped_and_gets_quarantined(monkeypatch, _clean_quarantine):
+    _fake_rm(monkeypatch, 1, "device or resource busy")
+    assert cr._try_orphan_rm("c0", 10.0) is False, "rc != 0 means the container is still there"
+    next_retry, tier = _clean_quarantine["c0"]
+    assert tier == 0 and next_retry > time.time(), "first failure enters the 60s tier"
+
+
+def test_a_refused_rm_escalates_the_same_tiers_as_a_timeout(monkeypatch, _clean_quarantine):
+    """Both failures share one backoff ladder: the name is unremovable either way."""
+    _fake_rm(monkeypatch, 1)
+    for expected_tier in range(len(cr._RM_QUARANTINE_BACKOFF_S)):
+        cr._RM_QUARANTINE["c0"] = (0.0, expected_tier - 1)  # due now, at the prior tier
+        assert cr._try_orphan_rm("c0", 10.0) is False
+        assert _clean_quarantine["c0"][1] == expected_tier
+    cr._RM_QUARANTINE["c0"] = (0.0, len(cr._RM_QUARANTINE_BACKOFF_S) - 1)
+    cr._try_orphan_rm("c0", 10.0)
+    assert _clean_quarantine["c0"][1] == len(cr._RM_QUARANTINE_BACKOFF_S) - 1, "top tier saturates"
+
+
+def test_rc_zero_is_gone_and_clears_a_stale_quarantine(monkeypatch, _clean_quarantine):
+    """rc 0 is BOTH "removed" and "no such container" -- either way the name is gone."""
+    _fake_rm(monkeypatch, 0)
+    _clean_quarantine["c0"] = (0.0, 1)   # due now, previously failed
+    assert cr._try_orphan_rm("c0", 10.0) is True
+    assert "c0" not in _clean_quarantine
+
+
+def test_reap_does_not_count_containers_the_daemon_refused(monkeypatch, _clean_quarantine):
+    """End-to-end through the real _try_orphan_rm: orphans=N must not overstate."""
+    now = time.time()
+    scan = _DockerPsScan(all=tuple((f"c{i}", now) for i in range(3)))
+    monkeypatch.setattr(cr, "_docker_ps_with_time", lambda *a, **k: scan)
+    monkeypatch.setattr(cr.time, "sleep", lambda *_a: None)
+    _fake_rm(monkeypatch, 1, "device or resource busy")
+    assert ContainerReaper().reap("e", SCOPE, set(), boot=True) == 0
+    assert set(_clean_quarantine) == {"c0", "c1", "c2"}

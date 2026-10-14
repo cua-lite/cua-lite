@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "env": "browsergym.miniwob",
+  "commit_dir": "2026-09-21T19-18_1e14e3a",
+  "run_id": "run_0_gpt55_reasoning_xhigh",
+  "commit": {
+    "short_sha": "1e14e3a",
+    "subject": "Allow MiniWoB GPT reasoning effort override"
+  },
+  "artifact_root": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_0_gpt55_reasoning_xhigh",
+  "result_count": 1,
+  "status_counts": {
+    "complete": 1,
+    "partial": 0,
+    "empty": 0
+  },
+  "runtime": {
+    "env_server_url_present": false,
+    "env_server_token_present": false
+  },
+  "results": [
+    {
+      "model": "gpt-5.5",
+      "slug": "gpt-5.5__reasoning_xhigh",
+      "base_slug": "gpt-5.5",
+      "config_id": "reasoning_xhigh",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.848,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_0_gpt55_reasoning_xhigh/gpt-5.5__reasoning_xhigh/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T19-18_1e14e3a/run_0_gpt55_reasoning_xhigh/gpt-5.5__reasoning_xhigh"
+    }
+  ]
+}

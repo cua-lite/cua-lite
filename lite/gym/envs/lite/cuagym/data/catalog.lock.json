@@ -1,0 +1,60 @@
+{
+  "generated": true,
+  "sources": {
+    "asset_identity": "{\"mock_hub\":\"artifacts/cua_gym_hub.tar.zst\",\"repo\":\"cua-lite/lite.cuagym-assets\",\"revision\":\"025b0ab5f89c8f492850dd8536398bf60cb14b45\",\"task_bundles\":\"artifacts/cua_gym_tasks_v1.tar.zst\",\"task_table\":\"data/tasks.parquet\"}",
+    "generator": "scripts/utils/import_tasks.py"
+  },
+  "splits": {
+    "train": {
+      "backends": {
+        "desktop": {
+          "collectable_rows": 8990,
+          "exclude_reasons": {
+            "broken_reward:empty": 152,
+            "broken_reward:instruction_mismatch": 178,
+            "broken_reward:missing_golden": 19,
+            "broken_reward:no_sentinel": 26,
+            "broken_reward:syntax_error": 26,
+            "broken_setup:external_dependency": 8,
+            "broken_setup:missing_seed_file": 2,
+            "broken_setup:no_task_window": 1,
+            "broken_setup:syntax_error": 1,
+            "broken_setup:unsatisfiable_gate": 1,
+            "broken_task:empty_instruction": 1
+          },
+          "excluded_rows": 415,
+          "rows": 9405
+        },
+        "web": {
+          "collectable_rows": 1407,
+          "exclude_reasons": {
+            "broken_mock:blank_render": 81,
+            "broken_reward:no_sentinel": 16,
+            "broken_setup:wrong_backend": 1
+          },
+          "excluded_rows": 98,
+          "rows": 1505
+        }
+      },
+      "collectable_rows": 10397,
+      "exclude_reasons": {
+        "broken_mock:blank_render": 81,
+        "broken_reward:empty": 152,
+        "broken_reward:instruction_mismatch": 178,
+        "broken_reward:missing_golden": 19,
+        "broken_reward:no_sentinel": 42,
+        "broken_reward:syntax_error": 26,
+        "broken_setup:external_dependency": 8,
+        "broken_setup:missing_seed_file": 2,
+        "broken_setup:no_task_window": 1,
+        "broken_setup:syntax_error": 1,
+        "broken_setup:unsatisfiable_gate": 1,
+        "broken_setup:wrong_backend": 1,
+        "broken_task:empty_instruction": 1
+      },
+      "excluded_rows": 513,
+      "rows": 10910
+    }
+  },
+  "version": 1
+}

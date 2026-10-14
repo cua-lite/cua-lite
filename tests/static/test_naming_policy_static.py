@@ -87,6 +87,7 @@ KEEP_TEXT_WITH_IMAGES_ALLOWLIST = {
     "tests/agents/extensions/webharbor/webvoyager/test_som_splice.py",
     "tests/agents/models/qwen3_vl/test_qwen3_vl_observation_text.py",
     "tests/agents/models/qwen3_vl/test_qwen3_vl_role_tool_grouping.py",
+    "tests/scripts/test_rollout_configs.py",
 }
 
 

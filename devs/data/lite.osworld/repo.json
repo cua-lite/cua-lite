@@ -1,5 +1,5 @@
 {
-  "description": "Lite.OSWorld GPT-5.5 grounded teacher trajectories collected on OSWorld tasks and evaluators via the cua-lite `lite.osworld` runtime; ordinary quality gates tagged in metadata.others.exclude_reason, publish-invalid /opt/env leaks and OOB coordinates hard-dropped (filter with not exclude_reason and episode_return>0.5)",
+  "description": "Lite.OSWorld grounded teacher trajectories collected on OSWorld tasks and evaluators via the cua-lite `lite.osworld` runtime, from two teachers published as separate configs (`*.gpt5_5` from gpt-5.5, `*.qwen3_8_27b` from Qwen/Qwen3.8-27B) and annotated by the same quality pass; ordinary quality gates tagged in metadata.others.exclude_reason, publish-invalid /opt/env leaks and OOB coordinates hard-dropped (filter with not exclude_reason and episode_return>0.5)",
   "original_urls": [
     "https://github.com/xlang-ai/OSWorld",
     "https://arxiv.org/abs/2404.07972"

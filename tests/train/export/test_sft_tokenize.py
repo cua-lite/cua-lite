@@ -192,13 +192,52 @@ def test_thinking_match_ok_then_response_roundtrips(think_processor):
     assert think_processor.tokenizer.decode(rl.response_tokens) == rl.response
 
 
-def test_thinking_mismatch_fires_assert(think_processor):
-    """The safety-critical guard: reasoning data tokenized with enable_thinking=False
-    (empty <think></think> prefix) is NOT a prefix of the reasoning-bearing target →
-    must fail loud, not silently mis-supervise."""
-    with pytest.raises(ValueError, match="enable_thinking"):
-        agent_step_to_rl_step(_step("some real reasoning"), think_processor,
-                              enable_thinking=False)
+def test_thinking_off_strips_reasoning_from_the_target(think_processor):
+    """Thinking off renders reasoning data WITHOUT reasoning, instead of refusing it.
+
+    One internalized dataset has to serve both recipes: the same ``.think`` rows are
+    exported with reasoning under a thinking-on config and without it under a
+    thinking-off one. Before the strip this raised on the prompt/target prefix check,
+    which left no path from internalized rows to Action-only training data.
+    """
+    rl = agent_step_to_rl_step(_step("some real reasoning"), think_processor,
+                               enable_thinking=False)
+    assert rl is not None
+    assert "some real reasoning" not in rl.prompt
+    assert "some real reasoning" not in rl.response
+    assert "Action: click" in rl.response
+    assert think_processor.tokenizer.decode(rl.response_tokens) == rl.response
+
+
+def test_thinking_off_strips_reasoning_from_history_too(think_processor):
+    """The leak the prefix check cannot see.
+
+    A ``<tool_response>`` turn is not a "real user query", so Qwen's template keeps
+    the ``<think>`` body of every assistant turn after the opening instruction. A
+    target turn WITHOUT reasoning therefore passes the prefix check while history
+    reasoning is still rendered into the thinking-off prompt — silently.
+    """
+    step = [
+        {"role": "user", "content": [{"type": "text", "text": "do it"}]},
+        {"role": "assistant", "content": "Action: a", "reasoning_content": "HISTORY_THOUGHT"},
+        {"role": "tool", "content": [{"type": "text", "text": "obs"}]},
+        {"role": "assistant", "content": "Action: b"},
+    ]
+    off = agent_step_to_rl_step(step, think_processor, enable_thinking=False)
+    assert off is not None
+    assert "HISTORY_THOUGHT" not in off.prompt
+
+    # Thinking on is untouched: the template's own handling stays the contract.
+    on = agent_step_to_rl_step(step, think_processor, enable_thinking=True)
+    assert on is not None
+    assert "HISTORY_THOUGHT" in on.prompt
+
+
+def test_thinking_off_does_not_mutate_the_caller_s_messages(think_processor):
+    """The strip runs on ``keep_model_visible_content``'s deepcopy, never the input."""
+    step = _step("some real reasoning")
+    agent_step_to_rl_step(step, think_processor, enable_thinking=False)
+    assert step[-1]["reasoning_content"] == "some real reasoning"
 
 
 def test_thinking_off_no_reasoning_ok(think_processor):

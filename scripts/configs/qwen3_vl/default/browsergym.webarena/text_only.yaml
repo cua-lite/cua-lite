@@ -57,6 +57,7 @@ agent_kwargs:
 
 env_id: "browsergym.webarena"
 env_kwargs:
+  include_page_context_text: true
   # WebArena p_cot homepage hint: append homepage URL, site list, and
   # /password.html creds to the goal. WA-only; VWA does not accept this knob.
   with_homepage_hint: true

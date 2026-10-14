@@ -28,6 +28,7 @@ liteLLM routes by model string prefix:
 | `claude-opus-4-6` | Anthropic (direct) |
 | `vertex_ai/claude-opus-4-6` | Google Vertex AI |
 | `bedrock/claude-sonnet-4-...` | AWS Bedrock |
+| `gpt-6-astra` | Azure OpenAI deployment ID |
 | `gpt-5.5` | OpenAI |
 | `gemini-3.6-flash` | Google (native REST, not routed by liteLLM) |
 
@@ -52,6 +53,7 @@ Add the model ID to the `API_AGENTS` dict in `lite/agents/factory.py`:
 ```python
 API_AGENTS = {
     "claude-opus-4-6":   {"agent_id": "claude"},
+    "gpt-6-astra":       {"agent_id": "gpt"},
     "gpt-5.5":           {"agent_id": "gpt"},
     "gpt-5.6-sol":       {"agent_id": "gpt"},
 }

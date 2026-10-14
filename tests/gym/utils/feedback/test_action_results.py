@@ -1163,8 +1163,8 @@ def test_prepare_env_tool_calls_leaves_child_arguments_to_the_env(child):
     """Ingress checks child MEMBERSHIP, never child ARGUMENTS.
 
     Only the concrete env knows whether it can run a canonical action at all
-    (mobilegym drops ``pinch``) and which extra arguments its backend consumes
-    (``type(press_enter=...)`` on the browser envs), so it owns both the wording --
+    (mobilegym drops ``pinch``) and what its backend does with the arguments it
+    is handed, so it owns both the wording --
     ``invalid arguments for key: ...``, keyed on the CHILD action -- and the
     carrier. Rejecting here answers a capability question with an argument
     question, and does it with the current-observation carrier, which resends an

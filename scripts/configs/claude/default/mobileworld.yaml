@@ -1,17 +1,14 @@
 # Claude mobile on MobileWorld
-# 161 tasks (201 upstream − 40 agent-mcp) across 20 apps in DinD boxes,
-# evaluated by real device / backend state.
+# 161 registered tasks; the eval runner filters 44 ask_user tasks, leaving
+# 117 GUI-only tasks evaluated by real device / backend state.
 #
 # Related configs (sync env_kwargs when changing):
 #   - scripts/configs/gpt/default/mobileworld.yaml  (GPT mobile rollout)
 #   - scripts/configs/qwen3_vl/default/mobileworld.yaml  (Qwen3-VL baseline)
 #   - scripts/configs/claude/default/androidworld.yaml  (Claude mobile sibling)
 #
-# The 46 agent-user-interaction tasks need the ``ask_user`` extra tool
-# (enabled below) AND OPENAI_API_KEY exported before containers spawn. Set
-# OPENAI_BASE_URL only for a custom endpoint. The vars are forwarded into each
-# box for the simulated-user LLM, whose model is the env's
-# server_kwargs.user_agent_model knob. GUI-only tasks ignore both.
+# Interaction tasks carry exclude_reason="ask_user". Direct rollout calls
+# should pass --filter "lambda m: not m.others.get('exclude_reason')".
 
 agent_id: "claude"
 agent_kwargs:

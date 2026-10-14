@@ -5,7 +5,7 @@
 #     the accessibility tree "[N]: <tag> text @ (cx, cy)" carried as the
 #     observation TEXT. FaraHistoryProtocol keeps all observation text every
 #     turn, so — unlike the qwen3_vl/qwen3_5 SoM configs — Fara needs neither the
-#     ``webvoyager.<family>.history`` turn-0 web_text splice nor
+#     ``webvoyager.<family>.history`` turn-0 model_web_text splice nor
 #     ``keep_text_with_images`` (those exist only because Qwen*HistoryProtocol
 #     replaces/strips the first-turn text).
 #   - Action: still Fara's native coordinate ``computer_use`` wrapper. The Fara
@@ -34,6 +34,7 @@ agent_kwargs:
 
 env_id: "webharbor.webvoyager"
 env_kwargs:
+  include_page_context_text: true
   max_steps: 100    # Fara reference max_rounds default
   extra_tools: ["goto", "back", "response", "terminate"]
   use_som: true     # draw the [N] Set-of-Marks boxes on the screenshot

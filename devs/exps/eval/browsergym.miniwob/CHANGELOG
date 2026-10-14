@@ -1,3 +1,34 @@
+## 1e14e3a ← 94b0c45  (2026-09-21)
+
+Added `EVAL_REASONING_EFFORT` (gpt-* only), which forwards
+`--api-kwargs '{"reasoning_effort": …}'` and names the artifact slug
+`__reasoning_<effort>`. GPT rows are only comparable across commits at the same
+effort; the default stays `medium` from the committed GPT config.
+
+## 94b0c45 ← a0c2997  (2026-09-21)
+
+Fixed BrowserGym returning the unscaled screenshot after a no-op action. This
+moves API numbers substantially — `gpt-5.5` goes `0.6240` → `0.8480` — so no
+MiniWoB number from before this commit is comparable with one after it.
+
+## a0c2997 ← 3f90798  (2026-09-21)
+
+Accepted `EVAL_ENABLE_THINKING=true` for the Qwen3.8 family, which the
+`3f90798` runner rejected. Qwen3.8 thinking rows land in a `think_xhigh` slug.
+
+## 3f90798 ← 9685915  (2026-09-21)
+
+Allowed `EVAL_ENABLE_THINKING=true` in `default` mode, not just `text_only`.
+Thinking runs add the fixed override
+`--agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"max_new_tokens": 4096}}'`
+and land in a `__think_on` slug, so they never resume a non-thinking run.
+
+## 9685915 (2026-09-13)
+
+Added MiniWoB default runner/config coverage for Qwen3.8, UI-TARS-1.5,
+EvoCUA, and UI-Venus-2 model families. Default runs use the existing
+browsergym.miniwob task set (125 tasks) through the remote env-server path.
+
 ## f57d3cb  (2026-07-02)
 
 Initial standardized snapshot at this commit; no predecessor entry. MiniWoB

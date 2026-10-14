@@ -1069,11 +1069,15 @@ class TestConvertMessage:
     # tests/agents/models/qwen3_vl/test_qwen3_vl_webgym_wireformat_chars.py.
     # The decomposed nav adapter is Action-only by construction (no such knob).
 
-    def test_from_agent_first_line_fallback_when_no_action_prefix(self):
-        """Raw text WITHOUT an ``Action: `` line: fall back to the first
-        non-empty line (NOT the entire multi-line block) so action_description
-        stays compact when single-step grounding YAMLs strip the response-format
-        preamble.
+    def test_from_agent_keeps_the_whole_prose_when_no_action_prefix(self):
+        """Raw text WITHOUT an ``Action: `` line: the WHOLE block is the action
+        description.
+
+        Keeping only the first line dropped the model's reasoning on 17% of
+        tool-call turns, and it bought nothing at runtime -- same-family replay
+        re-renders ``raw_response.text`` verbatim, so the truncation only ever
+        cost the durable record, which is what a cross-family student is trained
+        on.
 
         The turn must carry a tool call: ``action_description`` is the
         narration-accompanying-an-action channel, so a no-tool-call turn keeps
@@ -1088,8 +1092,7 @@ class TestConvertMessage:
         out = self.adapter.convert_message_from_agent(msg)
         action_part = next((c for c in out["content"] if c["type"] == "action_description"), None)
         assert action_part is not None
-        assert action_part["text"] == "Click the search bar."
-        assert "Additional reasoning." not in action_part["text"]
+        assert action_part["text"] == "Click the search bar.\nAdditional reasoning."
 
     def test_declared_extra_tool_routes_separately(self):
         """When ``extra_tools`` is set, tool_calls whose canonical tool name

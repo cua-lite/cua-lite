@@ -32,6 +32,92 @@ def _protocol_kwargs(cfg: dict) -> dict:
     return _agent_kwargs(cfg).get("protocol_kwargs") or {}
 
 
+def _script_config_paths() -> list[Path]:
+    return sorted((ROOT / "scripts/configs").rglob("*.yaml"))
+
+
+def _browser_rollout_configs() -> list[tuple[str, dict]]:
+    configs: list[tuple[str, dict]] = []
+    for path in _script_config_paths():
+        cfg = load_config(path)
+        env_id = cfg.get("env_id")
+        if (
+            isinstance(env_id, str)
+            and (
+                env_id.startswith("browsergym.")
+                or env_id in {"online_mind2web", "webharbor.webvoyager"}
+            )
+        ):
+            configs.append((str(path.relative_to(ROOT)), cfg))
+    assert configs, "no browser rollout configs found"
+    return configs
+
+
+def _is_browser_vision_coord_default(rel: str, cfg: dict) -> bool:
+    path = Path(rel)
+    if path.name not in {"default.yaml", "goal_image.yaml", "online_mind2web.yaml"}:
+        return False
+
+    env_id = cfg["env_id"]
+    env_kwargs = cfg.get("env_kwargs") or {}
+    if env_id == "online_mind2web":
+        return True
+    if env_id == "webharbor.webvoyager":
+        return env_kwargs.get("use_som") is not True
+    if env_id.startswith("browsergym."):
+        return (
+            env_kwargs.get("use_screenshot", True) is True
+            and env_kwargs.get("use_ax_tree", False) is False
+            and env_kwargs.get("use_som", False) is False
+            and "coord" in set(env_kwargs.get("action_subsets", ("coord",)))
+        )
+    return False
+
+
+def _is_browser_explicit_text_or_som(rel: str, cfg: dict) -> bool:
+    path = Path(rel)
+    env_kwargs = cfg.get("env_kwargs") or {}
+    return (
+        path.name in {"text_only.yaml", "mixed.yaml", "som.yaml"}
+        or env_kwargs.get("use_ax_tree") is True
+        or env_kwargs.get("use_som") is True
+    )
+
+
+def test_browser_vision_coord_defaults_disable_page_context_text_at_env_boundary() -> None:
+    configs = [
+        (rel, cfg) for rel, cfg in _browser_rollout_configs()
+        if _is_browser_vision_coord_default(rel, cfg)
+    ]
+    assert configs, "no browser vision+coord default configs found"
+
+    for rel, cfg in configs:
+        env_kwargs = cfg["env_kwargs"]
+
+        assert env_kwargs["include_page_context_text"] is False, rel
+
+        if cfg["env_id"].startswith("browsergym."):
+            assert env_kwargs["use_screenshot"] is True, rel
+            assert env_kwargs["use_ax_tree"] is False, rel
+
+
+def test_browser_rollout_configs_do_not_disable_role_tool_text_in_protocol() -> None:
+    for rel, cfg in _browser_rollout_configs():
+        assert _protocol_kwargs(cfg).get("keep_text_with_images") is not False, rel
+
+
+def test_browser_explicit_text_and_som_modes_keep_page_context_available() -> None:
+    configs = [
+        (rel, cfg) for rel, cfg in _browser_rollout_configs()
+        if _is_browser_explicit_text_or_som(rel, cfg)
+    ]
+    assert configs, "no explicit browser text/SoM configs found"
+
+    for rel, cfg in configs:
+        env_kwargs = cfg["env_kwargs"]
+        assert env_kwargs["include_page_context_text"] is True, rel
+
+
 def test_lite_osworld_extra_tool_rollout_gates() -> None:
     qwen_config_paths = [
         "scripts/configs/qwen3_vl/default/lite.osworld.yaml",
@@ -607,6 +693,8 @@ _NON_GUI_VALID_ACTIONS = {
 _AGENT_CONFIG_ROOTS = (
     Path("scripts/configs"),
     Path("examples/lite/v1/configs"),
+    Path("devs/exps/train/desktop/configs"),
+    Path("devs/exps/train/mobile/configs"),
 )
 
 _TOOL_SURFACE_AGENT_KWARGS = {"extra_tools", "extra_tool_schemas", "valid_actions", "others"}
@@ -622,6 +710,17 @@ _NAV_TOOL_NAMES = LiteBrowserNavToolSet.get_tool_names() | {
     "tab_close",
 }
 
+#: The ``mobile.use`` campaign, the desktop set's sibling. Only the image budget
+#: varies -- one resolution, and no turn-capped `h1` arm -- so the profile names carry
+#: just that. `open_app` joins the finish pair for the same reason the pair is there at
+#: all: mobilegym advertises it as a standalone extra tool, and an undeclared one is
+#: NOOPed, so a profile that omitted it would be trained and scored on a surface that
+#: cannot launch an app.
+_MOBILE_USE_RECIPE_CONFIGS = {
+    f"devs/exps/train/mobile/configs/qwen3_5/mobile.use.{_variant}.yaml"
+    for _variant in ("i1", "i1.reasoning", "i4", "i4.reasoning")
+}
+
 _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/claude/default/androidlab.yaml",
     "scripts/configs/claude/default/androidworld.yaml",
@@ -631,6 +730,7 @@ _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/gpt/default/androidworld.yaml",
     "scripts/configs/gpt/default/mobilegym.yaml",
     "scripts/configs/gpt/default/mobileworld.yaml",
+    "scripts/configs/gpt/recipes/collect/mobilegym.yaml",
     "scripts/configs/mai_ui/compact/androidworld.yaml",
     "scripts/configs/mai_ui/compact/mobilegym.yaml",
     "scripts/configs/mai_ui/default/androidlab.yaml",
@@ -664,7 +764,7 @@ _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/ui_venus_2/default/androidworld.yaml",
     "scripts/configs/ui_venus_2/default/mobilegym.yaml",
     "scripts/configs/ui_venus_2/default/mobileworld.yaml",
-}
+} | _MOBILE_USE_RECIPE_CONFIGS
 
 _MOBILE_ANSWER_FINISH_CONFIGS = {
     "scripts/configs/claude/default/androidlab.yaml",
@@ -723,6 +823,7 @@ _EXPECTED_ASK_USER_CONFIGS = {
 _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS = {
     "scripts/configs/claude/default/browsergym.miniwob/default.yaml",
     "scripts/configs/claude/default/browsergym.webarena/default.yaml",
+    "scripts/configs/evocua/default/browsergym.webarena/default.yaml",
     "scripts/configs/gpt/default/browsergym.miniwob/default.yaml",
     "scripts/configs/gpt/default/browsergym.webarena/default.yaml",
     "scripts/configs/qwen3_5/default/browsergym.miniwob/default.yaml",
@@ -739,6 +840,10 @@ _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS = {
     "scripts/configs/qwen3_vl/default/browsergym.webarena/default.yaml",
     "scripts/configs/qwen3_vl/default/browsergym.webarena/som.yaml",
     "scripts/configs/qwen3_vl/default/browsergym.webarena/text_only.yaml",
+    "scripts/configs/ui_tars_15_v1/default/browsergym.miniwob/default.yaml",
+    "scripts/configs/ui_tars_15_v1/default/browsergym.webarena/default.yaml",
+    "scripts/configs/ui_venus_2/default/browsergym.miniwob/default.yaml",
+    "scripts/configs/ui_venus_2/default/browsergym.webarena/default.yaml",
 }
 
 # MiniWoB text+bid rows: `action_subsets: ["bid", "chat", "infeas"]` surfaces
@@ -751,6 +856,7 @@ _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS = {
 
 _EXPECTED_NAV_CONFIGS = {
     "scripts/configs/gpt/default/webgym.yaml",
+    "scripts/configs/evocua/default/browsergym.miniwob/default.yaml",
     "scripts/configs/fara/default/browsergym.miniwob/default.yaml",
     "scripts/configs/fara/default/browsergym.visualwebarena/goal_image.yaml",
     "scripts/configs/fara/default/browsergym.webarena/default.yaml",
@@ -776,6 +882,9 @@ _EXPECTED_NAV_CONFIGS = {
     "scripts/configs/qwen3_vl/default/webgym.yaml",
     "scripts/configs/qwen3_vl/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/qwen3_vl/default/webharbor.webvoyager/som.yaml",
+    "scripts/configs/claude/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/evocua/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/ui_tars_15_v1/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/ui_venus_2/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/qwen3_8/default/browsergym.miniwob/default.yaml",
     "scripts/configs/qwen3_8/default/browsergym.visualwebarena/goal_image.yaml",
@@ -785,6 +894,33 @@ _EXPECTED_NAV_CONFIGS = {
     "scripts/configs/qwen3_8/default/browsergym.webarena/som.yaml",
     "scripts/configs/qwen3_8/default/browsergym.webarena/text_only.yaml",
 } | _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS
+
+#: The ``desktop.use`` teacher-comparison recipe, kept in two places: the public
+#: walkthrough under ``examples/`` and the campaign copy under ``devs/exps/train/``
+#: that must stand on its own. Every one declares ``extra_tools: [response,
+#: terminate]`` -- required, not cosmetic: an undeclared finish tool is classified
+#: "inactive" and NOOPed (``standalone_tool_call_feedback_with_reason``,
+#: ``lite/gym/utils/feedback/ingress.py``, applied in ``lite/gym/sandbox/base.py``),
+#: and the rendered action enum omits it -- so the model both cannot end an episode
+#: and is evaluated on a surface its SFT data did not have.
+_DESKTOP_USE_RECIPE_CONFIGS = {
+    f"examples/lite/v1/configs/qwen3_5/desktop.use.{_variant}.yaml"
+    for _variant in ("compact", "compact.reasoning", "default", "default.reasoning")
+} | {
+    # The campaign copy names its screenshot profiles by what they are (`lowr`/`highr`,
+    # `i4`/`i1`/`h1`) and carries the one-image variants the public walkthrough does not.
+    # Every profile has a `.reasoning` twin (`enable_thinking` alone), and the twin must
+    # declare the same extra_tools: it is trained and scored on the same surface.
+    f"devs/exps/train/desktop/configs/qwen3_5/desktop.use.{_variant}.yaml"
+    for _variant in (
+        "default", "default.reasoning",
+        "lowr.i4", "lowr.i4.reasoning",
+        "lowr.h1", "lowr.h1.reasoning",
+        "lowr.i1", "lowr.i1.reasoning",
+        "highr.h1", "highr.h1.reasoning",
+        "highr.i1", "highr.i1.reasoning",
+    )
+}
 
 _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/gpt/default/webgym.yaml",
@@ -802,6 +938,7 @@ _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/fara/default/webharbor.webvoyager/som.yaml",
     "scripts/configs/gpt/default/online_mind2web.yaml",
     "scripts/configs/gpt/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/gpt/recipes/collect/mobilegym.yaml",
     "scripts/configs/gpt/recipes/collect/webgym.yaml",
     "scripts/configs/qwen3_5/compact/webgym.yaml",
     "scripts/configs/qwen3_8/compact/webgym.yaml",
@@ -823,6 +960,9 @@ _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/qwen3_5/default/webharbor.webvoyager/som.yaml",
     "scripts/configs/qwen3_8/default/webharbor.webvoyager/som.yaml",
     "scripts/configs/qwen3_vl/compact/webgym.yaml",
+    "scripts/configs/claude/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/evocua/default/webharbor.webvoyager/default.yaml",
+    "scripts/configs/ui_tars_15_v1/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/ui_venus_2/default/webharbor.webvoyager/default.yaml",
     "scripts/configs/ui_venus_2/default/lite.osworld.yaml",
     "scripts/configs/ui_venus_2/default/osworld.yaml",
@@ -848,9 +988,15 @@ _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/qwen3_8/default/mobilegym.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
 } | (_BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS | _MOBILE_ANSWER_FINISH_CONFIGS
-     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS)
+     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS | _DESKTOP_USE_RECIPE_CONFIGS
+     | _MOBILE_USE_RECIPE_CONFIGS)
 
 _EXPECTED_TERMINATE_CONFIGS = {
+    "scripts/configs/evocua/default/browsergym.miniwob/default.yaml",
+    "scripts/configs/evocua/default/waa.yaml",
+    "scripts/configs/ui_tars_15_v1/default/waa.yaml",
+    "scripts/configs/ui_venus_2/default/waa.yaml",
+    "scripts/configs/gpt/recipes/collect/mobilegym.yaml",
     "scripts/configs/gpt/default/online_mind2web.yaml",
     "scripts/configs/qwen3_5/default/online_mind2web.yaml",
     "scripts/configs/qwen3_8/default/online_mind2web.yaml",
@@ -921,7 +1067,8 @@ _EXPECTED_TERMINATE_CONFIGS = {
     "scripts/configs/qwen3_8/default/mobilegym.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
 } | (_BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS | _MOBILE_ANSWER_FINISH_CONFIGS
-     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS)
+     | _BROWSERGYM_BID_RESPONSE_TERMINATE_CONFIGS | _DESKTOP_USE_RECIPE_CONFIGS
+     | _MOBILE_USE_RECIPE_CONFIGS)
 
 _REQUIRED_RESPONSE_EXTRA_TOOL_CONFIGS = {
     "scripts/configs/fara/default/webgym.yaml",
@@ -961,7 +1108,8 @@ _TARGET_WEBHARBOR_ONLINE_CONFIGS = {
 def _tool_io_source_yamls() -> list[Path]:
     root = project_root()
     paths: list[Path] = []
-    for base in (root / "scripts" / "configs", root / "examples" / "lite" / "v1" / "configs"):
+    for rel_root in _AGENT_CONFIG_ROOTS:
+        base = root / rel_root
         if not base.exists():
             continue
         paths.extend(

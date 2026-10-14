@@ -70,4 +70,4 @@ Notes:
 | Description prompt | Omits "You do not have access to a terminal or applications menu" | Includes it (from OSWorld ref) — minor, keep as-is |
 | Context overflow | Auto-decrements `max_history_turns` and retries | No agent-level retry |
 | API backend | Direct OpenAI API calls (vLLM) | Decoupled `generate_fn` |
-| Scroll | Raw pixel values to `pyautogui.scroll()` | Converts to wheel clicks via `_PIXELS_PER_CLICK = 100` |
+| Scroll | Raw wheel-notch counts to `pyautogui.scroll()` | Same counts (`SCROLL_WIRE_UNIT = 1`); only a value >= 100 is read as screen units |

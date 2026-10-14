@@ -1,21 +1,9 @@
-# GPT rollout eval on ScreenSpot-Pro — single-step click grounding.
-# 1581 tasks, no exclusion filter (no refusal class on Pro).
-#
-# Routing: env declares ``task_type="grounding.point"``, so make picks
-# ``GPTDesktopGroundingPointAgent`` (key=gpt@desktop@grounding.point).
-# That class bakes in:
-#   - the grounding system_prompt (``GPT_GROUNDING_SYSTEM_PROMPT``)
-#   - ``reasoning_effort="none"`` and ``max_output_tokens=4096`` (no extended reasoning)
-#   - a single ``click({x, y})`` function tool (no native ``{"type":"computer"}``
-#     tool) — eliminates the CUA "examine first" bias.
-# So this YAML carries no agent_kwargs overrides — diffs surface in code.
-#
-# Note: ``temperature`` is intentionally absent; some Responses API deployments
-# reject it, and the class defaults do not set it.
-#
-# Related configs (sync if changing the class defaults):
-#   - scripts/configs/gpt/default/osworld_g.yaml           (sibling grounding bench)
-#   - scripts/configs/claude/default/screenspot_pro.yaml   (Claude counterpart)
+# GPT single-step grounding evaluation with Medium reasoning effort.
+# Keep the grounding agent's click-only tools and other default settings.
 
 agent_id: "gpt"
+agent_kwargs:
+  api_kwargs:
+    reasoning_effort: "medium"
+
 env_id: "screenspot_pro"

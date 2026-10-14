@@ -12,10 +12,17 @@ from __future__ import annotations
 
 import ast
 import base64
+import ctypes
+import errno
 import fnmatch
 import json
+import os
+import runpy
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -85,6 +92,66 @@ def test_release_manifest_matches_runtime_constants():
     assert int(release["qcow2"]["size"]) == m._QCOW2_SIZE
     assert release["qcow2"]["filename"] == "Ubuntu.qcow2"
     assert release["qcow2"]["url"]
+
+
+def test_image_disables_thp_before_original_entrypoint():
+    dockerfile = (Path(m.ENV_DIR) / "docker" / "Dockerfile").read_text()
+    entrypoint = next(
+        line.removeprefix("ENTRYPOINT ")
+        for line in dockerfile.splitlines()
+        if line.startswith("ENTRYPOINT ")
+    )
+    assert json.loads(entrypoint) == [
+        "/usr/bin/tini",
+        "-s",
+        "/opt/venv/bin/python",
+        "/usr/local/bin/disable_thp.py",
+        "/run/entry.sh",
+    ]
+    assert "COPY disable_thp.py /usr/local/bin/disable_thp.py" in dockerfile
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="THP prctl is Linux-specific")
+def test_disable_thp_survives_exec_and_preserves_arguments_and_exit_code():
+    wrapper = Path(m.ENV_DIR) / "docker" / "disable_thp.py"
+    args = ["with spaces", "", "literal $HOME; 'quoted'", "中文"]
+    # Start with THP enabled, so this proves the wrapper changes its process only.
+    launcher = (
+        "import ctypes, os, runpy, sys; "
+        "assert ctypes.CDLL(None).prctl(41, 0, 0, 0, 0) == 0; "
+        "print(os.getpid(), flush=True); "
+        "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')"
+    )
+    probe = (
+        "import ctypes, json, os, sys; "
+        "print(json.dumps([ctypes.CDLL(None).prctl(42, 0, 0, 0, 0), "
+        "os.getpid(), sys.argv[1:]])); sys.exit(23)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", launcher, str(wrapper), sys.executable, "-c", probe, *args],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 23, result.stderr
+    original_pid, payload = result.stdout.splitlines()
+    assert json.loads(payload) == [1, int(original_pid), args]
+
+
+def test_disable_thp_failure_does_not_exec(monkeypatch):
+    libc = Mock()
+    libc.prctl.return_value = -1
+    monkeypatch.setattr(ctypes, "CDLL", Mock(return_value=libc))
+    monkeypatch.setattr(ctypes, "get_errno", lambda: errno.EPERM)
+    execvp = Mock()
+    monkeypatch.setattr(os, "execvp", execvp)
+    monkeypatch.setattr(sys, "argv", ["disable_thp.py", "/run/entry.sh"])
+
+    with pytest.raises(OSError, match="PR_SET_THP_DISABLE") as error:
+        runpy.run_path(str(Path(m.ENV_DIR) / "docker" / "disable_thp.py"), run_name="__main__")
+
+    assert error.value.errno == errno.EPERM
+    execvp.assert_not_called()
 
 
 def test_osworld_import_time_json_is_declared_for_wheel():

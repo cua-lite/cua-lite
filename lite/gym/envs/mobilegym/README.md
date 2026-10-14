@@ -2,7 +2,7 @@
 
 `--env-id` `mobilegym`
 
-CUA-Lite wrapper for [MobileGym](https://arxiv.org/abs/2605.26114). 416 parameterized task templates across 24 simulated mobile apps (WeChat, Alipay, Bilibili, RedNote, X, Reddit, Spotify, 12306, Map, etc.), via `gym.make("mobilegym@<suite>.<TaskName>")` with `LiteMobileActionSpace`. See [docs/envs.md](/docs/envs.md) for the env contract.
+CUA-Lite wrapper for [MobileGym](https://arxiv.org/abs/2605.26114). 416 parameterized task templates across 24 launchable apps (WeChat, Alipay, Bilibili, RedNote, X, Reddit, Spotify, 12306, Map, etc.), via `gym.make("mobilegym@<suite>.<TaskName>")` with `LiteMobileActionSpace`. See [docs/envs.md](/docs/envs.md) for the env contract.
 
 ## Setup
 
@@ -83,7 +83,7 @@ print(gym.registry.task_ids("mobilegym"))
 #  "train": ["alipay.AnalyzeSpending", ...]}              (160 tasks)
 ```
 
-416 tasks across 24 apps. Task IDs use `{suite}.{ClassName}` format (e.g. `wechat.ReadMyWxid`, `crossapp_life.RailwayEarliestGTrainToWechat`). Each task is a parameterized template that generates different instances via seed — eval split uses `seed=42` (deterministic), train split randomizes each reset.
+416 tasks across 24 launchable apps. Task IDs use `{suite}.{ClassName}` format (e.g. `wechat.ReadMyWxid`, `crossapp_life.RailwayEarliestGTrainToWechat`). Each task is a parameterized template that generates different instances via seed — eval split uses `seed=42` (deterministic), train split randomizes each reset.
 
 **Difficulty distribution (eval, 256 tasks):** L1=20, L2=73, L3=83, L4=80.
 
@@ -117,7 +117,7 @@ uv run python scripts/rollout.py --env-id mobilegym --splits train \
 
 ## Evaluation
 
-Runs **only at episode end** (`terminate` / `response` / `max_steps`) via a deterministic state-diff judge that reads the full JSON environment state, checks goals, and detects unexpected side effects, returning `reward = progress_rate` (float `0.0`–`1.0`, fraction of sub-goals passed). Truncation (`max_steps` without `terminate`) still evaluates the final state.
+Runs **only at episode end** (`terminate` / `response` / `max_steps`) via a deterministic state-diff judge that reads the full JSON app state. The score is MobileGym's own **Success Rate**: the goal met, no unexpected state changed, and the episode ended via `terminate` with `status="success"` (or a `response` in text mode) — `terminate(status="failure")` steps ABORT and scores 0 even if the goal was met. RL can opt into partial credit with the `reward_shaping` env_kwarg ([`configs/default.yaml`](/lite/gym/envs/mobilegym/configs/default.yaml)); eval must leave it off — see [docs/grpo.md](/docs/grpo.md#mobilegym).
 
 ## Action Space
 
@@ -166,7 +166,7 @@ lite/gym/envs/mobilegym/
 
 </details>
 
-## Apps Catalog
+## Launchable Apps Catalog
 
 | Category | Apps |
 |---|---|
@@ -174,7 +174,10 @@ lite/gym/envs/mobilegym/
 | Finance & Commerce | Alipay (支付宝), eBay |
 | Media & Reading | Bilibili (哔哩哔哩), Spotify, WeChat Reading (微信读书) |
 | Travel & Life | 12306 (铁路12306), Map, Tencent Meeting (腾讯会议), Weather |
-| System | Launcher, Settings, Contacts, SMS, Notes, Calendar, Clock, Calculator, Files, Gallery, Browser, Compass, AnswerSheet, ThemeStore |
+| System | Settings, Phone, SMS, Notes, Calendar, Clock, Calculator, File Manager, Gallery, Browser, Compass |
+
+Internal system surfaces such as Launcher and AnswerSheet exist in the simulator,
+but are not part of the `open_app` catalog exposed to agents.
 
 ## Citation
 

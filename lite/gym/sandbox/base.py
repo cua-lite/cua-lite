@@ -686,7 +686,10 @@ class SandboxBaseEnv(EnvServerPoolable, EnvServerResource):
                 )
 
                 try:
-                    image_for(self._env_id, tag=str(image_tag)).ensure_runnable()
+                    def _ensure_image_runnable() -> None:
+                        image_for(self._env_id, tag=str(image_tag)).ensure_runnable()
+
+                    await asyncio.to_thread(_ensure_image_runnable)
                 except UnknownImageFreshnessProvider:
                     # Generic sandbox tasks may point at non-CUA-Lite images.
                     pass
@@ -1377,6 +1380,10 @@ async def _dispatch_desktop_action(
         # Keyboard Actions
         elif name == "type":
             text = _required_model_arg(args, "text", name)
+            # A real newline inside ``text`` is an Enter press: ``type_text``
+            # splits on it and sends a discrete Return keypress, because
+            # ``xdotool type`` would map it to Linefeed/Ctrl-J and GTK widgets
+            # drop that silently (lite/gym/sandbox/exec_stdio/server.py).
             await interface.type_text(text)
             _record("type_text", text=text)
 

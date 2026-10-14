@@ -41,6 +41,7 @@ from lite.agents.core.agent.utils.loop import (
     mark_steps_truncated,
     record_lite_env_result,
 )
+from lite.agents.core.agent.utils.mobile_finish import mobile_finish_guidance
 from lite.agents.core.agent.utils.retry import acompletion_with_retry
 
 # ``litellm`` is imported lazily inside _aresponses_with_retry, NOT here:
@@ -900,21 +901,6 @@ _MOBILE_SYSTEM_PROMPT = (
 )
 
 
-def _mobile_finish_guidance(extra_tool_names: frozenset[str]) -> str | None:
-    has_response = "response" in extra_tool_names
-    has_terminate = "terminate" in extra_tool_names
-    if has_response and has_terminate:
-        return (
-            "When the task is done, call `terminate` (use `response` to return "
-            "an answer the task asks for)."
-        )
-    if has_response:
-        return "When the task asks for an answer, call `response` to return it."
-    if has_terminate:
-        return "When the task is done, call `terminate`."
-    return None
-
-
 GPT_MOBILE_API_KWARGS_DEFAULTS: dict[str, Any] = {
     # Same provider knobs as desktop; mobile uses provider-flat function
     # schemas rather than the native computer tool.
@@ -959,7 +945,7 @@ class GPTMobileUseAgent(_GPTBaseAgent, key="gpt@mobile@use"):
         prompt = self.system_prompt
         if prompt:
             prompt = prompt.replace("{w}", str(sent_w)).replace("{h}", str(sent_h))
-        guidance = _mobile_finish_guidance(self._extra_tool_names())
+        guidance = mobile_finish_guidance(self._extra_tool_names())
         if not guidance:
             return prompt
         if not prompt:
@@ -988,6 +974,33 @@ class GPTMobileUseAgent(_GPTBaseAgent, key="gpt@mobile@use"):
             provider_tool_declarations.append(self._to_responses_function_tool(et))
 
         return provider_tool_declarations
+
+    def _parse_output_items(
+        self,
+        output_items: list[dict[str, Any]],
+        *,
+        resolution: tuple[int, int],
+        active_provider_tool_names: frozenset[str] | None = None,
+        call_id_start: int = 0,
+    ) -> GPTParsedOutput:
+        """Parse mobile Responses-API output items into the Lite message + provenance.
+
+        Same name and signature as ``GPTDesktopUseAgent._parse_output_items``, so the
+        teacher subclasses can relabel controlled Thought/Action prose with ONE override
+        that serves both platforms.
+
+        ``resolution`` is the frame the model's coords are in: the sent screenshot dims,
+        which mobile resizes to per step.
+        """
+        return parse_gpt_mobile_output_items_with_provenance(
+            output_items,
+            action_space=self.action_space,
+            resolution=resolution,
+            extra_tool_names=self._extra_tool_names(),
+            declared_agent_tool_names=self._declared_agent_tool_names(),
+            active_provider_tool_names=active_provider_tool_names,
+            call_id_start=call_id_start,
+        )
 
     async def sample(
         self,
@@ -1138,12 +1151,9 @@ class GPTMobileUseAgent(_GPTBaseAgent, key="gpt@mobile@use"):
                 output_items = normalized_response.output_items
 
                 # 3. Parse: provider output -> canonical Lite assistant message.
-                parsed_output = parse_gpt_mobile_output_items_with_provenance(
+                parsed_output = self._parse_output_items(
                     output_items,
-                    action_space=self.action_space,
                     resolution=(sent_w, sent_h),
-                    extra_tool_names=self._extra_tool_names(),
-                    declared_agent_tool_names=self._declared_agent_tool_names(),
                     active_provider_tool_names=active_provider_tool_names,
                     call_id_start=next_call_id,
                 )

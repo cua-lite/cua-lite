@@ -146,8 +146,10 @@ mechanics, and development notes live in
 
 `env.step()` returns per-call results for executed or rejected tool calls,
 including terminal and max-step calls when a pairable `call_id` exists.
-BrowserGym keeps the current page context in the response whenever possible, so
-agents can recover from rejected calls on the next step.
+BrowserGym keeps the current page context in metadata/debug logs whenever
+possible, while model-visible text stays screenshot-first by default. Text,
+SoM, and mixed configs opt in with `include_page_context_text: true` when the
+agent needs URL/title/AXTree/HTML feedback.
 
 `valid_actions` constrains only coordinate GUI actions; BrowserGym bid/nav/finish
 tools are selected separately by `action_subsets` and `extra_tools`.
@@ -179,6 +181,9 @@ WA/VWA share mutable services, so scored runs should use a clean warmed
 baseline and the read/write handling summarized in
 [WA/VWA runtime](#wavwa-runtime). Developer runbooks for exact rollout splits
 and isolation tuning live in [`devs/envs/browsergym.md`](/devs/envs/browsergym.md).
+The WebArena 241-template eval runbook keeps its committed read/write
+prompt-data split in [`data/`](/lite/gym/envs/browsergym/data), matching the
+env-owned fixture layout used by WebGym.
 
 One env-var matters regardless of approach: `VWA_CLASSIFIEDS_RESET_TOKEN` (auto-set by `start.sh`) — without it the 22 VWA `require_reset` classifieds tasks can't self-reset. Site URLs (`WA_SHOPPING`, …, `MINIWOB_URL`) are also set by `start.sh` and fail *loudly* if wrong, so they aren't a silent-corruption risk.
 

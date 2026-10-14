@@ -52,7 +52,7 @@ from lite.core.tools.calls import (
     validate_lite_tool_call,
 )
 from lite.core.tools.extra_tools import LiteFinishToolSet
-from lite.core.tools.results import project_tool_result_text
+from lite.core.tools.results import extract_projected_tool_result_error, project_tool_result_text
 from lite.core.tools.schemas import (
     tool_call_satisfies_schema,
     tool_name_and_arguments_match_schema_route_keys,
@@ -191,6 +191,19 @@ def _has_unknown_tool_error_only_result(
     return text == expected
 
 
+def _has_invalid_arguments_tool_result(
+    tool_call: dict[str, Any],
+    tool_result_text_by_call_id: dict[str, str],
+) -> bool:
+    call_id = tool_call_id(tool_call)
+    if not isinstance(call_id, str) or not call_id:
+        return False
+    error = extract_projected_tool_result_error(tool_result_text_by_call_id.get(call_id))
+    return isinstance(error, str) and error.startswith(
+        f"invalid arguments for {tool_call_name(tool_call)}: "
+    )
+
+
 def _iter_action_batch_children(
     name: str,
     arguments: Any,
@@ -310,7 +323,7 @@ def validate_tool_schema_calls(
     *,
     schema_free_names: frozenset[str],
     extra_schemas_by_name: dict[str, list[dict[str, Any]]],
-    unknown_tool_error_only_results: dict[str, str],
+    model_visible_error_results: dict[str, str],
 ) -> None:
     """THE owner of "may this row call this tool, with these arguments".
 
@@ -322,9 +335,10 @@ def validate_tool_schema_calls(
     * ``schema_free_names`` is the caller's accepted schema-free surface. A
       raw/boundary checker may accept a wider one than the runtime declares
       without widening the runtime catalog.
-    * ``unknown_tool_error_only_results`` is ``call_id -> tool-result text`` for
-      a contract that exempts an undeclared call whose ONLY result is the env's
-      own ``unknown tool`` error. Pass ``{}`` where no exemption applies.
+    * ``model_visible_error_results`` is ``call_id -> role:tool text`` for the
+      raw-only contract that keeps env-attributed model mistakes as ordinary
+      rollout rows once the error reached the model. Pass ``{}`` where no raw
+      env-error exemption applies.
     """
     _reject_nested_extra_tool_action_batch_children(messages, extra_schemas_by_name)
     for msg in messages:
@@ -340,7 +354,7 @@ def validate_tool_schema_calls(
             if name not in extra_schemas_by_name:
                 if _has_unknown_tool_error_only_result(
                     tool_call,
-                    unknown_tool_error_only_results,
+                    model_visible_error_results,
                 ):
                     continue
                 raise ValueError(
@@ -351,6 +365,11 @@ def validate_tool_schema_calls(
                 tool_call_satisfies_schema(tool_call, schema)
                 for schema in extra_schemas_by_name[name]
             ):
+                if _has_invalid_arguments_tool_result(
+                    tool_call,
+                    model_visible_error_results,
+                ):
+                    continue
                 raise ValueError(
                     f"tool_call {name!r} arguments do not match "
                     "metadata.extra_tool_schemas"
@@ -660,22 +679,27 @@ def _tool_result_single_text_by_call_id(messages: list[dict[str, Any]]) -> dict[
         call_id = msg.get("tool_call_id")
         if not isinstance(call_id, str) or not call_id:
             continue
-        text = _single_text_content(msg.get("content"))
+        text = _single_text_part_content(msg.get("content"))
         if text is not None:
             out[call_id] = text
     return out
 
 
-def _single_text_content(content: Any) -> str | None:
-    if (
-        isinstance(content, list)
-        and len(content) == 1
-        and isinstance(content[0], dict)
-        and content[0].get("type") == TEXT_PART
-        and isinstance(content[0].get("text"), str)
-    ):
-        return content[0]["text"]
-    return None
+def _single_text_part_content(content: Any) -> str | None:
+    if not isinstance(content, list):
+        return None
+    text_parts = [
+        item["text"]
+        for item in content
+        if (
+            isinstance(item, dict)
+            and item.get("type") == TEXT_PART
+            and isinstance(item.get("text"), str)
+        )
+    ]
+    if len(text_parts) != 1:
+        return None
+    return text_parts[0]
 
 
 def _reject_understanding_tool_calls(
@@ -884,7 +908,7 @@ def _validate_rows(
                     else frozenset()
                 ),
                 extra_schemas_by_name=extra_schemas_by_name,
-                unknown_tool_error_only_results=(
+                model_visible_error_results=(
                     tool_result_text_by_call_id if is_raw else {}
                 ),
             )

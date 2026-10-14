@@ -855,10 +855,18 @@ class BaseAgentAdapter(RegistryKeyed, ABC):
             expected = self._registry_key
             actual = raw.get("adapter_key")
             if AgentAdapterRegistry.raw_response_key_matches(actual, expected):
-                return {
+                replay: AgentMessage = {
                     "role": ASSISTANT_ROLE,
                     "content": [{"type": TEXT_PART, "text": raw["text"]}],
                 }
+                # A sidecar whose text embeds the whole reply carries no
+                # ``reasoning_content`` and needs none -- the raw string already
+                # holds the ``<think>`` tokens. A family that generated against an
+                # OPEN block trims that half out of the text and records it here
+                # instead, so the chat template can rebuild the block.
+                if reasoning := raw.get("reasoning_content"):
+                    replay["reasoning_content"] = reasoning
+                return replay
             _warn_adapter_key_mismatch(expected, actual)
         return self._convert_message_to_agent(message, **kwargs)
 

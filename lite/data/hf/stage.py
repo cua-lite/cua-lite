@@ -5,7 +5,7 @@ SAME canonical layout that ``lite/data/preproc/<dataset>/`` adapters produce::
 
     ${CUA_LITE_DATASETS_ROOT}/cua-lite/<Name>/
       images/<hash[:2]>/<hash>.<ext>           # content-addressed image store
-      <platform>/<task_type>/<split>/<variant>.parquet   # rows: images(rel-paths), messages, metadata
+      <platform>/<task_type>/<split>/<variant>.parquet   # rows: images(rel), messages, metadata
 
 so the published artifact is indistinguishable from a preproc dataset and the
 existing tooling consumes it UNCHANGED:
@@ -147,6 +147,15 @@ def stage(
         raise SystemExit(f"no trajectory.parquet under {[str(r) for r in log_roots]}")
     print(f"staging {len(traj_files)} trajectories from {len(log_roots)} log-root(s) → {out_dir}")
 
+    # Ingest a row's images through ``ImageStore.put_many``: each image is read three
+    # times (PIL verify, sha256, copy), and there are hundreds of thousands.
+    # ``ImageStore`` documents ``put`` as thread-safe and its writes as idempotent, and
+    # the rel path it returns is a content hash, so concurrency cannot change what a
+    # SUCCESSFUL row records: ``put_many`` preserves order and every append below stays
+    # on this thread, so row order and parquet bytes match the serial version. The one
+    # difference is the abort path — a row with a corrupt image submits its whole list
+    # before raising, so more images reach the store than a serial run would have put
+    # there. That is dead weight in a run that fails anyway, never a wrong row.
     for tp, variant in traj_files:
         tp = tp.resolve()
         df = pd.read_parquet(tp)
@@ -187,9 +196,10 @@ def stage(
             imgs = to_plain(row["images"]) or []
             if not imgs:
                 n_noimg += 1
-            # Ingest each image into the CA store in row order. Message
-            # ``{"type":"image","index":N}`` references are never reindexed.
-            new_imgs = [store.put(resolve_artifact_path(p, anchor_path=tp)) for p in imgs]
+            # Message ``{"type":"image","index":N}`` references are never reindexed.
+            new_imgs = store.put_many(
+                [resolve_artifact_path(p, anchor_path=tp) for p in imgs]
+            )
 
             # ``others["split"]`` is a transient routing hint, never row content: a
             # log-root reconstructed by ``lite.data.hf.unstage`` records the partition
@@ -199,7 +209,8 @@ def stage(
             # nothing downstream would catch the hint leaking into a published row.
             recorded_split = others.pop("split", None)
             if recorded_split is not None:
-                if not isinstance(recorded_split, str) or recorded_split not in CANONICAL_SPLITS:
+                if (not isinstance(recorded_split, str)
+                        or recorded_split not in CANONICAL_SPLITS):
                     allowed = ", ".join(CANONICAL_SPLITS)
                     raise ValueError(
                         f"{tp}: metadata.others.split must be one of {{{allowed}}}; "

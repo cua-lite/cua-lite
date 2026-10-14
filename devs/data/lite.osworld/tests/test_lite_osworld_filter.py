@@ -12,6 +12,7 @@ Run: uv run pytest devs/data/lite.osworld/tests/test_lite_osworld_filter.py
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,11 @@ _spec = importlib.util.spec_from_file_location(
 )
 assert _spec is not None and _spec.loader is not None
 flt = importlib.util.module_from_spec(_spec)
+# Register before exec: `filter.py` runs its annotate pass in a process pool, and
+# a pool pickles its worker BY REFERENCE (module name + qualname). A module loaded
+# from a path without this line is absent from ``sys.modules``, so the worker is
+# unresolvable in the child and every ``main()`` test dies on PicklingError.
+sys.modules[_spec.name] = flt
 _spec.loader.exec_module(flt)
 
 NOOP = frozenset(flt.DEFAULT_NOOP_ACTIONS)
@@ -133,6 +139,43 @@ def test_strips_noops_inside_batched_computer_but_keeps_real_actions():
     assert tool_call_arguments(tc)["actions"] == [
         {"action": "click", "coordinate": [1, 1]},
     ]
+
+
+def test_strips_a_type_that_types_nothing():
+    """An empty ``type`` executed nothing, so it is a no-op like ``screenshot``.
+
+    It is also not something the model chose: the XML parser yields ``text=""``
+    when a malformed reply drops the ``<parameter=text>`` opener, and the turn
+    was then recorded as a successfully executed action that moved no state.
+    """
+    msgs = [
+        _user("goal"),
+        {"role": "assistant", "content": [], "tool_calls": [
+            _batched_computer(("type", {"text": ""}), _click()),
+        ]},
+    ]
+    out, n_strip, n_drop = flt.strip_noop_actions(msgs, NOOP)
+    assert n_strip == 1 and n_drop == 0
+    assert tool_call_arguments(out[-1]["tool_calls"][0])["actions"] == [
+        {"action": "click", "coordinate": [1, 1]},
+    ]
+
+
+def test_a_type_that_types_something_is_never_stripped():
+    """Only the EMPTY one is a no-op -- a text of ``"0"`` or a lone newline is
+    real content the keyboard acts on."""
+    for text in ("x", "0", "\n", " "):
+        msgs = [
+            _user("goal"),
+            {"role": "assistant", "content": [], "tool_calls": [
+                _batched_computer(("type", {"text": text})),
+            ]},
+        ]
+        out, n_strip, n_drop = flt.strip_noop_actions(msgs, NOOP)
+        assert (n_strip, n_drop) == (0, 0), text
+        assert tool_call_arguments(out[-1]["tool_calls"][0])["actions"] == [
+            {"action": "type", "text": text},
+        ], text
 
 
 def test_strip_noop_rewrite_drops_stale_raw_response():
@@ -1001,7 +1044,7 @@ def test_hard_drops_oob_coordinate(tmp_path, capsys, monkeypatch):
     flt.main()
     output = capsys.readouterr().out
 
-    assert "and 1 with OOB coordinates" in output
+    assert "1 with OOB coordinates" in output
     kept = {p.parent.name for p in out.rglob("trajectory.parquet")}
     assert kept == {"task_clean"}, kept
     assert not (out / "train" / "task_oob").exists()

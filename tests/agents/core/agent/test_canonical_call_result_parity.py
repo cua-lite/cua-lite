@@ -135,6 +135,43 @@ def test_role_tool_message_count_tracks_canonical_calls_not_native_calls(
     ]
 
 
+def test_unaddressed_expansion_frame_is_skipped_not_rejected() -> None:
+    """A wrapper-expanded action leaves an unpaired frame; pairing must survive it.
+
+    Shape taken from a live capture: ``LoopDetectWrapper`` truncated a
+    ``computer`` batch, so the env executed two actions -- the prefix batch and
+    the wrapper's internal ``terminate`` -- and built one frame each. Only the
+    terminate answers the assistant's call, because the loop can also trigger on
+    the batch's first action, where no prefix is forwarded at all and the
+    terminate is the call's only possible result.
+    """
+    # A merged (two-action) batch on purpose: `prefix_len > 0` needs at least two
+    # children, so a single-action batch cannot produce the prefix frame below.
+    canonical = _merged_canonical_calls()
+    call_id = tool_call_id(canonical[0])
+    expanded = LiteEnvStepResult(
+        results=[
+            LiteToolResult(tool_call_id=None, images=[b"prefix"], text="prefix obs"),
+            LiteToolResult(tool_call_id=call_id, images=[b"shot"], text="obs"),
+        ]
+    )
+
+    aligned = align_tool_results_to_tool_calls(canonical, expanded.results)
+    assert [result.tool_call_id for result in aligned] == [call_id]
+    assert aligned[0].text == "obs"
+
+
+def test_unaddressed_frames_do_not_satisfy_a_call_that_got_no_result() -> None:
+    """Skipping unpaired frames must not paper over a genuinely missing result."""
+    canonical = _unmerged_canonical_calls()[:1]
+    only_unaddressed = LiteEnvStepResult(
+        results=[LiteToolResult(tool_call_id=None, images=[b"prefix"], text="prefix obs")]
+    )
+
+    with pytest.raises(RuntimeError, match="do not match tool_calls"):
+        align_tool_results_to_tool_calls(canonical, only_unaddressed.results)
+
+
 def test_env_that_merges_results_for_distinct_canonical_calls_is_rejected() -> None:
     """One result answering three canonical calls must not silently pass."""
     canonical = _unmerged_canonical_calls()

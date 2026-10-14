@@ -66,7 +66,7 @@ uv run python scripts/rollout.py \
 
 ## OSWorld / Lite.OSWorld
 
-369 OSWorld tasks across 10 desktop apps. `--filter` drops tagged `exclude_reason` tasks (infeasible / Google-auth / blocked tasks that are unscored noise) → **`osworld` 325 scored**, **`lite.osworld` 332 scored**.
+369 OSWorld tasks across 10 desktop apps. `--filter` drops tagged `exclude_reason` tasks (infeasible / Google-auth / blocked tasks that are unscored noise) → **`osworld` 325 scored**, **`lite.osworld` 328 scored**.
 
 **Setup:** see [`lite/gym/envs/lite/osworld/README.md`](/lite/gym/envs/lite/osworld/README.md) / [`lite/gym/envs/osworld/README.md`](/lite/gym/envs/osworld/README.md).
 
@@ -111,21 +111,6 @@ Cold-booting a Windows VM per episode dominates wall-clock. `install.sh` builds 
 (used automatically when present — no flag). Run WAA behind the env-server for
 admission, ownership cleanup, and retry/recovery during full-suite evals. See
 [Snapshot restore](/lite/gym/envs/waa/README.md#snapshot-restore-fast-by-default).
-
-To explicitly reproduce the full upstream 154-task set, use an agent/config
-that supports extra tools, omit the filter, and enable `report_infeasible`:
-
-```bash
-uv run python scripts/rollout.py \
-  --model-id {gpt-5.5,Qwen/Qwen3-VL-8B-Instruct} \
-  --env-id waa \
-  --splits eval \
-  --env-kwargs '{"extra_tools":["report_infeasible","terminate"]}' \
-  --config-path scripts/configs/{gpt,qwen3_vl}/default/waa.yaml
-```
-
-A correct `report_infeasible` action scores `1` on an infeasible task and `0`
-on a feasible task.
 
 ## OSWorld-2
 
@@ -314,7 +299,7 @@ uv run python scripts/rollout.py \
 
 ## MobileGym
 
-416 parameterized tasks (256 eval + 160 train) across 24 simulated mobile apps — a lightweight browser-based simulator in Docker (no KVM). Reward is progress rate (0.0–1.0).
+416 parameterized tasks (256 eval + 160 train) across 24 simulated mobile apps — a lightweight browser-based simulator in Docker (no KVM). Reward is MobileGym's Success Rate (1.0/0.0): goal met, no unexpected state changed, and the episode ended via COMPLETE.
 
 **Setup:** see [`lite/gym/envs/mobilegym/README.md`](/lite/gym/envs/mobilegym/README.md).
 
@@ -338,6 +323,8 @@ uv run python scripts/rollout.py \
 
 # Specific tasks via parquet
 --prompt-data /path/to/tasks.parquet
+# WebArena's committed read/write split lives under:
+# lite/gym/envs/browsergym/data/webarena_241_templates.{read,write}.prompt_data.parquet
 
 # Parallel environments
 --concurrency 4

@@ -561,7 +561,9 @@ def test_get_pending_and_rebuild(tmp_path):
     results = rebuild_results(tmp_path, specs, group_size=1)
     by_task = {r["task"]: r for r in results}
     assert by_task["a"]["episode_return"] == 1.0
-    assert by_task["a"]["error"] == "terminal model_output_error: parse_failure"
+    # A parse failure is a measurement, not an error: the env scored the turn,
+    # so the summary's episode_return stands and only ``error`` marks a row bad.
+    assert by_task["a"]["error"] is None
     assert by_task["a"]["env_id"] == "webgym" and by_task["a"]["turns"] == 3
     assert by_task["a"]["stop_reason"] == "parse_failure"
     assert by_task["b"]["error"] == "unresolved"

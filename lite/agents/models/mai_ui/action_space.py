@@ -55,6 +55,7 @@ from lite.agents.core.action_space.utils.geometry import (
     compact_number,
     optional_coord,
     required_coord,
+    required_model_text,
 )
 from lite.agents.core.action_space.utils.grounding_point import (
     convert_non_point_call_for_grounding_space,
@@ -594,7 +595,7 @@ class MAIUIMobileActionSpace(BaseActionSpace, key="mai_ui@mobile"):
             )]
 
         if action == "type":
-            return [LiteMobileActionSpace.type(text=args.get("text", ""))]
+            return [LiteMobileActionSpace.type(text=required_model_text(args, action=action))]
 
         if action == "open":
             # MAI-UI uses `text` for app name (NOT `app_name`)

@@ -1,6 +1,6 @@
 # Lite.CUAWorld Teacher-Data Pipeline
 
-This directory owns the Lite.CUAWorld GPT teacher-data workflow.
+This directory owns the Lite.CUAWorld teacher-data workflow.
 
 Lite.CUAWorld re-hosts the **gym-anything (CMU CUA-World)** desktop software task suite — **40
 softwares, one Docker image each** (`lite.cuaworld.<software>`). Its desktop tasks use the same
@@ -9,6 +9,26 @@ screenshot, coordinate-action, and terminal substrate as Lite.OSWorld, so it
 (like Lite.CUAGym and Lite.ScaleCUA). Its task pool, prompt, rollout logs, and published dataset
 remain separate. Env content lives in the HF materials dataset `cua-lite/lite.cuaworld-assets`
 (pinned by `data/assets.lock.yaml`); this repo is engine + pipeline only.
+
+Lite.CUAWorld publishes trajectories from THREE teachers into one HF repo, each as
+its own set of configs. Per-teacher collection and annotation live in their own
+runbooks; everything below the annotated log roots is dataset-level and covers
+all of them at once.
+
+| Teacher | Runbook | Model |
+|---|---|---|
+| `gpt5_5` | [`gpt5_5/AGENTS.md`](/devs/data/lite.cuaworld/gpt5_5/AGENTS.md) | `gpt-5.5` (API) |
+| `qwen3_8_27b` | [`qwen3_8_27b/AGENTS.md`](/devs/data/lite.cuaworld/qwen3_8_27b/AGENTS.md) | `Qwen/Qwen3.8-27B` (local, sglang) |
+| `qwen3_5_27b` | [`qwen3_5_27b/AGENTS.md`](/devs/data/lite.cuaworld/qwen3_5_27b/AGENTS.md) | `Qwen/Qwen3.5-27B` (local, sglang, **thinking on**) |
+
+The handoff between a teacher runbook and this one is exactly:
+
+    .data/rollout/lite.cuaworld/<teacher>/$COMMIT/<software>/train_annotated
+    .data/rollout/lite.cuaworld/gpt5_5/$COMMIT/<software>/train_annotated.think
+
+`gpt5_5` hands over the `.think` sibling: its Internalize Reasoning step runs after
+`filter.py`, and the stage command below reads that root, not the plain `_annotated`
+one. The other teachers have no `.think` root at all; their `_annotated` root is the handoff.
 
 ## Collection Targets
 
@@ -22,7 +42,7 @@ over the 40 softwares:
 
 | split | registered | live after task excludes | HF config |
 |---|---:|---:|---|
-| `train` | 2,419 | 1,745 | `desktop.use.<software>` (one config per software) |
+| `train` | 2,419 | 1,745 | `desktop.use.<software>.<teacher>` — one config per software per teacher |
 | `eval` (CUAWorld-Test) | 626 | 440 | held-out reference, **not** SFT |
 | `long_horizon` (CUAWorld-Long) | 38 | 18 | held-out reference, **not** SFT |
 
@@ -39,37 +59,24 @@ and the engine bakes each into `metadata.others['exclude_reason']` at registrati
 uses at the trajectory level (below), so both compose under one downstream selector. Reason-code
 breakdown: [`/devs/envs/lite.cuaworld/UPSTREAM_ISSUES.md`](/devs/envs/lite.cuaworld/UPSTREAM_ISSUES.md).
 
-## Prompt Design
-
-Canonical recipe: `scripts/configs/gpt/recipes/collect/lite.cuaworld.yaml` — **functionally
-identical to `lite.osworld`'s collect recipe** except `env_id` (a nominal default; `rollout.py`
-overrides it per software via `--env-id`). The policy requires:
-
-1. A concise `Thought` grounded in the current screenshot, prior action result, exact task values,
-   and remaining global requirements.
-2. At most three mechanically coupled tool calls per turn. Any action that changes the next UI
-   surface ends the turn; do not predict unseen controls.
-3. GUI-first execution. Terminal use is limited to explicitly command-line, inherently OS-level, or
-   simple filesystem tasks with no suitable GUI. Interpreters, dependency installs, multiline
-   scripts, complex shell logic, hidden config edits, and guessed internal paths are forbidden.
-4. Exact custom-color hex values, clean temporary state, application-level saves, committed settings.
-5. At most one harmless reversible mistake, only when the task is simple, stable, and safely within
-   budget. Never mention training or an intentional mistake in the inline reasoning.
-6. Final completion only after the requested state is visibly verified and saved. Do not combine an
-   ordinary state-changing action with termination.
-
-The agent policy stays aligned with the Lite.OSWorld recipe; environment-specific changes belong in
-this file. Prompt changes alter the training distribution — smoke-test a few softwares first.
+The config name carries BOTH axes: the software and the teacher. The software
+comes from the log-root subfolder (`$SW`), and the teacher token is the same one
+the log-root path uses (`.data/rollout/lite.cuaworld/gpt5_5/...` ↔
+`desktop.use.*.gpt5_5`). `--config-names` is positional and 1:1 with
+`--log-roots`, and stage only checks that the two lists are the same LENGTH —
+mislabelling a software or a teacher is otherwise silent, so keeping the tokens
+identical is what makes the pairing checkable by eye.
 
 ## Shared Filter
 
 Lite.CUAWorld uses [`devs/data/lite.osworld/filter.py`](/devs/data/lite.osworld/filter.py). It is mostly an
 **annotation** pass: it keeps trajectories and tags quality gates in
-`metadata.others.exclude_reason` (comma-joined; the key is omitted when clean). Two
+`metadata.others.exclude_reason` (comma-joined; the key is omitted when clean). Four
 publish-invalid classes are physically dropped before staging: a trajectory whose
 agent typed a `/opt/env/` path leaked an env-only tool tree and is
-non-reproducible, and any trajectory with GUI coordinates outside normalized
-`[0, 1000]` would fail publish validation. Downstream selects the training set with
+non-reproducible, and a trajectory with GUI coordinates outside normalized
+`[0, 1000]`, one calling a tool it never declared, or one naming an action that
+does not exist would all fail publish validation. Downstream selects the training set with
 `not m.others.get('exclude_reason') and (m.others.get('episode_return') or 0) > 0.5`.
 
 ```bash
@@ -92,8 +99,11 @@ It tags, in `exclude_reason`:
 - `footgun:no_submit` — no explicit final submit tool (`terminate`/`response`),
   only when `--drop-no-submit` is passed; this is separate from the default
   content-only final turn policy (normalized to one plain `text` part, not preserved as emitted);
-- `oob_coordinate` — a coordinate outside normalized `[0, 1000]`;
-- `reward_vision_disagree` — scalar reward and multi-frame visual judgement disagree.
+- `reward_vision_disagree` — SOFT tag, emitted UNCONDITIONALLY (no `--drop` flag gates it):
+  the scalar checker reward and the multi-frame vision verdict disagree. It never overwrites
+  `episode_return`, and stage publishes the row either way — but the export filter this runbook
+  uses (`not m.others.get('exclude_reason')`) drops it, so a tagged row reaches the Hub and not
+  the training set.
 
 Reward is **not** a tag (`episode_return` is in `metadata.others.episode_return` for the consumer to threshold).
 On every kept trajectory it strips `screenshot` and `wait` (keeps a bare
@@ -105,7 +115,8 @@ Tests: `uv run pytest devs/data/lite.osworld/tests/test_lite_osworld_filter.py`.
 
 ## Complete Workflow
 
-Run from the repository root. Freeze the code revision, task set, prompt, and log root per batch; a
+Run from the repository root. Pipeline: collect → filter/annotate → stage →
+upload/download → `export_sft`. Freeze the code revision, task set, prompt, and log root per batch; a
 resume must use the identical command.
 
 ### 1. Install And Configure
@@ -147,6 +158,12 @@ HOST_IP=$(hostname -I | awk '{print $1}')
 export CUA_LITE_ENV_SERVER_URL=http://${HOST_IP}:<PORT>
 ```
 
+The `OPENAI_*` route above is required for the VLM judge whichever teacher you
+collect with. Beyond that, each teacher needs its own credentials or serving
+step — an API key for `gpt5_5`, and an sglang server for each of
+`qwen3_8_27b` / `qwen3_5_27b`. Those live
+in the teacher runbooks.
+
 Before scaling collection, run the same one-task smoke command shown in the
 env README and default GPT config, then inspect the saved trajectory shape:
 
@@ -158,66 +175,60 @@ uv run python scripts/rollout.py --model-id gpt-5.5 \
   --config-path scripts/configs/gpt/default/lite.cuaworld.yaml
 ```
 
-### 2. Collect
+### 2. Collect And Annotate (per teacher)
 
-Loop the 38 rolloutable softwares on `train`, each into its own subfolder (stage maps log-roots 1:1 to config
-names). The rollout `--filter` excludes every task the engine flagged with `exclude_reason`.
-Keep total live rollout concurrency across CUAGym/CUAWorld at 48 or lower; when both are active,
-budget them explicitly (for example 24 + 24) instead of letting one campaign monopolize the host.
-Start from 24 for CUAWorld and raise only after the env-server, Docker, and provider error rates are stable.
+Run [`gpt5_5/AGENTS.md`](/devs/data/lite.cuaworld/gpt5_5/AGENTS.md),
+[`qwen3_8_27b/AGENTS.md`](/devs/data/lite.cuaworld/qwen3_8_27b/AGENTS.md) and
+[`qwen3_5_27b/AGENTS.md`](/devs/data/lite.cuaworld/qwen3_5_27b/AGENTS.md). All
+loop the 38 rolloutable softwares on `train`, one log-root subfolder per
+software, and end with annotated log roots under
+`.data/rollout/lite.cuaworld/<teacher>/$COMMIT/<software>/train_annotated` —
+`.../gpt5_5/$COMMIT/<software>/train_annotated.think` for `gpt5_5`, which internalizes
+after filtering.
 
-```bash
-CUAWORLD_CONCURRENCY="${CUAWORLD_CONCURRENCY:-24}"
-for SW in <the 38 rolloutable softwares>; do
-  uv run python scripts/rollout.py \
-    --model-id gpt-5.5 \
-    --env-id "lite.cuaworld.$SW" \
-    --splits train \
-    --concurrency "$CUAWORLD_CONCURRENCY" \
-    --max-attempts 3 \
-    --save-data true \
-    --save-video false \
-    --save-gif false \
-    --config-path scripts/configs/gpt/recipes/collect/lite.cuaworld.yaml \
-    --filter "lambda m: not m.others.get('exclude_reason')" \
-    --log-root ".data/rollout/lite.cuaworld/gpt/$COMMIT/$SW"
-done
-```
+Every teacher runs the SAME `filter.py` with the SAME flags. That is deliberate:
+it makes the published subsets comparable, so a measured quality difference is a
+property of the teacher rather than of the annotation pass.
 
-Re-run the identical command to resume. If you collect `eval`/`long_horizon` as held-out reference
-sets, use a separate explicit software list and a separate log root, and keep those splits out of the
-SFT mix.
+### 3. Stage, Upload Transport, And Download
 
-### 3. Annotate And Review
-
-`filter.py` keeps every trajectory except the `/opt/env/` and OOB-coordinate
-hard-drops and writes `metadata.others.exclude_reason`.
-
-```bash
-for SW in <softwares>; do
-  uv run python devs/data/lite.osworld/filter.py \
-    --log-root ".data/rollout/lite.cuaworld/gpt/$COMMIT/$SW/train" \
-    --out     ".data/rollout/lite.cuaworld/gpt/$COMMIT/$SW/train_annotated" \
-    --drop-loops --drop-undo-storm
-done
-```
-
-Review the `exclude_reason` tag counts and sample each tag class + clean/terminal trajectories
-before publishing. `devs/data/lite.cuaworld/analyze.py --log-root <root>` reports per-software yield,
-failure breakdown, WAIT-patterns, and programmatic-vs-VLM yield (watch for an implausibly-high VLM
-yield = garbage passing).
-
-### 4. Stage, Upload Transport, And Download
+> **Upload is a declarative full sync, not an append.** It plans the whole repo
+> from the LOCAL staging dir and deletes everything else, so staging one teacher
+> and uploading DELETES the other's published shards. Adding a teacher (or any
+> config) to an already-published repo therefore has one shared procedure —
+> read what the repo actually holds, then stage all of it in one call:
+> [Add A Config To A Published Dataset](/devs/data/AGENTS.md#add-a-config-to-a-published-dataset).
+>
+> Lite.CUAWorld's wrinkle: the stage below globs its log-roots, one config per
+> software. Rebuilt roots do not match that glob, so the flags that procedure
+> prints REPLACE the glob rather than joining it.
 
 ```bash
 export CUA_LITE_DATASETS_ROOT="$PWD/.data/huggingface"
 READBACK_ROOT="$PWD/.data/huggingface-readback"
 
+# The gpt5_5 roots below are the `.think` siblings its teacher runbook produced: reasoning
+# canonicalized into `reasoning_content` before staging, so the PUBLISHED rows carry one
+# reasoning shape. `qwen3_8_27b` runs thinking off and has none to move, so its roots are
+# used as-is, and `qwen3_5_27b` needs none either — it is sampled with thinking ON, so its
+# native <think> is already in `reasoning_content` at collection time. Only gpt5_5 has a
+# step between filter and stage. See /devs/data/lite.cuaworld/gpt5_5/AGENTS.md.
+# DELETE the qwen3_5_27b lines below until that teacher is actually collected — they are
+# LIVE as written, and a shell comment cannot be used here (a `#` after a `\` continuation
+# swallows the rest of the command). Once it IS published they are MANDATORY again, and
+# NOTHING WILL TELL YOU IF YOU FORGET: stage rglobs each
+# root and only errors when ALL of them are empty, so a missing one contributes zero rows
+# and stage still exits 0 (verified) — then upload sweeps and deletes that teacher's
+# published shards. Re-read the blockquote above before every re-stage.
 uv run python -m lite.data.hf.stage \
-  --log-roots .data/rollout/lite.cuaworld/gpt/$COMMIT/*/train_annotated \
-  --config-names <one desktop.use.<software> per --log-roots, same order> \
+  --log-roots .data/rollout/lite.cuaworld/gpt5_5/$COMMIT/*/train_annotated.think \
+              .data/rollout/lite.cuaworld/qwen3_8_27b/$COMMIT/*/train_annotated \
+              .data/rollout/lite.cuaworld/qwen3_5_27b/$COMMIT/*/train_annotated \
+  --config-names <one desktop.use.<software>.<teacher> per log-root, teacher block by teacher block, in the SAME order as the globs above> \
   --name Lite.CUAWorld \
-  --repo-dir devs/data/lite.cuaworld
+  --repo-dir devs/data/lite.cuaworld \
+  --overwrite   # the default out dir is $CUA_LITE_DATASETS_ROOT/cua-lite/Lite.CUAWorld;
+                # stage refuses a non-empty one, so a re-stage needs this
 
 # Private smoke upload; use the release org only for the approved final publish.
 : "${HF_ORG:?set HF_ORG to your Hub user/org for the private smoke repo}"
@@ -229,11 +240,58 @@ uv run python -m lite.data.hf.download Lite.CUAWorld \
   --out "${READBACK_ROOT}/cua-lite/Lite.CUAWorld"
 ```
 
+The `--log-roots` globs expand in sorted order, one per teacher, so build the
+`--config-names` list in that same order, one teacher block after the other: the
+software token in each label must be the `$SW` subfolder of the log-root at the
+same position, and the teacher token must be the teacher directory of that same
+path.
+
+A consumer who wants one teacher pulls only that teacher's shards, either
+through the HF config (`load_dataset("cua-lite/Lite.CUAWorld",
+"desktop.use.pymol.qwen3_8_27b")`) or with
+`hf.download --allow-patterns '*/*/*/desktop.use.*.qwen3_8_27b/*'`.
+
 Record `stage`'s final `seen=... kept=... dropped_by_filter=...` line and the
 per-config row lines as the publish gate. Upload/download are transport/layout
 smokes only; row content was already gated by `stage`.
 
-### 5. Export SFT Parquet
+### 4. Export SFT Parquet
+
+The three teachers publish DIFFERENT kinds of row, and a consumer that mixes them
+should know which it is training on:
+
+| Teacher | Rows carry | Reasoning |
+|---|---|---|
+| `gpt5_5` | `inline_reasoning` + `action_description` + `tool_calls` | prompted `Thought:` line |
+| `qwen3_8_27b` | `action_description` + `tool_calls` | none — runs with thinking off, per its runbook |
+| `qwen3_5_27b` | `reasoning_content` + `action_description` + `tool_calls` | native `<think>`, written straight to the canonical field |
+
+The table is what each teacher COLLECTS. `gpt5_5`'s last step before staging
+([Internalize Reasoning](/devs/data/lite.cuaworld/gpt5_5/AGENTS.md#internalize-reasoning))
+moves its prompted `Thought:` out of the `inline_reasoning` content part and into
+the `reasoning_content` FIELD — the same one a teacher sampled with
+`enable_thinking` writes natively. So the PUBLISHED rows carry one vocabulary and
+consumers run no extra step.
+
+`qwen3_8_27b` has no reasoning to internalize (it runs thinking off and writes
+prose into `action_description`), so a thinking-enabled config on those rows
+would train an empty `<think>` block — pair them with a thinking-off config.
+
+`qwen3_5_27b` needs no internalize pass either, for the opposite reason: it is
+sampled with `enable_thinking: true`, so the adapter parses its native `<think>`
+straight into `reasoning_content` at collection time. Three teachers, three
+collection recipes, one published vocabulary — only `gpt5_5` has a step between
+filter and stage.
+
+One published root serves both recipes for a reasoning teacher: a thinking-on
+config renders the reasoning, and a thinking-off one strips `reasoning_content`
+at the model boundary (`lite/train/export/sft_tokenize.py`), which is
+byte-identical to exporting from a root that never carried any. Nothing under
+`scripts/configs/*/default/` sets `enable_thinking: true` for these envs, so the
+command below is the thinking-off recipe; the thinking-on twins live with the
+campaign that trains them
+([`/devs/exps/train/desktop/configs/qwen3_5/`](/devs/exps/train/desktop/configs/qwen3_5/),
+[`/examples/lite/v1/configs/qwen3_5/`](/examples/lite/v1/configs/qwen3_5/)).
 
 ```bash
 uv run python -m lite.train.export.export_sft \
@@ -261,8 +319,14 @@ Keep fail-fast on; use `--no-strict` only for an identified, recorded corrupt so
 
 Desktop is slow (~2–3 min/task). On a shared host, a 40-wide run spins up to 40 desktop containers
 at once — **run a resource watchdog** and throttle `--concurrency` down if free RAM drops (each
-container is memory-heavy; the host is co-tenant with other jobs). `blender3d` needs `gpus=1` (the
+container is memory-heavy; the host is co-tenant with other jobs). Keep total live rollout
+concurrency across CUAGym/CUAWorld at 48 or lower; when several are active, budget them explicitly
+instead of letting one campaign monopolize the host. The ceiling is host-wide and covers every
+teacher: three CUAWorld collections at the start-from-24 default would be 72, so run them in
+sequence or divide the 48 among the ones you actually start.
+`blender3d` needs `gpus=1` (the
 only GPU env); `gmat`'s upstream download is dead (rescue the retagged image). After **stage**
-captures a batch, delete its raw `$SW/<split>` and `$SW/<split>_annotated` roots. Clean up only your
+captures a batch, delete its raw `$SW/<split>`, `$SW/<split>_annotated` and (for `gpt5_5`)
+`$SW/<split>_annotated.think` roots. Clean up only your
 own env-server containers (named by your port) afterward. Task/verifier defects:
 [/devs/envs/lite.cuaworld/UPSTREAM_ISSUES.md](/devs/envs/lite.cuaworld/UPSTREAM_ISSUES.md).

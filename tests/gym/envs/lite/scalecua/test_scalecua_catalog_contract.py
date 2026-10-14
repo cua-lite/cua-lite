@@ -438,6 +438,7 @@ def test_scalecua_excludes_exact_imagemagick_missing_dependency_rows():
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split="train",
+                broken_metrics=frozenset(),
             )
             == "missing_dependency:imagemagick"
         )
@@ -453,6 +454,7 @@ def test_scalecua_excludes_exact_imagemagick_missing_dependency_rows():
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split="train",
+                broken_metrics=frozenset(),
             )
             is None
         )
@@ -473,6 +475,7 @@ def test_scalecua_excludes_exact_java_missing_dependency_row_only():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="train",
+            broken_metrics=frozenset(),
         )
         == "missing_dependency:java"
     )
@@ -483,6 +486,7 @@ def test_scalecua_excludes_exact_java_missing_dependency_row_only():
             inherited_exclusion=None,
             unsupported=[],
             runtime_split="rl",
+            broken_metrics=frozenset(),
         )
         is None
     )
@@ -497,6 +501,7 @@ def test_scalecua_excludes_exact_java_missing_dependency_row_only():
                 inherited_exclusion=None,
                 unsupported=[],
                 runtime_split="train",
+                broken_metrics=frozenset(),
             )
             is None
         )
