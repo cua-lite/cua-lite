@@ -102,7 +102,7 @@ uv run pytest -q \
 uv run pytest -q -m live tests/gym/envs/lite/cuagym/test_cuagym_parity.py
 ```
 
-The full validator covers every currently eligible row (10,416 in the pinned
+The full validator covers every currently eligible row (10,397 in the pinned
 snapshot):
 
 ```bash

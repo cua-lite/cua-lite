@@ -158,6 +158,21 @@ def test_font_names_loose_wrong_font_fails(tmp_path):
     assert metrics.compare_font_names(p, {"font_name": "Times New Roman"}) == 0.0
 
 
+def test_font_names_loose_scores_zero_when_nothing_visible_remains(tmp_path):
+    # The comparator can only REJECT: every visible run is checked against the
+    # expected font and a mismatch returns 0.0, so a document with no visible run
+    # left reaches the end having proven nothing. Without the guard that is 1.0 --
+    # i.e. `Ctrl+A -> Delete -> Ctrl+S` scores full marks on the rows whose only
+    # metric is this one (the save is already in the shared LO postconfig).
+    p = _docx(tmp_path / "emptied.docx", ["", "   "], normal_font="Arial")
+    assert metrics.compare_font_names(p, {"font_name": "Times New Roman"}) == 0.0
+
+
+def test_font_names_loose_scores_zero_for_a_document_with_no_paragraphs(tmp_path):
+    p = _docx(tmp_path / "blank.docx", [], normal_font="Arial")
+    assert metrics.compare_font_names(p, {"font_name": "Times New Roman"}) == 0.0
+
+
 # ---------------------------------------------------------------------------
 # compare_docx_files — trailing-space rstrip fallback
 # ---------------------------------------------------------------------------

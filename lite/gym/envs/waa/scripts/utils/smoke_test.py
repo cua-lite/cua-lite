@@ -22,6 +22,7 @@ async def _run(base_disk: Path, assets_dir: Path) -> None:
         f"waa@{task_id}",
         base_disk=str(base_disk),
         assets_dir=str(assets_dir),
+        extra_tools=["terminate"],
         reset_timeout=1200,
         step_timeout=600,
     )

@@ -33,10 +33,23 @@ _WAIT_DESKTOP = (
     "sleep 1; "
     "done; exit 1"
 )
+# Setup's first act is a baseline window snapshot, so a reachable display is not
+# enough: mutter must already have published _NET_CLIENT_LIST. `/tmp/gnome-ready`
+# fires when gnome-shell starts, which on a loaded host can precede that, and
+# `wmctrl -l` exits non-zero in the gap -- which window_ids cannot tell apart
+# from a broken X connection, so it failed the task instead of waiting a beat.
+# Before this wait existed, `wmctrl -l` failed on the order of a hundred times
+# per desktop collection run (188, 246 and 404 occurrences in three of them).
+_WAIT_WINDOW_LIST = (
+    "for _ in $(seq 1 40); do "
+    "DISPLAY=:0 wmctrl -l >/dev/null 2>&1 && exit 0; "
+    "sleep 0.5; "
+    "done; DISPLAY=:0 wmctrl -l >/dev/null"
+)
 
 
 async def bridge_display(computer) -> None:
-    """Make DISPLAY=:0 reach the real Xvnc :1 (idempotent)."""
+    """Make DISPLAY=:0 reach the real Xvnc :1, WM ready to list windows."""
     desktop = await computer.interface.run_command(_WAIT_DESKTOP, timeout=180)
     if getattr(desktop, "returncode", 0) != 0:
         detail = (getattr(desktop, "stderr", "") or "").strip()
@@ -47,3 +60,9 @@ async def bridge_display(computer) -> None:
     if getattr(result, "returncode", 0) != 0:
         detail = (getattr(result, "stderr", "") or "").strip()
         raise RuntimeError(f"failed to bridge DISPLAY=:0 to :1: {detail[-300:]}")
+    windows = await computer.interface.run_command(_WAIT_WINDOW_LIST, timeout=40)
+    if getattr(windows, "returncode", 0) != 0:
+        detail = (getattr(windows, "stderr", "") or "").strip()
+        raise RuntimeError(
+            f"lite.cuagym window manager published no client list: {detail[-300:]}"
+        )

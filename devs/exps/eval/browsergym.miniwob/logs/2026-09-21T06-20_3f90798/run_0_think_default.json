@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "env": "browsergym.miniwob",
+  "commit_dir": "2026-09-21T06-20_3f90798",
+  "run_id": "run_0_think_default",
+  "commit": {
+    "short_sha": "3f90798",
+    "subject": "Allow MiniWoB thinking evals in default mode"
+  },
+  "artifact_root": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default",
+  "result_count": 8,
+  "status_counts": {
+    "complete": 8,
+    "partial": 0,
+    "empty": 0
+  },
+  "runtime": {
+    "env_server_url_present": false,
+    "env_server_token_present": false
+  },
+  "results": [
+    {
+      "model": "Qwen/Qwen3-VL-32B-Thinking",
+      "slug": "Qwen_Qwen3-VL-32B-Thinking__think_on",
+      "base_slug": "Qwen_Qwen3-VL-32B-Thinking",
+      "config_id": "think_on",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.712,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3-VL-32B-Thinking__think_on/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3-VL-32B-Thinking__think_on"
+    },
+    {
+      "model": "Qwen/Qwen3.5-27B",
+      "slug": "Qwen_Qwen3.5-27B__think_on",
+      "base_slug": "Qwen_Qwen3.5-27B",
+      "config_id": "think_on",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.688,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3.5-27B__think_on/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3.5-27B__think_on"
+    },
+    {
+      "model": "Qwen/Qwen3-VL-8B-Thinking",
+      "slug": "Qwen_Qwen3-VL-8B-Thinking__think_on",
+      "base_slug": "Qwen_Qwen3-VL-8B-Thinking",
+      "config_id": "think_on",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.592,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3-VL-8B-Thinking__think_on/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3-VL-8B-Thinking__think_on"
+    },
+    {
+      "model": "Qwen/Qwen3-VL-4B-Thinking",
+      "slug": "Qwen_Qwen3-VL-4B-Thinking__think_on",
+      "base_slug": "Qwen_Qwen3-VL-4B-Thinking",
+      "config_id": "think_on",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.496,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3-VL-4B-Thinking__think_on/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3-VL-4B-Thinking__think_on"
+    },
+    {
+      "model": "Qwen/Qwen3.5-9B",
+      "slug": "Qwen_Qwen3.5-9B__think_on",
+      "base_slug": "Qwen_Qwen3.5-9B",
+      "config_id": "think_on",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.496,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3.5-9B__think_on/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3.5-9B__think_on"
+    },
+    {
+      "model": "Qwen/Qwen3-VL-2B-Thinking",
+      "slug": "Qwen_Qwen3-VL-2B-Thinking__think_on",
+      "base_slug": "Qwen_Qwen3-VL-2B-Thinking",
+      "config_id": "think_on",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.4,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3-VL-2B-Thinking__think_on/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3-VL-2B-Thinking__think_on"
+    },
+    {
+      "model": "Qwen/Qwen3.5-4B",
+      "slug": "Qwen_Qwen3.5-4B__think_on",
+      "base_slug": "Qwen_Qwen3.5-4B",
+      "config_id": "think_on",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.28,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3.5-4B__think_on/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3.5-4B__think_on"
+    },
+    {
+      "model": "Qwen/Qwen3.5-2B",
+      "slug": "Qwen_Qwen3.5-2B__think_on",
+      "base_slug": "Qwen_Qwen3.5-2B",
+      "config_id": "think_on",
+      "status": "complete",
+      "num_valid": 125,
+      "num_tasks": 125,
+      "num_samples": 125,
+      "mean_episode_return": 0.112,
+      "summary_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3.5-2B__think_on/summary.json",
+      "artifact_path": ".exps/eval/browsergym.miniwob/2026-09-21T06-20_3f90798/run_0_think_default/Qwen_Qwen3.5-2B__think_on"
+    }
+  ]
+}

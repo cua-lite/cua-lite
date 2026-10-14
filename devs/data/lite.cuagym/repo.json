@@ -1,5 +1,5 @@
 {
-  "description": "Lite.CUAGym GPT-5.5 grounded teacher trajectories collected on CUA-Gym task bundles and reward functions via the cua-lite `lite.cuagym` runtime; trajectories kept except /opt/env and OOB-coordinate hard-drops, quality gates tagged in metadata.others.exclude_reason (filter with not exclude_reason and episode_return>0.5)",
+  "description": "Lite.CUAGym grounded teacher trajectories collected on CUA-Gym task bundles and reward functions via the cua-lite `lite.cuagym` runtime, from two teachers published as separate configs (`*.gpt5_5` from gpt-5.5, `*.qwen3_8_27b` from Qwen/Qwen3.8-27B) and annotated by the same quality pass; trajectories kept except /opt/env and OOB-coordinate hard-drops, quality gates tagged in metadata.others.exclude_reason (filter with not exclude_reason and episode_return>0.5)",
   "original_urls": [
     "https://github.com/xlang-ai/CUA-Gym",
     "https://arxiv.org/abs/2605.25624"

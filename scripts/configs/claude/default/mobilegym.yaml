@@ -1,5 +1,5 @@
 # Claude mobile on MobileGym
-# 416 parameterized tasks across 28 simulated apps, deterministic state-diff judges.
+# 416 parameterized tasks across 24 launchable apps, deterministic state-diff judges.
 
 agent_id: "claude"
 agent_kwargs:

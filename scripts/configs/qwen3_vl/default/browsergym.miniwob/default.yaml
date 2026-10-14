@@ -29,6 +29,7 @@ env_kwargs:
   # explicitly here for symmetry with text_only.yaml's obs-mode block.
   use_screenshot: true
   use_ax_tree: false
+  include_page_context_text: false
 
   # Vision fast-path: explicitly skip BrowserGym's O(nodes) per-step DOM-
   # snapshot + AXTree + extra-properties extraction (only the screenshot is

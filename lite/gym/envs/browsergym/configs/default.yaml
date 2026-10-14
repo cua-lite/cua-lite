@@ -8,7 +8,8 @@
 # visualwebarena) whose budgets differ, so the per-instance knob that varies by
 # benchmark (`max_steps`) is `null` HERE and the concrete value is hardcoded at the
 # registration site (`_register_benchmark(max_steps=10|30)`). Uniform knobs
-# (post_action_delay / seed / extra_tools) carry their real default here.
+# (post_action_delay / seed / extra_tools / include_page_context_text) carry
+# their real default here.
 # Precedence: rollout/grpo yaml env_kwargs > BROWSERGYM_CONFIG override > default.yaml.
 
 env_var_prefix: BROWSERGYM
@@ -24,6 +25,7 @@ env_kwargs:
   post_action_delay: 0.0     # asyncio.sleep before the post-step screenshot (browsergym renders synchronously → 0)
   seed: null                 # null = unseeded bare construction; registration hardcodes a fixed task seed
   extra_tools: null          # null = all action_subset tools; [] = none; [names] = subset
+  include_page_context_text: false  # false = screenshot-first browser default; text/SoM configs opt in to page context
 
 server_kwargs:
   # Shared-backend (WA/VWA) conflict gate. "off" (default) runs fully concurrent;

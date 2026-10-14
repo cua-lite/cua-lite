@@ -24,10 +24,21 @@
 
 agent_id: "qwen3_5"
 agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; export_sft drops it, RL sets sampling via the trainer
+    temperature: 0.0
   # resolution omitted     → no agent-side downsample. Qwen smart_resize still
   #                          rounds each side to a multiple of 32 and caps pixels.
   # protocol_kwargs omitted → Qwen3_5HistoryProtocol defaults
-  #                           (history_n=50, image_max=4, fold_size=4).
+  #                           (history_n=100, image_max=4, fold_size=4).
 
 env_kwargs:
   max_steps: 30
+  loop_detect: 5
+  # Qwen native `answer` lowers to `response`; imperative tasks still need `terminate`.
+  # Required, not cosmetic: an undeclared finish tool is classified "inactive" and NOOPed
+  # (`standalone_tool_call_feedback_with_reason`, lite/gym/utils/feedback/ingress.py, applied
+  # in lite/gym/sandbox/base.py), and the rendered
+  # action enum omits it -- so the model both cannot end an episode and is evaluated on a
+  # surface its SFT data did not have. Sync with
+  # scripts/configs/qwen3_5/default/lite.osworld.yaml.
+  extra_tools: ["response", "terminate"]

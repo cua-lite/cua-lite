@@ -639,6 +639,7 @@ class TrajectoryLogger(SampleHook):
     def _save_video(self, frames: list[Image.Image]) -> None:
         """Save prepared frames as mp4 via ffmpeg (1 fps)."""
         import subprocess
+        import tempfile
 
         video_path = self.log_dir / "trajectory.mp4"
         w, h = frames[0].size
@@ -652,13 +653,19 @@ class TrajectoryLogger(SampleHook):
             "-vf", f"scale={w_out}:{h_out}",
             "-movflags", "faststart", str(video_path),
         ]
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        for frame in frames:
-            proc.stdin.write(frame.tobytes())
-        proc.stdin.close()
-        proc.wait()
-        if proc.returncode != 0:
-            raise RuntimeError(f"ffmpeg failed: {proc.stderr.read().decode()}")
+        # stderr goes to a file, never a pipe: libx264 emits more progress output
+        # than a 64 KiB pipe buffer holds, and nothing here can drain it while the
+        # frames are being written -- ffmpeg would block in write() and this
+        # thread in wait(), stranding the rollout slot for the rest of the run.
+        with tempfile.TemporaryFile() as stderr_file:
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=stderr_file)
+            for frame in frames:
+                proc.stdin.write(frame.tobytes())
+            proc.stdin.close()
+            proc.wait()
+            if proc.returncode != 0:
+                stderr_file.seek(0)
+                raise RuntimeError(f"ffmpeg failed: {stderr_file.read().decode()}")
         logger.info("video saved to %s (%d frames)", video_path, len(frames))
 
     def _save_gif(self, frames: list[Image.Image], *, max_width: int = 960,

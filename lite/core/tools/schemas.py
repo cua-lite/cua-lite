@@ -47,8 +47,10 @@ from __future__ import annotations
 
 import copy
 import inspect
+import json
 import types
 from collections.abc import Callable
+from functools import lru_cache
 from typing import (
     Any,
     ClassVar,
@@ -280,17 +282,40 @@ def tool_call_matches_schema_route_keys(
     )
 
 
+@lru_cache(maxsize=512)
+def _validator_for(parameters_json: str) -> Any:
+    """Build (and metaschema-check) the validator for one parameters schema.
+
+    Keyed on the serialized schema because that is what decides the validator:
+    two calls with equal parameters get the same object. Only ``iter_errors`` is
+    per-arguments work — ``check_schema`` walks the Draft 2020-12 metaschema and
+    the constructor compiles ``$ref`` resolution, and a staging run would otherwise
+    repeat both once per action call over a handful of distinct schemas.
+
+    The key is ``json.dumps`` WITHOUT ``sort_keys``, deliberately. Sorting would
+    rebuild every dict in the schema in alphabetical order, and ``iter_errors``
+    emits in schema order — so with the stable sort in the caller, two errors on
+    the same path would swap and the MODEL-VISIBLE reason would change (a bad
+    ``Literal`` arg reported "must be one of [...]" instead of "must be a
+    string"). Two equal schemas written in different key order merely cost one
+    extra cache entry, which is the cheap side of that trade.
+    """
+    from jsonschema import Draft202012Validator
+
+    parameters = json.loads(parameters_json)
+    Draft202012Validator.check_schema(parameters)
+    return Draft202012Validator(parameters)
+
+
 def tool_schema_validation_errors(
     schema: dict[str, Any],
     arguments: dict[str, Any],
 ) -> list[Any]:
     """Return sorted JSON-schema validation errors for tool arguments."""
-    from jsonschema import Draft202012Validator
-
     parameters = tool_schema_parameters(schema)
-    Draft202012Validator.check_schema(parameters)
+    validator = _validator_for(json.dumps(parameters))
     return sorted(
-        Draft202012Validator(parameters).iter_errors(arguments),
+        validator.iter_errors(arguments),
         key=lambda err: list(err.path),
     )
 

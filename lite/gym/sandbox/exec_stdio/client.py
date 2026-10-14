@@ -423,7 +423,11 @@ class ExecStdioInterface:
         # got an exception even though the server actually typed it. Compute
         # a budget that strictly dominates the server's total; never go below
         # the default to avoid pessimizing the common short-type case.
-        _server_default_delay_ms = 12
+        # Mirror the server's own row budget, including the floor it raises the
+        # delay to for a segment with a non-keymap codepoint (12 ms drops those
+        # characters outright). Use that floor whenever the text is not pure
+        # ASCII so the host wait keeps strictly dominating the server's.
+        _server_default_delay_ms = 12 if text.isascii() else 30
         _server_fixed_per_row_s = 30.0
         budget = max(
             DEFAULT_CALL_TIMEOUT,

@@ -176,3 +176,53 @@ def test_browser_runtime_rejects_unrendered_react_pages() -> None:
     assert "--remote-allow-origins=*" in chrome_wrapper
     assert "COPY --chmod=0755 google-chrome /usr/local/bin/google-chrome" in dockerfile
     assert "/opt/env/bin/lite-cuagym-page-health --timeout 20" in runtime
+
+
+def test_cuagym_does_not_strip_the_parent_baked_apt_indices() -> None:
+    """The child must not undo lite.osworld's deliberate "keep the indices" decision.
+
+    The parent ends with a bare ``apt-get update -qq`` and an explicit comment that the
+    OSWorld VM guest ships populated indices, so both a reset-time ``apt install`` and
+    the AGENT's own ``sudo apt-get install`` resolve from cache. Every apt RUN here
+    closes with the habitual ``rm -rf /var/lib/apt/lists/*``, which deleted the
+    INHERITED lists too and silently reverted that decision -- agent-visible, and
+    invisible to any existing test. Whatever this image strips mid-build, the final
+    layer has to put back.
+    """
+    source = _DOCKERFILE.read_text()
+
+    if "rm -rf /var/lib/apt/lists/*" not in source:
+        return
+    strip_at = source.rindex("rm -rf /var/lib/apt/lists/*")
+    restore_at = source.rindex("apt-get update -qq")
+    assert restore_at > strip_at, (
+        "lite.cuagym empties /var/lib/apt/lists after its last refresh, so the final "
+        "image ships no package indices and `apt-get install` answers `E: Unable to "
+        "locate package` for setup scripts AND for the agent's own terminal. The "
+        "parent (lite/gym/envs/lite/osworld/docker/Dockerfile) keeps them on purpose; "
+        "re-run `apt-get update -qq` after the last strip."
+    )
+
+
+def test_freshness_tracks_the_base_image_content_not_just_its_tag() -> None:
+    """A base rebuilt under the same tag must still invalidate this image.
+
+    The parent's Dockerfile is a hashed source, so a base whose BUILD RECIPE
+    changed is caught. The gap is a base whose CONTENT moved while the tag stayed:
+    an apt dependency bump during the parent's own rebuild. Hashing the tag string
+    cannot see that, and this image would keep running on the stale base with
+    nothing able to report it -- so the identity fed into the hash has to be the
+    image ID whenever docker can supply one.
+    """
+    from lite.gym.envs.lite.cuagym.image_spec import _base_identity, image_for
+
+    spec = image_for("lite.cuagym")
+    (base_input,) = [v for v in spec.extra_hash_inputs if v.startswith("base=")]
+    assert base_input == f"base={_base_identity('cua-lite/lite.osworld:latest')}"
+
+    # An unbuilt base degrades to the tag rather than raising: `image_for` runs on
+    # hosts with no daemon, and a missing base already fails later with a clearer
+    # error than a freshness probe could give.
+    assert _base_identity("cua-lite/definitely-not-built:latest") == (
+        "cua-lite/definitely-not-built:latest"
+    )

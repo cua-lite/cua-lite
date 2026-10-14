@@ -108,6 +108,7 @@ if _MAX_STEPS is not None:
 _STEP_TIMEOUT = CFG.env_kwargs["step_timeout"]
 _POST_ACTION_DELAY = CFG.env_kwargs["post_action_delay"]
 _VIEWPORT = tuple(CFG.env_kwargs["viewport"])
+_INCLUDE_PAGE_CONTEXT_TEXT = bool(CFG.env_kwargs["include_page_context_text"])
 _VALID_ACTIONS = resolve_valid_actions(
     CFG.env_kwargs["valid_actions"], env_name="online_mind2web", platform="browser",
 )
@@ -494,6 +495,29 @@ def _terminal_action(
     return action
 
 
+def _to_container_action(action: EnvAction) -> EnvAction:
+    """Project one canonical action onto the container's action wire.
+
+    Only ``type`` differs: canonical spells "submit" as a trailing newline, but
+    the container prefers ``locator.fill()``, which stores a newline as text
+    instead of pressing Return. So the newline becomes the ``press_enter`` flag
+    the container already reads. ``actions_to_send`` itself stays canonical --
+    it is also what the judged v2 trajectory is rendered from.
+    """
+    if action["name"] != "type":
+        return action
+    text = str(action["arguments"].get("text", ""))
+    press_enter = text.endswith("\n")
+    return {
+        **action,
+        "arguments": {
+            **action["arguments"],
+            "text": text[:-1] if press_enter else text,
+            "press_enter": press_enter,
+        },
+    }
+
+
 def _format_schema_action(
     name: str,
     args: dict[str, Any],
@@ -515,9 +539,11 @@ def _format_schema_action(
         return f"CLICK {target} -> {desc}{suffix}", action_status
 
     if name == "type":
-        text = _quote_text(args.get("text", ""))
+        raw = str(args.get("text", ""))
+        press_enter = raw.endswith("\n")
+        text = _quote_text(raw[:-1] if press_enter else raw)
         desc = description or f"type {text} into the focused input"
-        if args.get("press_enter"):
+        if press_enter:
             desc += " and press Enter"
         return f"TYPE page -> {desc}{suffix}", action_status
 
@@ -950,6 +976,7 @@ class RemoteOnlineMind2WebEnv(LiteBaseEnv):
         max_steps: int | None = _MAX_STEPS,
         post_action_delay: float = _POST_ACTION_DELAY,
         viewport: tuple[int, int] = _VIEWPORT,
+        include_page_context_text: bool = _INCLUDE_PAGE_CONTEXT_TEXT,
         valid_actions: list[str] | None = _VALID_ACTIONS,
         extra_tools: list[str] | None = _EXTRA_TOOLS,
         trajectory_dir: str | None = _TRAJECTORY_DIR,
@@ -968,6 +995,7 @@ class RemoteOnlineMind2WebEnv(LiteBaseEnv):
         self._post_action_delay = post_action_delay
         self._cursor = cursor
         self._viewport = tuple(viewport)
+        self._include_page_context_text = include_page_context_text
         self._rpc_url = os.environ.get("ONLINE_MIND2WEB_RPC_URL") or _RPC_URL
         self._instance_id: str | None = None
         # Unconditional assignment: the signature default (yaml-sourced) is
@@ -1235,19 +1263,23 @@ class RemoteOnlineMind2WebEnv(LiteBaseEnv):
             raise RuntimeError(f"online_mind2web container {path} returned {e.code}: {detail}") from e
 
     @staticmethod
-    def _obs_metadata(resp: dict[str, Any]) -> dict[str, Any]:
+    def _obs_metadata(
+        resp: dict[str, Any],
+        *,
+        include_page_context_text: bool = True,
+    ) -> dict[str, Any]:
         url = resp.get("url", "")
         title = resp.get("title", "")
         body_text = resp.get("body_text", "")
         navigation_error = resp.get("navigation_error", "")
         page_lines = []
-        if url:
+        if include_page_context_text and url:
             page_lines.append(f"Current page URL: {url}")
-        if title:
+        if include_page_context_text and title:
             page_lines.append(f"Current page title: {title}")
         if navigation_error:
             page_lines.append(f"Navigation error: {navigation_error}")
-        if body_text:
+        if include_page_context_text and body_text:
             if page_lines:
                 page_lines.append("")
             page_lines.append(str(body_text))
@@ -1258,17 +1290,19 @@ class RemoteOnlineMind2WebEnv(LiteBaseEnv):
             "a11y_tree": resp.get("a11y_tree", []),
             "body_text": body_text,
             "navigation_error": navigation_error,
-            # web_text is the page-context string history protocols may surface
-            # through explicit image+text history policy; body_text is kept for
-            # generic consumers.
+            # web_text is the model-visible observation text. Page context is
+            # env-gated, while navigation failures remain operational feedback.
+            # body_text is kept separately for generic consumers.
             # (online_mind2web's shipped configs use the base qwen3_vl/qwen3_5 history,
             # not the webharbor.webvoyager SoM web_text splice.)
             "web_text": web_text,
         }
 
-    @staticmethod
-    def _obs_text(resp: dict[str, Any]) -> str | None:
-        text = RemoteOnlineMind2WebEnv._obs_metadata(resp).get("web_text", "")
+    def _obs_text(self, resp: dict[str, Any]) -> str | None:
+        text = self._obs_metadata(
+            resp,
+            include_page_context_text=self._include_page_context_text,
+        ).get("web_text", "")
         return text or None
 
     async def reset(self) -> LiteEnvObservation:
@@ -1293,7 +1327,10 @@ class RemoteOnlineMind2WebEnv(LiteBaseEnv):
             },
         )
         self._instance_id = resp["instance_id"]
-        self._last_obs = self._obs_metadata(resp)
+        self._last_obs = self._obs_metadata(
+            resp,
+            include_page_context_text=self._include_page_context_text,
+        )
         png = await png_from_b64_async(resp["screenshot_b64"])
         self._last_observation_image = png
         self._last_observation_text = self._obs_text(resp)
@@ -1421,7 +1458,7 @@ class RemoteOnlineMind2WebEnv(LiteBaseEnv):
             "/step",
             {
                 "instance_id": self._instance_id,
-                "actions": actions_to_send,
+                "actions": [_to_container_action(a) for a in actions_to_send],
                 "post_action_delay": self._post_action_delay,
                 "cursor": self._cursor,
                 # The host owns the budget: it is the side that sees the turns
@@ -1430,7 +1467,10 @@ class RemoteOnlineMind2WebEnv(LiteBaseEnv):
                 "step_count": self._step_count,
             },
         )
-        self._last_obs = self._obs_metadata(resp)
+        self._last_obs = self._obs_metadata(
+            resp,
+            include_page_context_text=self._include_page_context_text,
+        )
         # One result frame per EXECUTED action, in action order: the container
         # runs the whole batch, so it is the only side that can see the page
         # between two actions. ``screenshots_b64`` is the single owner of

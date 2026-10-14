@@ -99,9 +99,14 @@ _CONFIG_ROOTS = (Path("scripts/configs"),)
 # vacuously passing.
 _MIN_CONFIG_YAMLS = 150
 _MIN_DISTINCT_PAIRS = 110
-_EXPECTED_AGENT_CONFIG_ROWS = 200
-_EXPECTED_ENV_CONFIG_ROWS = 195
-_EXPECTED_DISTINCT_PAIRS = 157
+# Exact counts: a new config yaml adds one agent row and, if it names an env, one
+# env row — the middle counter is len(PAIR_ROWS), rows that HAVE an env, not the
+# number of distinct envs. The distinct-pair count grows only when the (agent, env)
+# pair is new: a second config for a covered pair (e.g. gpt's `osworld_g.medium` /
+# `screenspot_pro.medium` grounding variants) leaves it unchanged.
+_EXPECTED_AGENT_CONFIG_ROWS = 216
+_EXPECTED_ENV_CONFIG_ROWS = 211
+_EXPECTED_DISTINCT_PAIRS = 171
 
 
 class ConfigRow:
@@ -170,6 +175,9 @@ _PINNED_ENV_DIMS: dict[str, tuple[str, ...]] = {
     "cua.bench.local.kicad": ("desktop", "use"),
     "cua.bench.local.workflows": ("desktop", "use"),
     "lite.cuagym": ("browser", "use"),
+    "lite.cuaworld.librecad": ("desktop", "use"),
+    "lite.cuaworld.pymol": ("desktop", "use"),
+    "osworld_g": ("desktop", "grounding.point"),
 }
 
 # Envs that end the episode on the FIRST step (single-step grounding). They are
@@ -895,8 +903,10 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/claude/default/lite.osworld.yaml",
     "scripts/configs/claude/default/osworld_2.yaml",
     "scripts/configs/claude/default/osworld.yaml",
+    "scripts/configs/claude/default/waa.yaml",
     "scripts/configs/evocua/default/lite.osworld.yaml",
     "scripts/configs/evocua/default/osworld.yaml",
+    "scripts/configs/evocua/default/waa.yaml",
     "scripts/configs/gemini/default/lite.osworld.yaml",
     "scripts/configs/gemini/default/osworld.yaml",
     "scripts/configs/gemini/default/osworld_2.yaml",
@@ -947,4 +957,6 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/ui_tars/default/osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/lite.osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/osworld.yaml",
+    "scripts/configs/ui_tars_15_v1/default/waa.yaml",
+    "scripts/configs/ui_venus_2/default/waa.yaml",
 }

@@ -205,6 +205,25 @@ async def test_env_server_path_is_not_capped_below_its_configured_capacity(
 
 
 @pytest.mark.asyncio
+async def test_env_server_image_freshness_check_runs_off_loop(
+    boot_harness, monkeypatch,
+):
+    calls = []
+
+    async def fake_to_thread(fn, /, *args, **kwargs):
+        calls.append((fn, args, kwargs))
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(sandbox_base.asyncio, "to_thread", fake_to_thread)
+    envs = await _boot_many(1, env_id="lite.osworld")
+    try:
+        assert len(calls) == 1
+        assert calls[0][0].__name__ == "_ensure_image_runnable"
+    finally:
+        await asyncio.gather(*(e.close() for e in envs))
+
+
+@pytest.mark.asyncio
 async def test_readiness_timeout_keeps_its_own_diagnosis(boot_harness, monkeypatch):
     """A ``TimeoutError`` from the boot must not be relabelled as slot exhaustion.
 

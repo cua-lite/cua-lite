@@ -36,6 +36,8 @@ _DETAILS = re.compile(
 )
 _CODE = re.compile(r"`([^`]+)`")
 _TEST_ENV_PREFIXES = ("_", "faketest_")
+_ENV_APP_SUFFIX = ".<app>"
+_NAMESPACE_ENVS_COVERED_BY_CHILDREN = {"browsergym", "cua.bench"}
 
 
 def _reference_block() -> str:
@@ -56,6 +58,13 @@ def _expand(token: str) -> list[str]:
 def _listed_tokens() -> set[str]:
     block = _reference_block()
     return {expanded for token in _CODE.findall(block) for expanded in _expand(token)}
+
+
+def _env_token_family(token: str) -> str:
+    """README ``foo.<app>`` shorthand names the ``foo`` env family."""
+    if token.endswith(_ENV_APP_SUFFIX):
+        return token.removesuffix(_ENV_APP_SUFFIX)
+    return token
 
 
 def test_readme_lists_every_model_id() -> None:
@@ -94,9 +103,13 @@ def test_every_env_id_is_covered_by_a_listed_family() -> None:
     listed = _listed_tokens()
 
     def covered(env_id: str) -> bool:
-        return any(
-            env_id == token or env_id.startswith(token.rstrip(".<app>") + ".") for token in listed
-        )
+        for token in listed:
+            family = _env_token_family(token)
+            if env_id == family or env_id.startswith(family + "."):
+                return True
+            if env_id in _NAMESPACE_ENVS_COVERED_BY_CHILDREN and token.startswith(env_id + "."):
+                return True
+        return False
 
     readme_env_ids = [
         env_id

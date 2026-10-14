@@ -61,11 +61,6 @@ EXEMPT: dict[str, str] = {
         "registry key differs. Collapsing it into the parent's key regex would "
         "put a second vendor's name on a Qwen3-VL class."
     ),
-    "lite/agents/models/qwen3_5/action_space.py::Qwen3_5DesktopActionSpace": (
-        "Qwen3.5's desktop delta is the XML wire format, which lives in the "
-        "adapter, not the action space. The class exists to own the "
-        "qwen3_5@(desktop|browser) key next to its three non-empty siblings."
-    ),
     "lite/agents/models/qwen3_8/action_space.py::Qwen3_8MobileActionSpace": (
         "The expanded harness Qwen3.8 is served with declares only the desktop "
         "computer_use tool, so mobile has no delta to project. It inherits "

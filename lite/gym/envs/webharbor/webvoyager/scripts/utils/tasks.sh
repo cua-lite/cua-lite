@@ -204,7 +204,9 @@ for path in site_paths:
         web_name = str(row.get("web_name") or upstream_id.split("--", 1)[0])
         suffix = upstream_id.split("--", 1)[1] if "--" in upstream_id else upstream_id
         mutating = is_mutating(str(row["ques"]))
-        task_id = f"webvoyager.{slug(web_name)}.{slug(suffix)}"
+        # Env id already carries the WebVoyager namespace:
+        # webharbor.webvoyager@allrecipes.0.
+        task_id = f"{site_slug}.{slug(suffix)}"
         start_url = rewrite_local_url(str(row["web"]))
         upstream_url = row.get("upstream_url")
         others = {

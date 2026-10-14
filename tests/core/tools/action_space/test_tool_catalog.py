@@ -595,43 +595,28 @@ def _action_batch_child_properties(tools: type, action: str) -> dict:
     return tool_schema_parameters(schema)["properties"]["actions"]["items"]["properties"]
 
 
-def test_desktop_type_declares_press_enter_so_browser_env_trajectories_validate() -> None:
-    """``press_enter`` is part of the canonical desktop/browser ``type`` contract.
+def test_desktop_type_carries_only_text() -> None:
+    """Enter has ONE canonical spelling: a trailing newline inside ``text``.
 
-    Two envs read it off the canonical child arguments they forward unmodified
-    to their container (``lite/gym/envs/online_mind2web`` and
-    ``lite/gym/envs/webharbor/webvoyager``), and the Fara adapter emits it. If
-    the child schema did not declare it, such a trajectory would execute at
-    rollout and then fail row validation on publish, since
-    ``lite/data/utils/rows.py`` runs the same child-argument validator.
+    Every transport executes a real newline as the Return key -- the desktop
+    sandbox splits on it (``exec_stdio/server.py``), and the browser envs
+    project it onto their container's own submit flag at the host boundary. A
+    second ``press_enter`` argument would be a second representation of the
+    same fact.
     """
     properties = _action_batch_child_properties(LiteDesktopActionSet, "type")
-    assert properties["press_enter"] == {
-        "type": "boolean",
-        "description": "Whether to press Enter after typing the text.",
-    }
+    assert set(properties) == {"action", "text"}
 
-    call = LiteDesktopActionSpace.type(text="query", press_enter=True)
     children, structure_error = validate_lite_action_batch_structure(
-        "computer", tool_call_arguments(call)
+        "computer", tool_call_arguments(LiteDesktopActionSpace.type(text="query\n"))
     )
     assert structure_error is None
-    assert children == [{"name": "type", "arguments": {"text": "query", "press_enter": True}}]
+    assert children == [{"name": "type", "arguments": {"text": "query\n"}}]
     assert validate_lite_action_batch_child_arguments("computer", children) is None
 
-    # Omitted stays omitted, and the validator accepts it: that behavioral pair
-    # is what "optional" MEANS here, so optionality is not read off ``required``
-    # (the batch projection requires only ``action`` on each child item).
-    # Each env keeps its own default.
-    omitted, _ = validate_lite_action_batch_structure(
-        "computer", tool_call_arguments(LiteDesktopActionSpace.type(text="query"))
-    )
-    assert omitted == [{"name": "type", "arguments": {"text": "query"}}]
-    assert validate_lite_action_batch_child_arguments("computer", omitted) is None
 
-
-def test_mobile_type_does_not_declare_press_enter() -> None:
-    """No mobile backend consumes ``press_enter``; mobile submits via ``system_button``."""
+def test_mobile_type_submits_through_system_button() -> None:
+    """Mobile has no Enter spelling in ``type`` at all; it submits via ``system_button``."""
     properties = _action_batch_child_properties(LiteMobileActionSet, "type")
     assert set(properties) == {"action", "text"}
     button = _action_batch_child_properties(LiteMobileActionSet, "system_button")["button"]

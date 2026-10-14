@@ -26,17 +26,23 @@
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/mobilegym/run.sh Qwen/Qwen3-VL-8B-Instruct
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/mobilegym/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/mobilegym/run.sh Qwen/Qwen3.5-27B
+#   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/mobilegym/run.sh Qwen/Qwen3.5-27B
 #   ./devs/exps/eval/mobilegym/run.sh gpt-5.5         # API model, no GPU
 #
-# tp_size is inferred from the GPU count in CUDA_VISIBLE_DEVICES (local HF models only).
+# tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
+# GPU count; serve_sglang.py derives dp_size = visible // tp_size (local HF models only),
+# so the GPUs you expose set the REPLICA count. This script never passes --engine-kwargs,
+# so tp is unchangeable here.
 # Pre-req: cua-lite/mobilegym docker image built via
 #   uv run --no-sync bash lite/gym/envs/mobilegym/scripts/install.sh
 #
 # Env shape (see lite/gym/envs/mobilegym/README.md):
 #   - eval split = 256 parameterized tasks (seed=42, deterministic) across 28
-#     simulated apps; reward = progress_rate in [0.0, 1.0] from the state-diff
-#     judge at episode end, so mean_episode_return is NOT a plain success rate.
+#     simulated apps; reward is MobileGym's Success Rate (1.0/0.0) from the
+#     state-diff judge at episode end, so mean_episode_return IS the success
+#     rate. It used to be progress_rate (fraction of sub-goals passed), which
+#     read high against MobileGym's published numbers -- results produced
+#     before that change are not comparable to these.
 #   - One shared cua-lite/mobilegym container per env-server (SINGLETON backend)
 #     holds a Chromium pool (contexts_per_browser=8, max_browsers RAM-derived,
 #     floor 4 / ceiling 32). Pool saturation → HTTP 503 → CapacityExhausted on
@@ -124,6 +130,8 @@ fi
 case "$MODEL" in
   Qwen/Qwen3-VL-*-Instruct|Qwen/Qwen3-VL-*-Thinking) CFG=scripts/configs/qwen3_vl/default/mobilegym.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/mobilegym.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/mobilegym.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/mobilegym.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/mobilegym.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/mobilegym.yaml ;;
   Tongyi-MAI/MAI-UI-*)             CFG=scripts/configs/mai_ui/default/mobilegym.yaml ;;

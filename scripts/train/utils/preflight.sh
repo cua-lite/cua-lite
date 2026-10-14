@@ -27,7 +27,12 @@
 # backend family, lifecycle, reaping, and rollout concurrency belong to the
 # server, so refuse here instead of minutes later at the first gym.make.
 if [ -z "${CUA_LITE_ENV_SERVER_URL:-}" ]; then
-   _FAMILY=$(ENV_ID="${ENV_ID}" python -c 'import contextlib, os
+   if command -v uv >/dev/null 2>&1; then
+      _PYTHON_CMD=(uv run python)
+   else
+      _PYTHON_CMD=("${PYTHON:-python3}")
+   fi
+   _FAMILY=$(ENV_ID="${ENV_ID}" "${_PYTHON_CMD[@]}" -c 'import contextlib, os
 from lite.gym.registry import ensure_registered, import_registration_modules
 from lite.gym.services import family_of
 import_registration_modules()
@@ -37,7 +42,7 @@ print(getattr(family_of(os.environ["ENV_ID"]), "value", ""))' 2>/dev/null || tru
       echo "DIRECT MODE: ${ENV_ID} has no external backend."
       echo "  Skipping env-server preflight; rollout workers build envs in-process."
       echo "  Export CUA_LITE_ENV_SERVER_URL to train through an env-server."
-      unset _FAMILY
+      unset _FAMILY _PYTHON_CMD
       return 0
    fi
    echo "Error: CUA_LITE_ENV_SERVER_URL is unset for ENV_ID=${ENV_ID}" >&2

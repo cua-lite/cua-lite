@@ -180,9 +180,9 @@ def _build_perturb_row(
     oracle = _build_oracle(file_path, expected_path)
     evaluator = _build_evaluator(op_idx, file_path, expected_path)
     # oracle_after_postconfig=True: validate.py runs postconfig (Ctrl+S)
-    # first, then kills soffice, then runs oracle. The oracle just needs to
-    # cp the expected file over; LO is already dead and _postconfig_done=True
-    # prevents the evaluator from sending another Ctrl+S that would revert it.
+    # first, then kills soffice, then runs oracle. It does not mark the
+    # production evaluator as postconfig-done, so final scoring still runs the
+    # normal evaluator path after the oracle plants the expected file.
     return make_perturb_row(
         eval_row=eval_row,
         knob_assignment={"type": perturb_type, "op": op_idx, "variant": instruction[:30]},

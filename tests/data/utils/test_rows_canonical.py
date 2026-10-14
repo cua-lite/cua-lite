@@ -1214,6 +1214,105 @@ def test_validate_raw_rollout_rows_allows_unknown_tool_error_only_result():
     validate_raw_rollout_rows(rows, "unit/unknown-tool-error-only")
 
 
+def _extra_tool_invalid_arguments_row(tool_result_text: str) -> dict:
+    return {
+        "images": ["screen.png"],
+        "messages": [
+            {"role": "user", "content": [{"type": "text", "text": "task"}]},
+            {
+                "role": "assistant",
+                "tool_calls": [_tc(
+                    "click",
+                    {"index": "[3]"},
+                    call_id="call_click",
+                )],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_click",
+                "content": [
+                    {"type": "image", "index": 0},
+                    {"type": "text", "text": tool_result_text},
+                    {"type": "metadata", "data": {"is_error": True}},
+                ],
+            },
+            {"role": "assistant", "content": [{"type": "text", "text": "Done."}]},
+        ],
+        "metadata": LiteCUAMetadata(
+            dims=("browser", "use"),
+            extra_tool_schemas=[
+                _extra_tool_schema(
+                    "click",
+                    properties={"index": {"type": "integer"}},
+                    required=["index"],
+                )
+            ],
+            valid_actions=None,
+            others={},
+        ).to_dict(),
+    }
+
+
+def test_validate_raw_rollout_rows_allows_extra_tool_invalid_arguments_feedback():
+    row = _extra_tool_invalid_arguments_row(
+        project_tool_result_text(
+            "current observation",
+            "invalid arguments for click: click.arguments.index must be an integer",
+        )
+    )
+
+    validate_raw_rollout_rows([row], "unit/extra-tool-invalid-arguments")
+
+
+def test_validate_raw_rollout_rows_rejects_extra_tool_invalid_arguments_without_feedback():
+    row = _extra_tool_invalid_arguments_row(
+        project_tool_result_text("current observation", "click failed: bad coordinate")
+    )
+
+    with pytest.raises(ValueError, match="arguments do not match"):
+        validate_raw_rollout_rows([row], "unit/extra-tool-invalid-arguments-wrong-error")
+
+
+def test_validate_raw_rollout_rows_rejects_invalid_arguments_for_other_tool():
+    row = _extra_tool_invalid_arguments_row(
+        project_tool_result_text(
+            "current observation",
+            "invalid arguments for type: type.arguments.text must be a string",
+        )
+    )
+
+    with pytest.raises(ValueError, match="arguments do not match"):
+        validate_raw_rollout_rows([row], "unit/extra-tool-invalid-arguments-wrong-tool")
+
+
+def test_validate_raw_rollout_rows_rejects_invalid_arguments_with_multiple_text_parts():
+    row = _extra_tool_invalid_arguments_row(
+        project_tool_result_text(
+            "current observation",
+            "invalid arguments for click: click.arguments.index must be an integer",
+        )
+    )
+    row["messages"][2]["content"].insert(
+        2,
+        {"type": "text", "text": "second text part"},
+    )
+
+    with pytest.raises(ValueError, match="arguments do not match"):
+        validate_raw_rollout_rows([row], "unit/extra-tool-invalid-arguments-two-texts")
+
+
+def test_validate_canonical_rows_rejects_extra_tool_invalid_arguments_feedback():
+    row = _extra_tool_invalid_arguments_row(
+        project_tool_result_text(
+            "current observation",
+            "invalid arguments for click: click.arguments.index must be an integer",
+        )
+    )
+
+    with pytest.raises(ValueError, match="arguments do not match"):
+        validate_canonical_rows([row], "unit/extra-tool-invalid-arguments-publish")
+
+
 def test_validate_raw_rollout_rows_accepts_tagged_generic_metadata_json() -> None:
     metadata = LiteGenericMetadata(
         dims=("geo3k", "sft"),

@@ -285,7 +285,7 @@ def guard_excluded(setup_fn: _SetupFn) -> _SetupFn:
     ``setup_fn``s and one registration site; the wrapper is applied where the
     catalogs are registered, so it is the ``setup_fn`` every task carries.
 
-    494 of the 10910 pinned rows carry ``metadata.others.exclude_reason``
+    513 of the 10910 pinned rows carry ``metadata.others.exclude_reason``
     (closed vocabulary: ``src/utils/dataset.py::EXCLUDE_REASONS``). Those rows stay
     REGISTERED — this env never silently drops a row — but each is either
     unrunnable by construction or a confirmed pinned reward/spec mismatch, so
@@ -404,6 +404,10 @@ def _register_tasks() -> None:
                 path,
                 required_metadata_paths=("setup", "reward"),
             )
+        dataset.validate_catalog_count_lock({
+            "desktop": _DESKTOP_JSONL,
+            "web": _WEB_JSONL,
+        })
     except (
         RuntimeError,
         OSError,

@@ -21,6 +21,7 @@ from typing import Any
 
 from lite.core.tools import make_tool_call
 from lite.gym.envs.lite.cuagym.src.utils.container import write_text
+from lite.gym.errors import CuaGymTaskError
 from lite.gym.sandbox.base import SandboxBaseEnv
 from lite.gym.utils import config as env_config
 
@@ -95,12 +96,41 @@ async def validate_post_setup_runtime(
         raise RuntimeError("post-reset GNOME desktop health check returned DOWN")
 
 
+# Attempts wmctrl gets to return one consistent window listing (see window_ids).
+_LIST_ATTEMPTS = 3
+
+
 async def window_ids(computer: Any) -> set[str]:
     """Return current X11 window IDs without depending on shell window names."""
-    result = await computer.interface.run_command(
-        "wmctrl -l 2>/dev/null | awk '{print $1}'"
+    # Every other X-touching command here names DISPLAY explicitly; this one used to
+    # ride whatever the image exported, which the transport deliberately does NOT
+    # promise ("DISPLAY/HOME ride the image env", exec_stdio/server.py). Silence made
+    # that dangerous rather than merely implicit: `2>/dev/null` dropped wmctrl's
+    # "cannot open display", and the pipe's exit code is awk's, so a broken X
+    # connection returned an EMPTY SET -- indistinguishable from "no windows yet".
+    # Every caller reads that as a missing window, which is a hard `no_task_window`
+    # setup failure for the browser and document branches.
+    #
+    # One listing is not atomic, though: wmctrl reads _NET_CLIENT_LIST and then
+    # asks each window it names for properties, so a window that closes between
+    # those two steps fails the whole call with BadWindow. That is a snapshot of a
+    # moving desktop, not a broken connection, so take the snapshot again and let
+    # the last attempt's stderr speak for whatever is actually wrong.
+    for attempt in range(_LIST_ATTEMPTS):
+        result = await computer.interface.run_command("DISPLAY=:0 wmctrl -l")
+        if getattr(result, "returncode", 0) == 0:
+            return {
+                line.split(None, 1)[0]
+                for line in (result.stdout or "").splitlines()
+                if line.strip()
+            }
+        if attempt + 1 < _LIST_ATTEMPTS:
+            await asyncio.sleep(0.3)
+    raise CuaGymTaskError(
+        f"lite.cuagym cannot list windows: {(result.stderr or '').strip()[-200:]}",
+        phase="setup",
+        kind="command_failed",
     )
-    return {line for line in (result.stdout or "").splitlines() if line}
 
 
 async def wait_for_new_window(

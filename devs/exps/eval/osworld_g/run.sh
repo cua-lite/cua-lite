@@ -26,9 +26,11 @@
 # Examples:
 #   CUDA_VISIBLE_DEVICES=0       ./devs/exps/eval/osworld_g/run.sh Qwen/Qwen3-VL-8B-Instruct
 #   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/osworld_g/run.sh Qwen/Qwen3-VL-32B-Instruct
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 ./devs/exps/eval/osworld_g/run.sh Qwen/Qwen3.5-27B
+#   CUDA_VISIBLE_DEVICES=0,1     ./devs/exps/eval/osworld_g/run.sh Qwen/Qwen3.5-27B
 #
-# tp_size is inferred from the GPU count in CUDA_VISIBLE_DEVICES.
+# tp_size comes from the model's LOCAL_AGENTS entry (lite/agents/factory.py), NOT from the
+# GPU count; serve_sglang.py derives dp_size = visible // tp_size, so the GPUs you expose
+# set the REPLICA count. This script never passes --engine-kwargs, so tp is unchangeable here.
 # Pre-req: `uv run python lite/gym/envs/osworld_g/scripts/utils/download_tasks.py` to
 # clone the upstream OSWorld-G repo into ./data/OSWorld-G/ (one-time).
 
@@ -119,12 +121,15 @@ if [ ! -d "$COMMIT_DIR/$RUN_ID" ] && [ -d "$COMMIT_DIR" ]; then
   fi
 fi
 
-# model-family → rollout config (grounding subset: qwen3_vl, qwen3_5, evocua, ui_tars, ui_tars_15_v1, mai_ui)
+# model-family → rollout config
 case "$MODEL" in
   gpt-*)                            CFG=scripts/configs/gpt/default/osworld_g.yaml ;;
+  claude-*)                         CFG=scripts/configs/claude/default/osworld_g.yaml ;;
   Qwen/Qwen3-VL-*-Instruct)        CFG=scripts/configs/qwen3_vl/default/osworld_g.yaml ;;
   Qwen/Qwen2.5-VL-*-Instruct)      CFG=scripts/configs/qwen2_5_vl/default/osworld_g.yaml ;;
   Qwen/Qwen3.5-*)                  CFG=scripts/configs/qwen3_5/default/osworld_g.yaml ;;
+  Qwen/Qwen3.8-*)                  CFG=scripts/configs/qwen3_8/default/osworld_g.yaml ;;
+  inclusionAI/UI-Venus-2-*)        CFG=scripts/configs/ui_venus_2/default/osworld_g.yaml ;;
   ByteDance-Seed/UI-TARS-7B-DPO)   CFG=scripts/configs/ui_tars/default/osworld_g.yaml ;;
   ByteDance-Seed/UI-TARS-1.5-7B)   CFG=scripts/configs/ui_tars_15_v1/default/osworld_g.yaml ;;
   meituan/EvoCUA-*)                CFG=scripts/configs/evocua/default/osworld_g.yaml ;;
@@ -149,6 +154,6 @@ HF_HUB_OFFLINE=1 exec uv run python scripts/rollout.py \
   `# false-positive give-up calls on bbox/polygon tasks.` \
   --filter "lambda m: not m.others.get('exclude_reason')" \
   --env-kwargs '{"step_timeout": 180}' \
-  --concurrency 64 \
+  --concurrency "${EVAL_CONCURRENCY:-64}" \
   --config-path "$CFG" \
   --log-root "$LOG_ROOT"

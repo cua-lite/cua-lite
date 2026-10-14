@@ -90,3 +90,45 @@ class TestParseProvenanceIsReturnedNotStashed:
         assert provider_call.error is None
         assert provider_call.is_final_for_canonical is True
         assert tool_call_id(parsed.message["tool_calls"][0]) == "call_0000"
+
+
+class TestTruncatedCallIsNeverAFinal:
+    """A call the provider cut off is malformed output, not a deliberate answer.
+
+    The Responses API emits ``{"type": "computer_call", "status": "incomplete"}``
+    with no action when the item hits ``max_output_tokens`` mid-emission. Parsed as
+    zero tool calls with no error, the loop reads that as the model choosing to stop
+    and ends the episode -- so a truncated turn is scored as an agent that gave up on
+    an env it never touched. It has to surface as a parse error instead.
+    """
+
+    def test_incomplete_computer_call_is_a_parse_error(self):
+        from lite.agents.models.gpt.utils.parse import _normalized_gpt_output_records
+
+        (record,) = _normalized_gpt_output_records([
+            {
+                "id": "cu_1",
+                "type": "computer_call",
+                "status": "incomplete",
+                "call_id": "call_1",
+            }
+        ])
+
+        assert record.parse_error is not None
+        assert "truncated" in record.parse_error
+
+    def test_completed_computer_call_with_actions_is_not_an_error(self):
+        from lite.agents.models.gpt.utils.parse import _normalized_gpt_output_records
+
+        (record,) = _normalized_gpt_output_records([
+            {
+                "id": "cu_2",
+                "type": "computer_call",
+                "status": "completed",
+                "call_id": "call_2",
+                "actions": [{"type": "click", "x": 10, "y": 20, "button": "left"}],
+            }
+        ])
+
+        assert record.parse_error is None
+        assert record.actions
