@@ -1013,9 +1013,10 @@ def test_metadata_exposes_service_dep_flags():
 
 
 @pytest.mark.asyncio
-async def test_task064_evaluation_uses_upstream_replay_timeout(monkeypatch):
+@pytest.mark.parametrize("task_id,eval_timeout", [("001", 300.0), ("056", 1800.0), ("064", 3600.0)])
+async def test_evaluation_allows_upstream_replay_budget(monkeypatch, task_id, eval_timeout):
     env, _ = _make_env(monkeypatch, extra_tools=["terminate"])
-    env._config.task_id = "064"
+    env._config.task_id = task_id
     rpc = m._rpc
     timeouts = []
 
@@ -1026,7 +1027,13 @@ async def test_task064_evaluation_uses_upstream_replay_timeout(monkeypatch):
 
     monkeypatch.setattr(m, "_rpc", capture)
     await env.step([_tc("terminate", {"status": "success"})])
-    assert timeouts == [3600.0]
+    assert timeouts == [eval_timeout]
+    from lite.gym.registry import registry
+
+    step_timeout = registry.task_kwargs("osworld_2", task_id).get(
+        "step_timeout", registry.env_make_kwargs("osworld_2")["step_timeout"],
+    )
+    assert step_timeout > eval_timeout
 
 
 def test_service_env_only_carries_set_knobs():

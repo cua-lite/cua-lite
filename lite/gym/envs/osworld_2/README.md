@@ -106,7 +106,7 @@ reach the service:
 
 **Task selection.** The default eval runner excludes the seven simulated-user conversation tasks and the multi-phase task. GitLab tasks require the GitLab URL/token; website tasks require the stack above. Task 029's known setup timeout is also documented in the official v2.1 release.
 
-**Task 056 rendering.** Reset installs `melt`, `frei0r-plugins`, `xvfb`, and `xauth` before task setup. The pinned official VM bundles Shotcut as an AppImage but lacks the command-line renderer searched by the upstream evaluator. Installation failures abort reset; the task and scoring code remain unchanged.
+**Task 056 rendering.** Reset installs `melt`, `frei0r-plugins`, `xvfb`, and `xauth` before task setup. The pinned official VM bundles Shotcut as an AppImage but lacks the command-line renderer searched by the upstream evaluator. Installation failures abort reset; the task and scoring code remain unchanged. Evaluation allows 1800 seconds (2100 seconds for the enclosing step) so the upstream 300-second render and 600-second retry can finish.
 
 ## Available Tasks
 
