@@ -22,6 +22,7 @@ env_kwargs:
   extra_tools: ["response", "terminate", "goto", "back", "forward", "new_tab", "switch_tab", "close_tab"]
   use_screenshot: true
   use_ax_tree: false
+  include_page_context_text: false
   # Vision fast-path: skip BrowserGym's per-step DOM/AXTree extraction (only the
   # screenshot is used). Safe: coordinate-only action space.
   skip_dom_extraction: true

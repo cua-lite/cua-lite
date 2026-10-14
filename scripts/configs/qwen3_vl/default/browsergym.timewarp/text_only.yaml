@@ -34,6 +34,9 @@ env_id: "browsergym.timewarp"
 env_kwargs:
   max_steps: 30
   # ─── Obs: text-only AXTree (AgentLab ObsFlags) ────────────────────────
+  # Page context (AXTree, open tabs, focused element) renders only when this
+  # is on; the env default is screenshot-first.
+  include_page_context_text: true
   use_screenshot: false
   use_ax_tree: true
   use_focused_element: true
