@@ -78,8 +78,9 @@ class TestMiniWoBLive:
         try:
             await env.reset()
             r = await env.step([
-                make_tool_call("click", {"coordinate": [500, 500]}),
+                make_tool_call("click", {"coordinate": [500, 500]}, call_id="call_click"),
             ])
+            assert r.results[0].tool_call_id == "call_click"
             assert r.results[0].images
             assert not r.terminated
         finally:
@@ -91,9 +92,10 @@ class TestMiniWoBLive:
         try:
             await env.reset()
             r = await env.step([
-                make_tool_call("click", {"coordinate": [500, 600]}),
-                make_tool_call("type", {"text": "hello"}),
+                make_tool_call("click", {"coordinate": [500, 600]}, call_id="call_click"),
+                make_tool_call("type", {"text": "hello"}, call_id="call_type"),
             ])
+            assert [result.tool_call_id for result in r.results] == ["call_click", "call_type"]
             assert r.results[0].images
         finally:
             await env.close()
