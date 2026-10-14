@@ -142,6 +142,21 @@ their registry key is present.
   enum (19 values, `call_user` replacing `answer`) that OSWorld's
   `mm_agents/qwen` harness declares. Mobile keeps the Qwen3.5 surface.
 
+- `openmobile_2`
+  IDs: `OpenMobile-2/OpenMobile-2-{9B,27B}`.
+  Surface: mobile `use`.
+  Files: `agent.py`, `adapter.py`, `action_space.py`, `protocol.py`.
+  OpenMobile-2's 9B is fine-tuned from Qwen3.5 and its 27B from Qwen3.6; both
+  share the same XML tool_call chat_template, so the stack is inherited from
+  `Qwen3_5BaseAdapter`; the family delta mirrors the official
+  `qwen35_thought_session` harness: the system prompt is the official
+  `QWEN35_SESSION_SYSTEM_PROMPT_THOUGHT` verbatim with the `mobile_use` schema
+  embedded (8 actions, no `open`, no separate tools section), the first user
+  message is rewritten to `The user query: {instruction}\n` ahead of the
+  screenshot, `system_button(Menu)` lowers to a bare wait like the official
+  `qwen3vl_action_transform`, and `openmobile_2.history` keeps every text
+  part while collapsing screenshots beyond the last 3 to placeholder text.
+
 - `qwen2_5_vl`
   IDs: `Qwen/Qwen2.5-VL-{3B,7B}-Instruct`.
   Surfaces: desktop/browser/mobile `use`, `grounding.action`, `grounding.point`,

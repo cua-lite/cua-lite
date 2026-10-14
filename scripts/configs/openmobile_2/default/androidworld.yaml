@@ -1,0 +1,25 @@
+# OpenMobile-2 rollout eval on AndroidWorld
+# Multi-step mobile tasks across 20 apps, evaluated by real device state.
+#
+# Official alignment (qwen35_thought_session, the runtime OpenMobile-2 was
+# trained and evaluated with): verbatim system prompt with the 8-action
+# mobile_use schema embedded, "The user query:" first user message,
+# message-level last_n=3 screenshot window, greedy decoding. extra_tools
+# intentionally excludes open_app — the official action enum has no `open`;
+# apps are launched through the GUI (home-screen icons).
+#
+# Related configs (sync env_kwargs when changing):
+#   - scripts/configs/qwen3_5/default/androidworld.yaml  (base-model sibling)
+
+agent_id: "openmobile_2"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 4096
+
+# max_steps is omitted so androidworld uses its native complexity-based
+# budget: int(10 * task.complexity). Pass max_steps explicitly to override.
+env_id: "androidworld"
+env_kwargs:
+  loop_detect: 5
+  extra_tools: ["response", "terminate"]

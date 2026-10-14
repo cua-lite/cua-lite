@@ -73,7 +73,7 @@ ALL_FAMILIES = _discover_families()
 
 # Mobile-ONLY families: only ``@mobile@use`` is registered; a desktop
 # lookup legitimately misses (make(..., desktop) raises KeyError).
-MOBILE_ONLY_FAMILIES = ["mai_ui", "step_gui"]
+MOBILE_ONLY_FAMILIES = ["mai_ui", "openmobile_2", "step_gui"]
 
 # Registries where a family legitimately has NO entry (discovered from code):
 #   - "lite":  the cua-lite reference DIALECT (adapter + action-space +
@@ -259,7 +259,7 @@ def test_bootstrap_lists_are_disjoint_and_duplicate_free() -> None:
 # =============================================================================
 # Protocol registry golden
 # =============================================================================
-# golden: slugs are import-path-independent — exactly the 13 protocol keys.
+# golden: slugs are import-path-independent — exactly the 14 protocol keys.
 # Includes the env-bridge protocol browsergym.generic +
 # the browsergym goal_image history protocols and the webharbor.webvoyager SoM
 # history protocols (one per agent family).
@@ -270,6 +270,7 @@ PROTOCOL_GOLDEN = {
     "fara.history",
     "lite.history",
     "mai_ui.history",
+    "openmobile_2.history",
     "qwen3_5.history",
     "qwen3_vl.history",
     "step_gui.history",
@@ -310,6 +311,7 @@ ACTION_SPACE_LIST = [
     "lite@mobile",
     "lite@point",
     "mai_ui@mobile",
+    "openmobile_2@mobile",
     "qwen2_5_vl@mobile",
     "qwen2_5_vl@mobile@point",
     "qwen3_5@mobile",
@@ -358,6 +360,7 @@ ADAPTER_LIST = [
     "lite@mobile@grounding.action",
     "lite@mobile@use",
     "mai_ui@mobile@use",
+    "openmobile_2@mobile@use",
     "qwen2_5_vl@mobile@grounding.action",
     "qwen2_5_vl@mobile@grounding.point",
     "qwen2_5_vl@mobile@use",
@@ -442,6 +445,7 @@ AGENT_LIST = [
     "gpt.teacher@mobile@use",
     "gpt@mobile@use",
     "mai_ui@mobile@use",
+    "openmobile_2@mobile@use",
     "qwen2_5_vl@mobile@grounding.action",
     "qwen2_5_vl@mobile@grounding.point",
     "qwen2_5_vl@mobile@use",
@@ -633,6 +637,7 @@ _PACKAGE_ROOT_INIT_FILES = [
     "lite/agents/models/gpt/__init__.py",
     "lite/agents/models/lite/__init__.py",
     "lite/agents/models/mai_ui/__init__.py",
+    "lite/agents/models/openmobile_2/__init__.py",
     "lite/agents/models/qwen2_5_vl/__init__.py",
     "lite/agents/models/qwen3_5/__init__.py",
     "lite/agents/models/qwen3_vl/__init__.py",

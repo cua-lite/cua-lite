@@ -109,6 +109,17 @@ LOCAL_AGENTS: dict[str, dict] = {
     # ``<action>`` with no reasoning at all. See
     # ``UIVenus2BaseAdapter.enable_thinking``.
     "inclusionAI/UI-Venus-2-9B": {"agent_id": "ui_venus_2"},
+    # OpenMobile-2 — OpenMobile's mobile GUI agent: 9B fine-tuned from Qwen3.5,
+    # 27B from Qwen3.6; both share the same XML tool_call chat_template (the
+    # 27B ``config.json`` still reports ``model_type: "qwen3_5"`` — the string
+    # is shared across recent Qwen generations, as with Qwen3.8). The family
+    # delta is the official ``qwen35_thought_session`` harness: verbatim system
+    # prompt with the 8-action ``mobile_use`` schema embedded (no ``open``),
+    # message-level last_n=3 screenshot window with collapse placeholders,
+    # Menu→wait lowering, thinking off. Mobile-only registration. See
+    # ``lite/agents/models/openmobile_2/adapter.py``.
+    "OpenMobile-2/OpenMobile-2-9B": {"agent_id": "openmobile_2", **_NO_THINK},
+    "OpenMobile-2/OpenMobile-2-27B": {"agent_id": "openmobile_2", **_NO_THINK, **_tp(2)},
 }
 
 # =============================================================================
