@@ -15,7 +15,7 @@ make_kwargs:
 
 env_kwargs:
   # null → use the per-benchmark budget HARDCODED at registration (miniwob 10;
-  # webarena / visualwebarena 30). A concrete int here overrides all benchmarks.
+  # webarena / visualwebarena / timewarp 30). A concrete int here overrides all benchmarks.
   max_steps: null
   post_action_delay: 0.0     # asyncio.sleep before the post-step screenshot (browsergym renders synchronously → 0)
   seed: null                 # null = unseeded bare construction; registration hardcodes a fixed task seed
@@ -52,3 +52,6 @@ server_kwargs:
   miniwob_port_range: [7560, 7659]
   wikipedia_path: "/wikipedia_en_all_maxi_2022-05/A/User:The_other_Kiwix_guy/Landing"
   classifieds_reset_token: "4b61655535e7ed388f0d40a93600254c"
+  # TimeWarp UI version + host-port band (identical to default.yaml; see it).
+  timewarp_version: 1
+  timewarp_port_range: [6200, 6299]

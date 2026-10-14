@@ -20,7 +20,7 @@ make_kwargs:
 
 env_kwargs:
   # null → use the per-benchmark budget HARDCODED at registration (miniwob 10;
-  # webarena / visualwebarena 30). A concrete int here overrides all benchmarks.
+  # webarena / visualwebarena / timewarp 30). A concrete int here overrides all benchmarks.
   max_steps: null
   post_action_delay: 0.0     # asyncio.sleep before the post-step screenshot (browsergym renders synchronously → 0)
   seed: null                 # null = unseeded bare construction; registration hardcodes a fixed task seed
@@ -79,3 +79,13 @@ server_kwargs:
   # VWA Classifieds self-reset token (the 22 require_reset classifieds tasks); also
   # exported by scripts/start.sh — keep the two literals in sync.
   classifieds_reset_token: "4b61655535e7ed388f0d40a93600254c"
+
+  # ── TimeWarp ───────────────────────────────────────────────────────────────
+  # UI version (1-6) the cua-lite/browsergym.timewarp container serves for this
+  # deployment; one version per process. The TIMEWARP_VERSION env var overrides it
+  # (read by main.py and scripts/start.sh), so a per-version eval is
+  # `TIMEWARP_VERSION=3 uv run python scripts/serve_env.py ...`.
+  timewarp_version: 1
+  # Host ports for the Wiki / News / Shop sites are picked from this band unless
+  # TIMEWARP_{WIKI,NEWS,WEBSHOP}_PORT pin them (inclusive bounds).
+  timewarp_port_range: [6200, 6299]

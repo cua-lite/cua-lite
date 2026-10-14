@@ -104,9 +104,9 @@ _MIN_DISTINCT_PAIRS = 110
 # number of distinct envs. The distinct-pair count grows only when the (agent, env)
 # pair is new: a second config for a covered pair (e.g. gpt's `osworld_g.medium` /
 # `screenspot_pro.medium` grounding variants) leaves it unchanged.
-_EXPECTED_AGENT_CONFIG_ROWS = 212
-_EXPECTED_ENV_CONFIG_ROWS = 207
-_EXPECTED_DISTINCT_PAIRS = 167
+_EXPECTED_AGENT_CONFIG_ROWS = 216
+_EXPECTED_ENV_CONFIG_ROWS = 211
+_EXPECTED_DISTINCT_PAIRS = 171
 
 
 class ConfigRow:
@@ -168,6 +168,7 @@ PAIR_ROWS = [r for r in ROWS if r.env_id]
 # provisioned host verifies them automatically.
 _PINNED_ENV_DIMS: dict[str, tuple[str, ...]] = {
     "browsergym.miniwob": ("browser", "use"),
+    "browsergym.timewarp": ("browser", "use"),
     "browsergym.visualwebarena": ("browser", "use"),
     "browsergym.webarena": ("browser", "use"),
     "cua.bench.local.basic": ("desktop", "use"),

@@ -822,9 +822,11 @@ _EXPECTED_ASK_USER_CONFIGS = {
 
 _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS = {
     "scripts/configs/claude/default/browsergym.miniwob/default.yaml",
+    "scripts/configs/claude/default/browsergym.timewarp/default.yaml",
     "scripts/configs/claude/default/browsergym.webarena/default.yaml",
     "scripts/configs/evocua/default/browsergym.webarena/default.yaml",
     "scripts/configs/gpt/default/browsergym.miniwob/default.yaml",
+    "scripts/configs/gpt/default/browsergym.timewarp/default.yaml",
     "scripts/configs/gpt/default/browsergym.webarena/default.yaml",
     "scripts/configs/qwen3_5/default/browsergym.miniwob/default.yaml",
     "scripts/configs/qwen3_5/default/browsergym.visualwebarena/goal_image.yaml",
@@ -834,6 +836,8 @@ _BROWSERGYM_RESPONSE_TERMINATE_NAV_CONFIGS = {
     "scripts/configs/qwen3_5/default/browsergym.webarena/som.yaml",
     "scripts/configs/qwen3_5/default/browsergym.webarena/text_only.yaml",
     "scripts/configs/qwen3_vl/default/browsergym.miniwob/default.yaml",
+    "scripts/configs/qwen3_vl/default/browsergym.timewarp/default.yaml",
+    "scripts/configs/qwen3_vl/default/browsergym.timewarp/text_only.yaml",
     "scripts/configs/qwen3_vl/default/browsergym.visualwebarena/goal_image.yaml",
     "scripts/configs/qwen3_vl/default/browsergym.visualwebarena/mixed.yaml",
     "scripts/configs/qwen3_vl/default/browsergym.visualwebarena/som.yaml",

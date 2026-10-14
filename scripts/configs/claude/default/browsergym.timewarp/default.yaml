@@ -1,0 +1,28 @@
+# Claude vision+coord rollout eval on cua-lite browsergym.timewarp.
+#
+# Routing: ``claude@browser@use`` — the shared desktop/browser computer-use
+# agent class; only env_kwargs differ from the WebArena / OSWorld rollouts.
+# See scripts/configs/gpt/default/browsergym.timewarp/default.yaml for the
+# TimeWarp-specific notes.
+#
+# Related configs (sync env_kwargs when changing):
+#   - scripts/configs/gpt/default/browsergym.timewarp/default.yaml
+#   - scripts/configs/qwen3_vl/default/browsergym.timewarp/default.yaml
+#
+# Prereqs: ``install.sh timewarp`` + ``ANTHROPIC_API_KEY`` (optionally
+# ``ANTHROPIC_BASE_URL`` for a litellm proxy).
+
+agent_id: "claude"
+agent_kwargs:
+  api_kwargs:
+    effort: "medium"
+    max_tokens: 4096
+
+env_id: "browsergym.timewarp"
+env_kwargs:
+  max_steps: 30
+  extra_tools: ["response", "terminate", "goto", "back", "forward", "new_tab", "switch_tab", "close_tab"]
+  use_screenshot: true
+  use_ax_tree: false
+  include_page_context_text: false
+  skip_dom_extraction: true

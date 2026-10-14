@@ -1,0 +1,19 @@
+--- a/env/wiki/wiki_app.py
++++ b/env/wiki/wiki_app.py
+@@ -667,4 +667,4 @@
+         print("="*60 + "\n")
+         
+         # Use use_reloader=False to avoid issues with port binding in debug mode
+-        app.run(debug=True, port=port, use_reloader=False)
+\ No newline at end of file
++        app.run(host='0.0.0.0', debug=True, port=port, use_reloader=False)
+\ No newline at end of file
+--- a/env/news/news_app.py
++++ b/env/news/news_app.py
+@@ -1195,5 +1195,5 @@
+         print("="*60 + "\n")
+         
+         # Use use_reloader=False to avoid issues with port binding in debug mode
+-        app.run(debug=True, port=port, use_reloader=False)
++        app.run(host='0.0.0.0', debug=True, port=port, use_reloader=False)
+ 

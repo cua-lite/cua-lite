@@ -11,6 +11,7 @@
 #   visualwebarena   — all webarena containers + classifieds compose stack
 #                      + webarena-homepage Flask
 #   miniwob          — kill the local http.server serving miniwob-plusplus
+#   timewarp         — stop/remove this scope's timewarp-<scope> container
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 ENV_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -92,6 +93,11 @@ stop_homepage_flask() {
     pkill -9 -f "flask run .*--port ${HOMEPAGE_PORT}([^0-9]|$)" 2>/dev/null || true
 }
 
+stop_timewarp() {
+    echo "Stopping TimeWarp container (scope ${SERVER_PORT})..."
+    docker rm -fv "timewarp-${SERVER_PORT}" >/dev/null 2>&1 || true
+}
+
 usage() {
     cat <<USAGE
 Usage: $0 <benchmark>
@@ -100,6 +106,7 @@ Benchmarks:
   webarena         stop shopping, shopping_admin, forum, gitlab, wikipedia
   visualwebarena   stop all webarena services + classifieds
   miniwob          kill local http.server on MINIWOB_PORT (default 7560)
+  timewarp         stop/remove timewarp-<scope>
 USAGE
 }
 
@@ -118,6 +125,10 @@ case "${1:-}" in
     miniwob)
         stop_miniwob
         echo "MiniWoB HTTP server killed (if running)."
+        ;;
+    timewarp)
+        stop_timewarp
+        echo "TimeWarp stopped."
         ;;
     ""|-h|--help)
         usage

@@ -1,0 +1,53 @@
+# Qwen3-VL text+bid rollout on cua-lite browsergym.timewarp — the observation and
+# action shape of the TimeWarp paper's agents (AgentLab GenericAgent: AXTree text,
+# bid actions).
+#
+# Action set = upstream BrowserGym's "timewarp" subset (scroll, fill, click,
+# press, go_back, goto, send_msg_to_user, report_infeasible, new_tab, tab_close,
+# tab_focus). browsergym-core 0.14.3 predates that subset, so it is spelled as
+# the bid/chat/infeas/nav/tab subsets narrowed by ``extra_tools`` to exactly
+# those eleven (canonical names: back, response, terminate, close_tab,
+# switch_tab).
+#
+# Rebuild-per-turn protocol (``browsergym.generic``) keeps one current AXTree in
+# the prompt — see browsergym.webarena/text_only.yaml for the rationale.
+#
+# Prereqs: ``install.sh timewarp``. Pair with sglang ``--context-length 131072``.
+
+agent_id: "qwen3_vl.base"
+agent_kwargs:
+  protocol_key: "browsergym.generic"
+  protocol_kwargs:
+    use_concrete_example: false
+    use_hints: true
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via trainer flags
+    temperature: 0.0
+  # AgentLab's minimal system prompt (agentlab.agents.dynamic_prompting.SystemPrompt).
+  system_prompt: |-
+    You are an agent trying to solve a web task based on the content of the page and
+    user instructions. You can interact with the page and explore, and send messages to the user. Each time you
+    submit an action it will be sent to the browser and you will receive a new page.
+
+    Use response when you are ready to provide the final response.
+
+env_id: "browsergym.timewarp"
+env_kwargs:
+  max_steps: 30
+  # ─── Obs: text-only AXTree (AgentLab ObsFlags) ────────────────────────
+  # Page context (AXTree, open tabs, focused element) renders only when this
+  # is on; the env default is screenshot-first.
+  include_page_context_text: true
+  use_screenshot: false
+  use_ax_tree: true
+  use_focused_element: true
+  use_error_logs: true
+  extract_visible_tag: true
+  extract_clickable_tag: true
+  extract_coords: "False"            # literal string, not bool — ObsFlags Literal
+  filter_visible_elements_only: false
+  # ─── Action: upstream "timewarp" subset ───────────────────────────────
+  action_subsets: ["bid", "chat", "infeas", "nav", "tab"]
+  extra_tools: ["scroll", "fill", "click", "press", "back", "goto", "response", "terminate", "new_tab", "close_tab", "switch_tab"]
+  # Disable only the LiteBrowser coord action-batch tool; the bid/nav/finish tools
+  # above stay active through ``extra_tools``.
+  valid_actions: []

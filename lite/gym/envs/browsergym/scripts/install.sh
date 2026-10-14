@@ -14,8 +14,11 @@
 #                      Classifieds zip + homepage Flask source (image-goal
 #                      tasks resolve __HOMEPAGE__/static/...)
 #   miniwob          — clone miniwob-plusplus so it can be self-served locally
+#   timewarp         — browsergym-timewarp + nltk data, and build the
+#                      cua-lite/browsergym.timewarp image (Wiki, News, Shop sites;
+#                      pinned upstream source + site data, ~4 GB uncompressed)
 #
-# Prerequisites: Docker running (webarena/vwa); git (miniwob). This script also
+# Prerequisites: Docker running (webarena/vwa/timewarp); git (miniwob). This script also
 # installs the HOST-SIDE Playwright Chromium (browsergym drives the WA/VWA/MiniWoB
 # pages via Playwright on this host, not inside a container) + its system libs.
 #
@@ -695,6 +698,29 @@ install_miniwob() {
     git clone --depth 1 https://github.com/Farama-Foundation/miniwob-plusplus.git "$MINIWOB_CLONE_DIR"
 }
 
+# ─── TimeWarp (sites image + host package) ───────────────────────────────────
+# The three TimeWarp sites run in cua-lite/browsergym.timewarp (built from
+# ../docker/timewarp; pyserini + Java 21 stay out of the host venv). The host side
+# is the BrowserGym task package, whose __init__ fetches nltk's punkt_tab on first
+# import when it is missing — fetch it here so env resets never hit the network.
+TIMEWARP_IMAGE="cua-lite/browsergym.timewarp:latest"
+
+install_timewarp_nltk_data() {
+    python -c "import nltk; nltk.download('punkt_tab', quiet=True, raise_on_error=True)"
+}
+
+build_timewarp_image() {
+    if image_is_fresh "$TIMEWARP_IMAGE" browsergym.timewarp; then
+        echo "$TIMEWARP_IMAGE up to date (build sources unchanged); skipping build."
+        return
+    fi
+    image_rm "$TIMEWARP_IMAGE"
+    echo "docker build -t $TIMEWARP_IMAGE (pinned TimeWarp source + site data) ..."
+    DOCKER_BUILDKIT=1 docker build -t "$TIMEWARP_IMAGE" \
+        --label "$(src_label browsergym.timewarp)" \
+        -f "$ENV_DIR/docker/timewarp/Dockerfile" "$ENV_DIR/docker/timewarp"
+}
+
 # ─── Python deps ─────────────────────────────────────────────────────────────
 install_python_deps() {
     echo "Installing Python dependencies..."
@@ -731,9 +757,13 @@ install_python_deps() {
     # identical for our use (we only need the package importable — browsergym's
     # webarena evaluator uses it for fuzzy string matching). Lift this cap once
     # upstream scopes the check to the cwd sys.path entry.
+    #
+    # Extra args are benchmark packages resolved in the SAME call, under the same
+    # overrides (``timewarp`` passes browsergym-timewarp, which also pulls
+    # browsergym-webarena).
     require_uv
     uv pip install -q --override "$ENV_DIR/overrides.txt" \
-        "browsergym==0.14.3" "flask>=2.0" "gdown>=5,<6" "nltk<3.10.1"
+        "browsergym==0.14.3" "flask>=2.0" "gdown>=5,<6" "nltk<3.10.1" "$@"
 }
 
 # BrowserGym drives WA/VWA/MiniWoB pages via Playwright on THIS host (the browser
@@ -773,6 +803,7 @@ Benchmarks:
   webarena         install webarena Docker images + OpenStreetMap assets
   visualwebarena   install webarena images + OpenStreetMap assets + classifieds zip
   miniwob          clone miniwob-plusplus for local self-serving
+  timewarp         install browsergym-timewarp + build the TimeWarp sites image
 USAGE
 }
 
@@ -797,6 +828,12 @@ case "${1:-}" in
         install_python_deps
         install_playwright_browser
         install_miniwob
+        ;;
+    timewarp)
+        install_python_deps "browsergym-timewarp==0.2.1"
+        install_timewarp_nltk_data
+        install_playwright_browser
+        build_timewarp_image
         ;;
     ""|-h|--help)
         usage
