@@ -104,9 +104,9 @@ _MIN_DISTINCT_PAIRS = 110
 # number of distinct envs. The distinct-pair count grows only when the (agent, env)
 # pair is new: a second config for a covered pair (e.g. gpt's `osworld_g.medium` /
 # `screenspot_pro.medium` grounding variants) leaves it unchanged.
-_EXPECTED_AGENT_CONFIG_ROWS = 212
-_EXPECTED_ENV_CONFIG_ROWS = 207
-_EXPECTED_DISTINCT_PAIRS = 167
+_EXPECTED_AGENT_CONFIG_ROWS = 217
+_EXPECTED_ENV_CONFIG_ROWS = 212
+_EXPECTED_DISTINCT_PAIRS = 172
 
 
 class ConfigRow:
@@ -905,6 +905,7 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/claude/default/waa.yaml",
     "scripts/configs/evocua/default/lite.osworld.yaml",
     "scripts/configs/evocua/default/osworld.yaml",
+    "scripts/configs/evocua/default/osworld_2.yaml",
     "scripts/configs/evocua/default/waa.yaml",
     "scripts/configs/gemini/default/lite.osworld.yaml",
     "scripts/configs/gemini/default/osworld.yaml",
@@ -935,6 +936,7 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/qwen3_5/default/lite.osworld.bash.yaml",
     "scripts/configs/qwen3_5/default/lite.osworld.yaml",
     "scripts/configs/qwen3_5/default/osworld.yaml",
+    "scripts/configs/qwen3_5/default/osworld_2.yaml",
     "scripts/configs/qwen3_5/default/waa.yaml",
     "scripts/configs/qwen3_8/default/cua.bench/basic.yaml",
     "scripts/configs/qwen3_8/default/cua.bench/kicad.yaml",
@@ -942,6 +944,7 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/qwen3_8/default/lite.cuagym.yaml",
     "scripts/configs/qwen3_8/default/lite.cuaworld.yaml",
     "scripts/configs/qwen3_8/default/osworld.yaml",
+    "scripts/configs/qwen3_8/default/osworld_2.yaml",
     "scripts/configs/qwen3_8/default/waa.yaml",
     "scripts/configs/qwen3_vl/compact/lite.osworld.yaml",
     "scripts/configs/qwen3_vl/default/cua.bench/basic.yaml",
@@ -956,6 +959,7 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/ui_tars/default/osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/lite.osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/osworld.yaml",
+    "scripts/configs/ui_tars_15_v1/default/osworld_2.yaml",
     "scripts/configs/ui_tars_15_v1/default/waa.yaml",
     "scripts/configs/ui_venus_2/default/waa.yaml",
 }

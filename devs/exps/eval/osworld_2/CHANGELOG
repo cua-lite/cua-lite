@@ -1,3 +1,20 @@
+## 120f930 ← 9db8034 (2026-10-14)
+
+Allow task 056's upstream render retry to finish: evaluation/step deadlines
+increase from 300/600 to 1800/2100 seconds. Scoring rules are unchanged.
+
+## 9db8034 ← 116726e (2026-10-11)
+
+Restore task 072 after validating its Overleaf setup, bringing this campaign
+to 99 selected tasks. Recover GPT conversations from the Azure 50-image limit
+and accept observed `Control_L` and plus-joined key names.
+
+## 116726e ← f5279f6 (2026-09-25)
+
+Use 200 steps for all three specialist models and Medium effort for the
+reference API models. The final snapshot includes the completed specialist
+runs and Claude Medium; remaining API errors are excluded from the mean.
+
 ## f5279f6 (2026-09-25)
 
 Consolidate 14 reference models on the 98-task OSWorld-2.1 split. Replace the

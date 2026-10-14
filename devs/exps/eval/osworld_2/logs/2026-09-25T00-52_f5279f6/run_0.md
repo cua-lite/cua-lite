@@ -1,38 +1,37 @@
 # osworld_2 @ 2026-09-25T00-52_f5279f6 - run_0
 
-- **Report revision**: `f5279f6`.
+- **Commit**: `f5279f6` — reference snapshot.
 - **Host / GPUs**: `gpublaze` / NVIDIA H100 80 GB.
 - **Artifacts**: `.exps/eval/osworld_2/2026-09-25T00-52_f5279f6/run_0/` (gitignored).
 - **Started**: `2026-09-22 PDT`.
-- **Last updated**: `2026-10-10 PDT`.
-- **Notes**: OSWorld-2.1, 98 selected tasks; service exclusions and task 072 filtered out.
-- **Provenance**: [JSON snapshot](/devs/exps/eval/osworld_2/logs/2026-09-25T00-52_f5279f6/run_0.json) records source runs, task replacements, configuration and artifact hashes. Original launch records remain in the raw artifacts.
+- **Last updated**: `2026-10-14 PDT`.
+- **Notes**: OSWorld 2.1, 99 selected tasks, including task 072; simulated-user, multi-phase and unprovisioned-service tasks excluded.
+- **Provenance**: [JSON snapshot](/devs/exps/eval/osworld_2/logs/2026-09-25T00-52_f5279f6/run_0.json) records source runs, task replacements, configurations and artifact hashes.
 
 ## Results
 
-| Model | Config | Finished | Mean episode return |
-|---|---|---:|---:|
-| `gpt-6-astra` | medium | 98/98 | 0.630220 |
-| `gpt-5.6-sol` | default | 98/98 | 0.438693 |
-| `gpt-5.5` | default | 98/98 | 0.386131 |
-| `Qwen/Qwen3.5-27B` | default | 98/98 | 0.027505 |
-| `Qwen/Qwen3.8-27B` | default | 98/98 | 0.023604 |
-| `inclusionAI/UI-Venus-2-9B` | default | 98/98 | 0.014158 |
-| `Qwen/Qwen3-VL-32B-Instruct` | default | 98/98 | 0.011586 |
-| `Qwen/Qwen3-VL-4B-Instruct` | default | 98/98 | 0.008630 |
-| `Qwen/Qwen3.5-4B` | default | 98/98 | 0.007369 |
-| `meituan/EvoCUA-8B-20260105` | default | 98/98 | 0.006502 |
-| `ByteDance-Seed/UI-TARS-1.5-7B` | default | 98/98 | 0.004754 |
-| `Qwen/Qwen3.5-9B` | default | 98/98 | 0.004221 |
-| `Qwen/Qwen3-VL-8B-Instruct` | default | 98/98 | 0.002883 |
-| ⚠️ `claude-opus-5` | max | _**74/98**_ | _**0.630739**_ |
+| Model | Finished | Mean episode return |
+|---|---:|---:|
+| `gpt-6-astra` | 99/99 | 0.633955 |
+| `gpt-5.6-sol` | 99/99 | 0.441434 |
+| `gpt-5.5` | 99/99 | 0.385766 |
+| `Qwen/Qwen3.5-27B` | 99/99 | 0.028944 |
+| `Qwen/Qwen3.8-27B` | 99/99 | 0.023366 |
+| `inclusionAI/UI-Venus-2-9B` | 99/99 | 0.014015 |
+| `Qwen/Qwen3-VL-32B-Instruct` | 99/99 | 0.011469 |
+| `Qwen/Qwen3-VL-4B-Instruct` | 99/99 | 0.008542 |
+| `Qwen/Qwen3.5-4B` | 99/99 | 0.007295 |
+| `meituan/EvoCUA-8B-20260105` | 99/99 | 0.006436 |
+| `ByteDance-Seed/UI-TARS-1.5-7B` | 99/99 | 0.004706 |
+| `Qwen/Qwen3.5-9B` | 99/99 | 0.004178 |
+| `Qwen/Qwen3-VL-8B-Instruct` | 99/99 | 0.002854 |
+| ⚠️ `claude-opus-5` | _**95/99**_ | _**0.599194**_ |
 
-Mean episode return excludes API/environment errors and includes valid zero rewards.
-Finished counts valid samples; the expected task count remains 98.
+Mean episode return excludes API/environment errors and includes valid zero rewards. Finished counts valid samples out of the 99 selected tasks.
 
-Claude Opus 5 is the retained Max-effort run: 74 valid results and 24 API-error exclusions. Its default YAML now selects Medium; this historical score is not a Medium measurement.
-Tasks 092 and 101 were stopped after repeated API failures; mean steps are 67.81
-over valid results. The partial trajectories and failure evidence remain in the source artifacts.
+## Highlights
+
+- Claude Opus 5 Medium: 95 valid results; tasks 047, 048, 051 and 099 ended with API 502 errors and are excluded from the mean. The campaign is finalized; no tasks remain pending.
 
 ## Experiment Specification
 
@@ -43,23 +42,20 @@ over valid results. The partial trajectories and failure evidence remain in the 
 | Qwen3.8-27B | [qwen3_8/osworld_2.yaml](/scripts/configs/qwen3_8/default/osworld_2.yaml) | 200 steps; loop detection 5; thinking off |
 | UI-TARS-1.5-7B | [ui_tars_15_v1/osworld_2.yaml](/scripts/configs/ui_tars_15_v1/default/osworld_2.yaml) | 200 steps; loop detection 5 |
 | EvoCUA-8B | [evocua/osworld_2.yaml](/scripts/configs/evocua/default/osworld_2.yaml) | 200 steps; loop detection 5 |
-| UI-Venus-2-9B | [ui_venus_2/osworld_2.yaml](/scripts/configs/ui_venus_2/default/osworld_2.yaml) | 200 steps; loop detection 5; OSWorld-2.1 guest password |
-| GPT-5.5 / GPT-5.6 Sol | [gpt/osworld_2.yaml](/scripts/configs/gpt/default/osworld_2.yaml) | 200 steps; Medium; 8192 output tokens |
-| Claude Opus 5 | [claude/osworld_2.yaml](/scripts/configs/claude/default/osworld_2.yaml) | 200 steps; recorded Max effort; 64000 output tokens |
-| GPT-6 Astra | [gpt/osworld_2.medium.yaml](/scripts/configs/gpt/default/osworld_2.medium.yaml) | 200 steps; Medium; 8192 output tokens |
+| UI-Venus-2-9B | [ui_venus_2/osworld_2.yaml](/scripts/configs/ui_venus_2/default/osworld_2.yaml) | 200 steps; loop detection 5; OSWorld 2.1 guest password |
+| GPT-5.5 / GPT-5.6 Sol / GPT-6 Astra | [gpt/osworld_2.yaml](/scripts/configs/gpt/default/osworld_2.yaml) | 200 steps; Medium; 8192 output tokens |
+| Claude Opus 5 | [claude/osworld_2.yaml](/scripts/configs/claude/default/osworld_2.yaml) | 200 steps; Medium; 64000 output tokens |
 
-All measured models use a 200-step budget on OSWorld 2.1. Other unspecified sampling and history parameters inherit the model defaults. API models have loop detection disabled.
-
-LLM-judge tasks use the configured Azure endpoint. Listed replacement tasks use their new full rollouts; obsolete judge failures never fall back into the score. Missing or failed API attempts remain excluded. Task-level source mappings are in the JSON.
+Other unspecified sampling and history parameters inherit the model defaults. API models have loop detection disabled. LLM judges retain each task's upstream model and scoring rules; failed judge calls are excluded from the mean.
 
 ### Reproduction
 
-Install the pinned image and services using the [OSWorld-2.1 guide](/lite/gym/envs/osworld_2/README.md), then export the env-server URL/token and model/judge API credentials. Run from the repository root:
+Install the pinned image and services using the [OSWorld 2.1 guide](/lite/gym/envs/osworld_2/README.md), then export the env-server URL/token and model/judge API credentials. Run from the repository root:
 
 ```bash
 ./devs/exps/eval/osworld_2/run.sh Qwen/Qwen3-VL-8B-Instruct
 ./devs/exps/eval/osworld_2/run.sh gpt-5.5
-./devs/exps/eval/osworld_2/run.sh gpt-6-astra scripts/configs/gpt/default/osworld_2.medium.yaml
+./devs/exps/eval/osworld_2/run.sh claude-opus-5
 ```
 
-Choose the model-specific YAML shown above. A fresh reproduction writes its own commit-keyed artifacts; the retained source runs remain available for audit.
+The runner selects each model's default YAML. A fresh reproduction writes its own commit-keyed artifacts.
