@@ -1,3 +1,20 @@
+## c50ae84 ← d1e2739  (2026-09-22)
+
+Added the thinking / reasoning knobs to the WebVoyager runner and a Claude
+default config. `EVAL_ENABLE_THINKING=true` appends the fixed override
+`--agent-kwargs '{"enable_thinking": true, "sampling_kwargs": {"max_new_tokens": 4096}}'`
+and names the slug `think_on` / `think_xhigh`; `EVAL_REASONING_EFFORT` forwards
+`--api-kwargs '{"reasoning_effort": …}'` for gpt-* and names the slug
+`reasoning_<effort>`. Each variant therefore gets its own artifact dir and never
+resumes another's, so rows are only comparable within one `EVAL_CONFIG_ID`.
+
+## d1e2739  (2026-09-13)
+
+Added WebVoyager default-config routing for Qwen3.8, UI-TARS-1.5, EvoCUA and
+UI-Venus-2. Runs evaluate the 643-task read-only split via
+`--filter 'lambda m: not m.others.get("mutating")'` with `--env-kwargs
+'{"max_steps": 30}'`.
+
 ## 651af22040  (2026-07-10)
 
 Default and SoM snapshots were materialized as separate run ids at this commit.

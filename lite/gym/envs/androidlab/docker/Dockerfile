@@ -83,6 +83,10 @@ RUN pip install --no-cache-dir \
       'android-lab @ git+https://github.com/cua-lite/Android-Lab.git@7a2f0156ea8aee517ab7e3523f41c1c44b460463' \
       fastapi 'uvicorn[standard]'
 
+COPY patches/ /tmp/patches/
+RUN git -C /usr/local/lib/python3.11/site-packages apply /tmp/patches/llm-judge-errors.patch \
+ && rm -rf /tmp/patches
+
 COPY server.py /usr/local/bin/server.py
 RUN chmod +x /usr/local/bin/server.py
 

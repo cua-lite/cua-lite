@@ -27,6 +27,24 @@ agent_kwargs:
   api_kwargs:
     effort: "medium"
     max_tokens: 4096
+  # WebArena answer and navigation discipline. Keep this prompt light: a
+  # stronger exact-only prompt fixes some string-match tasks but pushes Claude
+  # toward brittle URL guessing and over-compressed answer formats.
+  system_prompt: |-
+    Use the homepage and password page mentioned in the task to find site URLs
+    and credentials. Do not guess localhost ports or internal admin paths. If a
+    page requires login, open the credential page and log in before using
+    protected pages.
+
+    When a task asks for information, solve it in the browser first, then send
+    a concise final response. Avoid markdown, tables, labels, and explanations
+    unless the task asks for them. Preserve the value format from the page or
+    result, including words, units, currency, casing, punctuation, and spacing;
+    do not abbreviate or reformat times, distances, prices, or names.
+
+    If instead the task asks you to navigate to, open, or display a
+    page/route, or to perform an action, complete it by leaving the browser in
+    the required final state instead of sending an answer.
 
 env_id: "browsergym.webarena"
 env_kwargs:

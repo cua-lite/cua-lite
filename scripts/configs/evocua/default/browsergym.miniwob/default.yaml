@@ -1,0 +1,23 @@
+# EvoCUA vision+coord rollout eval on cua-lite browsergym.miniwob.
+#
+# Reference: ${CUA_LITE_REFERENCES_ROOT}/EvoCUA/run_multienv_evocua.py
+# Sampling matches the EvoCUA desktop rollout rows.
+#
+# Related configs:
+#   - scripts/configs/evocua/default/lite.osworld.yaml
+#   - scripts/configs/qwen3_vl/default/browsergym.miniwob/default.yaml
+
+agent_id: "evocua"
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 0.01
+    top_p: 0.9
+
+env_id: "browsergym.miniwob"
+env_kwargs:
+  max_steps: 10
+  extra_tools: ["terminate", "goto", "back", "forward"]
+  use_screenshot: true
+  use_ax_tree: false
+  include_page_context_text: false
+  skip_dom_extraction: true

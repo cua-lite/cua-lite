@@ -32,6 +32,10 @@ KNOWN_MD_ONLY_SNAPSHOTS = {
     "devs/exps/eval/androidworld/logs/2026-04-28T21-31_785df232/run_0.md",
     "devs/exps/eval/browsergym.miniwob/logs/2026-07-01T20-57_f57d3cbb92/run_1_default.md",
     "devs/exps/eval/browsergym.miniwob/logs/2026-07-01T20-57_f57d3cbb92/run_1_textonly.md",
+    # Campaign leaderboard spanning several (commit, run_id) pairs, so no single
+    # run dir backs it and update_run_json.py cannot produce a sibling payload.
+    # The runs it carries forward each have their own paired snapshot.
+    "devs/exps/eval/browsergym.miniwob/logs/2026-09-21T19-18_1e14e3a/run_0.md",
     "devs/exps/eval/cua/logs/2026-07-09T22-41_d982edcfb3/run_0.md",
     "devs/exps/eval/lite.osworld/logs/2026-04-26T18-38_8b9d4bd/run_0.md",
     "devs/exps/eval/osworld/logs/2026-04-26T18-38_8b9d4bd/run_0.md",
@@ -82,9 +86,38 @@ WEBVOYAGER_SOM = _snap(
     "2026-07-10T15-40_651af22040",
     "run_0_som",
 )
+WEBVOYAGER_SEP22 = _snap(
+    "webharbor.webvoyager",
+    "2026-09-22T01-45_c50ae84",
+    "run_0_thinking_xhigh",
+)
 
 
 KNOWN_PAIR_VIOLATIONS = {
+    # `stats.num_tasks` is the task count a run's FINAL invocation loaded, not
+    # the env's eval set, so these four never-mopped-up rows report fewer than
+    # 643 in summary.json. The snapshot reports Finished against the 643-task
+    # eval set instead, which is the number a reader needs.
+    _vid(
+        WEBVOYAGER_SEP22,
+        "row.finished",
+        "config=reasoning_xhigh model=gpt-5.6-sol md=639/643 json=639/639",
+    ),
+    _vid(
+        WEBVOYAGER_SEP22,
+        "row.finished",
+        "config=reasoning_xhigh model=gpt-5.5 md=633/643 json=633/634",
+    ),
+    _vid(
+        WEBVOYAGER_SEP22,
+        "row.finished",
+        "config=think_on model=Qwen/Qwen3.5-9B md=627/643 json=627/628",
+    ),
+    _vid(
+        WEBVOYAGER_SEP22,
+        "row.finished",
+        "config=think_on model=Qwen/Qwen3.5-4B md=638/643 json=638/639",
+    ),
     _vid(
         ANDROIDLAB_JUL09,
         "md.artifact_root",

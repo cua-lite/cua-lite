@@ -6,6 +6,7 @@ import base64
 import inspect
 import json
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -39,6 +40,36 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 PNG_1X1_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 )
+
+
+@pytest.mark.parametrize(
+    "reward,terminated", [(None, False), (0.0, False), (2.0, True), (0.0, True)]
+)
+async def test_task_verification_requires_completed_evaluation(monkeypatch, reward, terminated):
+    from lite.gym.envs.waa.scripts.utils import verify_all_tasks
+
+    env = SimpleNamespace(
+        reset=AsyncMock(return_value=SimpleNamespace(image=b"screenshot")),
+        step=AsyncMock(return_value=SimpleNamespace(reward=reward, terminated=terminated)),
+        close=AsyncMock(),
+    )
+    constructor = Mock(return_value=env)
+    monkeypatch.setattr(verify_all_tasks, "WindowsAgentArenaEnv", constructor)
+    row = {
+        "config": {}, "domain": "notepad", "variant": "standard",
+        "task_id": "test", "covered_task_ids": ["test"],
+    }
+    result = await verify_all_tasks._run_attempt(
+        row,
+        base_disk=Path("disk"),
+        assets_dir=Path("assets"),
+        reset_timeout=1,
+        evaluate_timeout=1,
+    )
+    assert constructor.call_args.kwargs["extra_tools"] == ["terminate"]
+    assert result["ok"] is (terminated and reward == 0.0)
+    assert result["evaluate_ok"] is result["ok"]
+    env.close.assert_awaited_once()
 
 
 def _registry_metadata(task_id: str):
@@ -514,11 +545,81 @@ async def test_boot_terminal_failure_surfaces_and_is_not_warming(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_qemu_start_publishes_reserved_ports(monkeypatch, tmp_path):
+    from lite.gym.envs.waa import qemu
+
+    base = tmp_path / "base.qcow2"
+    base.write_bytes(b"disk")
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / ".complete.json").write_text("{}")
+    instance = QemuInstance(
+        config=QemuConfig(
+            base_disk=base, runner_image="test-runner", runtime_root=tmp_path,
+            assets_dir=assets, snapshot_dir=tmp_path / "snapshot",
+            vcpus=1, memory_gb=1, shm_size="1g", bind_address="127.0.0.1",
+            ready_timeout_s=1, readiness_poll_interval_s=0.1,
+        ),
+        task_id="task", identity=EnvIdentity(),
+    )
+    exists = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda p: str(p) == "/dev/kvm" or exists(p))
+    monkeypatch.setattr(qemu.shutil, "which", lambda _: "/usr/bin/docker")
+    ports = Mock(return_value=[25101, 25102])
+    monkeypatch.setattr(qemu, "allocate_ports", ports)
+    release = Mock()
+    monkeypatch.setattr(qemu, "release_ports", release)
+    calls = []
+    in_create_slot = False
+    slot_entries = 0
+
+    @asynccontextmanager
+    async def create_slot():
+        nonlocal in_create_slot, slot_entries
+        slot_entries += 1
+        in_create_slot = True
+        try:
+            yield
+        finally:
+            in_create_slot = False
+
+    monkeypatch.setattr(qemu, "docker_create_slot_async", create_slot)
+
+    async def run(*args, **kwargs):
+        assert in_create_slot is (args[:2] == ("docker", "run"))
+        calls.append(args)
+        return 0, "", ""
+
+    monkeypatch.setattr(qemu, "_run", run)
+    async def ready():
+        assert not in_create_slot
+
+    monkeypatch.setattr(instance, "_wait_ready", ready)
+    await instance.start()
+
+    ports.assert_called_once_with(n=2, range_start=25000, range_end=26000)
+    assert "127.0.0.1:25101:5050" in calls[0]
+    assert "127.0.0.1:25102:8006" in calls[0]
+    assert instance.bridge_url == "http://127.0.0.1:25101"
+    assert instance.novnc_url == "http://127.0.0.1:25102"
+    assert len(calls) == 1
+    assert slot_entries == 1
+    await instance.close()
+    release.assert_called_once_with(25101, 25102)
+    await instance.close()
+    release.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_qemu_close_timeout_preserves_slot_for_reaping(monkeypatch, tmp_path):
+    from lite.gym.envs.waa import qemu
+
     async def timeout(*args, **kwargs):
         raise TimeoutError("docker rm timed out")
 
     monkeypatch.setattr("lite.gym.envs.waa.qemu._run", timeout)
+    release = Mock()
+    monkeypatch.setattr(qemu, "release_ports", release)
     instance = QemuInstance(
         config=QemuConfig(
             base_disk=tmp_path / "base.qcow2",
@@ -538,11 +639,13 @@ async def test_qemu_close_timeout_preserves_slot_for_reaping(monkeypatch, tmp_pa
     )
     instance.name = "waa-test"
     instance.slot_root = tmp_path / "slots" / "waa-test"
+    instance._reserved_ports = (25101, 25102)
 
     await instance.close()
 
     assert instance.name == "waa-test"
     assert instance.slot_root == tmp_path / "slots" / "waa-test"
+    release.assert_not_called()
 
 
 @pytest.mark.asyncio

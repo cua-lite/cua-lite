@@ -99,15 +99,14 @@ _CONFIG_ROOTS = (Path("scripts/configs"),)
 # vacuously passing.
 _MIN_CONFIG_YAMLS = 150
 _MIN_DISTINCT_PAIRS = 110
-# +2 on each since the 196/191/153 report, one from each of two new config yamls.
-# The gpt mobilegym collect recipe is the first gpt.teacher recipe for a MOBILE env;
-# claude/default/waa.yaml (#30) is the first claude config for waa. Each adds one
-# agent row, one env row, and one distinct pair — note the middle counter is
-# len(PAIR_ROWS), rows that HAVE an env, not the number of distinct envs, so a
-# config for an already-covered env still increments it.
-_EXPECTED_AGENT_CONFIG_ROWS = 198
-_EXPECTED_ENV_CONFIG_ROWS = 193
-_EXPECTED_DISTINCT_PAIRS = 155
+# Exact counts: a new config yaml adds one agent row and, if it names an env, one
+# env row — the middle counter is len(PAIR_ROWS), rows that HAVE an env, not the
+# number of distinct envs. The distinct-pair count grows only when the (agent, env)
+# pair is new: a second config for a covered pair (e.g. gpt's `osworld_g.medium` /
+# `screenspot_pro.medium` grounding variants) leaves it unchanged.
+_EXPECTED_AGENT_CONFIG_ROWS = 212
+_EXPECTED_ENV_CONFIG_ROWS = 207
+_EXPECTED_DISTINCT_PAIRS = 167
 
 
 class ConfigRow:
@@ -903,8 +902,10 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/claude/default/lite.osworld.yaml",
     "scripts/configs/claude/default/osworld_2.yaml",
     "scripts/configs/claude/default/osworld.yaml",
+    "scripts/configs/claude/default/waa.yaml",
     "scripts/configs/evocua/default/lite.osworld.yaml",
     "scripts/configs/evocua/default/osworld.yaml",
+    "scripts/configs/evocua/default/waa.yaml",
     "scripts/configs/gemini/default/lite.osworld.yaml",
     "scripts/configs/gemini/default/osworld.yaml",
     "scripts/configs/gemini/default/osworld_2.yaml",
@@ -955,4 +956,6 @@ _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/ui_tars/default/osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/lite.osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/osworld.yaml",
+    "scripts/configs/ui_tars_15_v1/default/waa.yaml",
+    "scripts/configs/ui_venus_2/default/waa.yaml",
 }

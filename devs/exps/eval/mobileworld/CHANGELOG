@@ -1,3 +1,8 @@
+## 6d75fa0  (2026-09-25)
+
+- Catalog retained reference runs with source provenance and valid-sample means; API errors are excluded from the denominator.
+- Default evaluation excludes 44 user-interaction tasks (117 GUI-only tasks remain).
+
 ## 651af22040  (2026-07-10)
 
 Initial standardized snapshot at this commit. Carry-forward rows are marked in
