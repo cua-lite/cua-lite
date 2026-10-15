@@ -731,7 +731,6 @@ _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/gpt/default/mobilegym.yaml",
     "scripts/configs/gpt/default/mobileworld.yaml",
     "scripts/configs/gpt/recipes/collect/mobilegym.yaml",
-    "scripts/configs/holo4/default/androidworld.yaml",
     "scripts/configs/holo4/default/mobilegym.yaml",
     "scripts/configs/holo4/default/mobileworld.yaml",
     "scripts/configs/mai_ui/compact/androidworld.yaml",
