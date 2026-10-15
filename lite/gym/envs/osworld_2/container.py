@@ -37,7 +37,7 @@ from lite.gym.utils.backend.ports import allocate_ports
 
 logger = logging.getLogger(__name__)
 
-_IMAGE_DEFAULT = "cua-lite/osworld_2:osworld-v2.1-volume"
+_IMAGE_DEFAULT = "cua-lite/osworld_2:osworld-v2.1"
 
 _CPORT_API = 6000       # docker/server.py listens here (fixed in-container)
 _TASK_CLASS_PATH = "/opt/osworld-v2/evaluation_examples/task_class"

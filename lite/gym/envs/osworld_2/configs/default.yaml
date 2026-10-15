@@ -31,7 +31,7 @@ env_kwargs:                  # per-instance OSWorldV2Env defaults (overridable p
   extra_tools: []            # opt-in; available: report_infeasible, response, terminate; off by default
 
 server_kwargs:               # per-deployment container/infra config (deploy-time only)
-  image: "cua-lite/osworld_2:osworld-v2.1-volume"  # separate from the image used by earlier V2 evals
+  image: "cua-lite/osworld_2:osworld-v2.1"
   qcow2_path: ".cache/osworld-v2-ubuntu-x86.qcow2" # V2 gated qcow2 (relative → <env>/.cache/); provisioned by install.sh
   ram_size: "4G"             # -e RAM_SIZE — OSWorld upstream VM spec (provider default)
   cpu_cores: "4"             # -e CPU_CORES

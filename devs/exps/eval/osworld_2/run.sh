@@ -35,7 +35,7 @@
 # so tp is unchangeable here.
 # Pre-reqs (env-server host):
 #   - /dev/kvm AND /dev/net/tun rw-accessible.
-#   - cua-lite/osworld_2:osworld-v2.1-volume image + matching gated VM, assets and 108 task classes via
+#   - cua-lite/osworld_2:osworld-v2.1 image + matching gated VM, assets and 108 task classes via
 #       uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh
 #     (accept the v2-image, osworld_v2_tasks, and osworld_v2_assets_gated HF gates).
 #   - OPENAI_API_KEY exported where the env MODULE IMPORTS (env-server launch,

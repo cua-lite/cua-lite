@@ -65,7 +65,7 @@ def image_for(env_id: str) -> ContainerImage:
     # logic plus the selected source-tree content identity so a local V2 source
     # edit cannot leave the derived image falsely fresh.
     return ContainerImage(
-        "cua-lite/osworld_2:osworld-v2.1-volume",
+        "cua-lite/osworld_2:osworld-v2.1",
         (
             "lite/gym/envs/osworld_2/docker/Dockerfile",
             "lite/gym/envs/osworld_2/docker/patches/llm-judge-errors.patch",

@@ -3,7 +3,7 @@
 # `desktop_env` is baked into a DERIVED image (docker build), NOT installed on the host — so
 # osworld_2 needs ZERO host `desktop_env` and coexists with osworld v1 + lite.osworld (v1) in
 # one uv with no conflict. The installer pins official code, dependencies, VM, tasks, and assets:
-#   image      → docker build docker/Dockerfile → cua-lite/osworld_2:osworld-v2.1-volume
+#   image      → docker build docker/Dockerfile → cua-lite/osworld_2:osworld-v2.1
 #                (FROM happysixd/osworld-docker + Python venv + V2 desktop_env + docker/server.py)
 #   qcow2      → HF-GATED snapshot_download xlangai/v2-image → <env>/.cache/osworld-v2-ubuntu-x86.qcow2 (sha256-verified)
 #   task_class → HF-GATED snapshot_download xlangai/osworld_v2_tasks → <env>/.cache/task_class/task_*.py (108)
@@ -29,7 +29,7 @@ REPO_ROOT="$(cd "$ENV_DIR/../../../.." && pwd)"
 CACHE_DIR="$ENV_DIR/.cache"
 TASK_CLASS_DIR="$CACHE_DIR/task_class"
 ASSET_DIR="$CACHE_DIR/osworld_v2_assets"
-IMAGE="cua-lite/osworld_2:osworld-v2.1-volume"
+IMAGE="cua-lite/osworld_2:osworld-v2.1"
 DOCKER_DIR="$ENV_DIR/docker"
 OSWORLD_V2_SRC="${OSWORLD_V2_SRC:-$CACHE_DIR/OSWorld-V2}"
 export OSWORLD_V2_SRC
