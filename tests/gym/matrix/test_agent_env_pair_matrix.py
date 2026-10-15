@@ -104,8 +104,8 @@ _MIN_DISTINCT_PAIRS = 110
 # number of distinct envs. The distinct-pair count grows only when the (agent, env)
 # pair is new: a second config for a covered pair (e.g. gpt's `osworld_g.medium` /
 # `screenspot_pro.medium` grounding variants) leaves it unchanged.
-_EXPECTED_AGENT_CONFIG_ROWS = 217
-_EXPECTED_ENV_CONFIG_ROWS = 212
+_EXPECTED_AGENT_CONFIG_ROWS = 218
+_EXPECTED_ENV_CONFIG_ROWS = 213
 _EXPECTED_DISTINCT_PAIRS = 172
 
 
@@ -900,6 +900,7 @@ def test_multi_step_rows_expose_response_when_the_env_offers_one(
 # mobile / QA row appearing here is a bug, which is why the sweep freezes it.
 _MULTI_STEP_ROWS_WITHOUT_RESPONSE = {
     "scripts/configs/claude/default/lite.osworld.yaml",
+    "scripts/configs/claude/default/osworld_2.max.yaml",
     "scripts/configs/claude/default/osworld_2.yaml",
     "scripts/configs/claude/default/osworld.yaml",
     "scripts/configs/claude/default/waa.yaml",

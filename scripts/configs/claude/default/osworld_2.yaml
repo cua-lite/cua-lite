@@ -7,7 +7,6 @@
 agent_id: "claude"
 agent_kwargs:
   api_kwargs:
-    effort: "medium"
     max_tokens: 64000
     thinking_budget: 32000
 
