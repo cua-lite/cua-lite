@@ -144,6 +144,24 @@ def test_official_desktop_string_coordinates_are_normalized() -> None:
     assert _actions(converted[0]) == [{"action": "click", "coordinate": [509, 515], "clicks": 3}]
 
 
+def test_desktop_drag_accepts_packed_coordinate_strings() -> None:
+    converted = Holo4DesktopActionSpace().convert_tool_calls_from_agent(
+        [
+            {
+                "name": "drag_and_drop",
+                "arguments": {
+                    "description": "file onto folder",
+                    "x1": "100, 200",
+                    "x2": "[700, 400]",
+                },
+            }
+        ]
+    )
+    assert _actions(converted[0]) == [
+        {"action": "drag", "start_coordinate": [100, 200], "coordinate": [700, 400]}
+    ]
+
+
 def test_official_desktop_drag_hold_keys_is_declared_but_dropped() -> None:
     # The official schema declares ``hold_keys`` (1 of 193 official calls uses
     # it); canonical ``drag`` holds no modifiers, so the lowering must accept
@@ -300,6 +318,42 @@ def test_answer_prefers_response_then_falls_back_to_terminate() -> None:
     assert response == [LiteFinishToolSet.response(text="done")]
     terminate = space.convert_tool_calls_from_agent([call], active_extra_tool_names={"terminate"})
     assert terminate == [LiteFinishToolSet.terminate(status="success")]
+
+
+def test_infeasible_answer_lowers_to_failure_terminate() -> None:
+    # The prompt's infeasibility marker is the answer's last line; the envs
+    # read canonical terminate(status="failure") as the infeasible verdict.
+    content = "Chrome has no such setting.\n[TASK=INFEASIBLE]\n"
+    call = {"name": "answer", "arguments": {"content": content}}
+    space = Holo4DesktopActionSpace()
+
+    converted = space.convert_tool_calls_from_agent(
+        [call], active_extra_tool_names={"response", "terminate"}
+    )
+
+    assert converted == [LiteFinishToolSet.terminate(status="failure", reason=content)]
+    # Replayed history shows the model its own answer, marker included.
+    assert space.convert_tool_calls_to_agent(converted) == [call]
+
+
+def test_infeasible_marker_counts_only_as_the_last_line() -> None:
+    space = Holo4DesktopActionSpace()
+    for content in (
+        "[TASK=INFEASIBLE]\nActually it worked: the file is saved.",
+        "The marker [TASK=INFEASIBLE] is not on its own line.",
+    ):
+        converted = space.convert_tool_calls_from_agent(
+            [{"name": "answer", "arguments": {"content": content}}],
+            active_extra_tool_names={"response", "terminate"},
+        )
+        assert converted == [LiteFinishToolSet.response(text=content)]
+    # Without terminate active there is no canonical infeasible verdict to
+    # project to, so the answer stays a response.
+    content = "No such device.\n[TASK=INFEASIBLE]"
+    assert space.convert_tool_calls_from_agent(
+        [{"name": "answer", "arguments": {"content": content}}],
+        active_extra_tool_names={"response"},
+    ) == [LiteFinishToolSet.response(text=content)]
 
 
 def test_mobile_answer_lowers_to_the_active_finish_tool() -> None:
@@ -509,6 +563,40 @@ def test_mobile_swipe_accepts_coordinate_start_names_seen_in_model_output() -> N
     ]
 
 
+def test_official_mobile_scroll_lowers_each_direction_to_centered_swipe() -> None:
+    # Pins the approximation policy at the lowering (official mapping is
+    # closed-source): distance is factor*1000, swiped through the screen center.
+    converted = Holo4MobileActionSpace().convert_tool_calls_from_agent(
+        [
+            {"name": "mobile_scroll", "arguments": {"direction": "down", "factor": 0.5}},
+            {"name": "mobile_scroll", "arguments": {"direction": "up", "factor": 0.5}},
+            {"name": "mobile_scroll", "arguments": {"direction": "right", "factor": 0.5}},
+            {"name": "mobile_scroll", "arguments": {"direction": "left", "factor": 0.5}},
+        ]
+    )
+
+    assert _actions(converted[0]) == [
+        {"action": "swipe", "start_coordinate": [500, 750], "coordinate": [500, 250]},
+        {"action": "swipe", "start_coordinate": [500, 250], "coordinate": [500, 750]},
+        {"action": "swipe", "start_coordinate": [750, 500], "coordinate": [250, 500]},
+        {"action": "swipe", "start_coordinate": [250, 500], "coordinate": [750, 500]},
+    ]
+
+
+def test_official_mobile_scroll_distance_is_clamped_at_both_ends() -> None:
+    converted = Holo4MobileActionSpace().convert_tool_calls_from_agent(
+        [
+            {"name": "mobile_scroll", "arguments": {"direction": "down", "factor": 0.01}},
+            {"name": "mobile_scroll", "arguments": {"direction": "down", "factor": 5.0}},
+        ]
+    )
+
+    assert _actions(converted[0]) == [
+        {"action": "swipe", "start_coordinate": [500, 550], "coordinate": [500, 450]},
+        {"action": "swipe", "start_coordinate": [500, 900], "coordinate": [500, 100]},
+    ]
+
+
 def test_active_mobile_extra_tool_round_trips() -> None:
     space = Holo4MobileActionSpace()
     call = {"name": "note", "arguments": {"note": "Remember 266.49"}}
@@ -562,6 +650,43 @@ def test_official_mobile_click_stringified_coordinate_list_is_normalized() -> No
         [{"name": "mobile_click", "arguments": {"element": "icon", "x": "[601, 925]"}}]
     )
     assert _actions(converted[0]) == [{"action": "tap", "coordinate": [601, 925], "clicks": 1}]
+
+
+def test_mobile_click_accepts_numeric_string_coordinates() -> None:
+    converted = Holo4MobileActionSpace().convert_tool_calls_from_agent(
+        [{"name": "mobile_click", "arguments": {"element": "icon", "x": "601", "y": "925"}}]
+    )
+    assert _actions(converted[0]) == [{"action": "tap", "coordinate": [601, 925], "clicks": 1}]
+
+
+def test_mobile_long_press_accepts_packed_coordinate_string() -> None:
+    # A rollout episode died on exactly this call: both coordinates packed
+    # into the first parameter. One shared normalizer now covers every
+    # pointer tool on both surfaces, not only mobile_click.
+    converted = Holo4MobileActionSpace().convert_tool_calls_from_agent(
+        [{"name": "mobile_long_press", "arguments": {"element": "PDF file", "x": "272, 306"}}]
+    )
+    assert _actions(converted[0]) == [
+        {"action": "long_press", "coordinate": [272, 306], "duration": 1.0}
+    ]
+
+
+def test_mobile_drag_accepts_packed_coordinate_strings() -> None:
+    converted = Holo4MobileActionSpace().convert_tool_calls_from_agent(
+        [
+            {
+                "name": "mobile_drag",
+                "arguments": {
+                    "element": "slider",
+                    "x_touch": "100, 200",
+                    "x_lift": "[800, 200]",
+                },
+            }
+        ]
+    )
+    assert _actions(converted[0]) == [
+        {"action": "drag", "start_coordinate": [100, 200], "coordinate": [800, 200]}
+    ]
 
 
 def test_official_mobile_drag_duration_is_dropped_in_lowering() -> None:

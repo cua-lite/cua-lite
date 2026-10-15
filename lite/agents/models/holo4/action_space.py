@@ -51,6 +51,53 @@ _MOBILE_SCHEMA_ACTIONS: dict[str, frozenset[str]] = {
     "mobile_go_to_all_apps": frozenset({"system_button", "swipe"}),
 }
 
+_COORDINATE_KEYS: tuple[str, ...] = (
+    "x",
+    "y",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "x_touch",
+    "y_touch",
+    "x_lift",
+    "y_lift",
+)
+_COORDINATE_PAIR_KEYS: tuple[tuple[str, str], ...] = (
+    ("x", "y"),
+    ("x1", "y1"),
+    ("x2", "y2"),
+    ("x_touch", "y_touch"),
+    ("x_lift", "y_lift"),
+)
+
+# Last line of a Holo4 final answer that declares the task infeasible.
+_INFEASIBLE_ANSWER_MARKER = "[TASK=INFEASIBLE]"
+
+
+def _normalize_coordinate_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Coerce model-emitted coordinate strings to the declared ints.
+
+    The model occasionally emits a pointer coordinate as a numeric string
+    (``"509"``) or packs both values of a pair into its first key
+    (``"272, 306"``, ``"[601, 925]"``); official trajectories show the same
+    string forms. Every pointer tool on both surfaces shares this one
+    normalizer. Mutates and returns ``arguments``; values that do not
+    literal-eval stay as-is and fail loudly at converter binding.
+    """
+    for key in _COORDINATE_KEYS:
+        value = arguments.get(key)
+        if isinstance(value, str):
+            try:
+                arguments[key] = ast.literal_eval(value)
+            except (SyntaxError, ValueError):
+                pass
+    for first, second in _COORDINATE_PAIR_KEYS:
+        value = arguments.get(first)
+        if isinstance(value, (list, tuple)) and len(value) == 2 and second not in arguments:
+            arguments[first], arguments[second] = value
+    return arguments
+
 
 class _Holo4ActionSpace(BaseActionSpace):
     """Shared flat-schema filtering and finish/shell projection."""
@@ -79,6 +126,15 @@ class _Holo4ActionSpace(BaseActionSpace):
         content: str,
         active_extra_tool_names: set[str],
     ) -> dict[str, Any]:
+        # The Holo4 prompt declares a task infeasible with a final answer
+        # whose last line is exactly ``[TASK=INFEASIBLE]``; canonical Lite
+        # declares it with ``terminate(status="failure")``, which the envs
+        # score as the infeasible verdict.
+        if (
+            "terminate" in active_extra_tool_names
+            and content.strip().rpartition("\n")[2].strip() == _INFEASIBLE_ANSWER_MARKER
+        ):
+            return LiteFinishToolSet.terminate(status="failure", reason=content)
         if "response" in active_extra_tool_names:
             return LiteFinishToolSet.response(text=content)
         if "terminate" in active_extra_tool_names:
@@ -208,12 +264,10 @@ class Holo4DesktopActionSpace(
         y2: int,
         hold_keys: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Drag from one point to another.
-
-        The official wire name carries no ``_desktop`` suffix. The official
-        ``hold_keys`` argument is declared but not carried: canonical ``drag``
-        holds no modifiers, and 192 of 193 official calls use none.
-        """
+        """Drag from one point to another."""
+        # The official wire name carries no ``_desktop`` suffix. The official
+        # ``hold_keys`` argument is declared but not carried: canonical ``drag``
+        # holds no modifiers, and 192 of 193 official calls use none.
         return LiteDesktopActionSet.drag(start_coordinate=[x1, y1], coordinate=[x2, y2])
 
     @staticmethod
@@ -346,18 +400,7 @@ class Holo4DesktopActionSpace(
             arguments = {**tool_call_arguments(call)}
             try:
                 if name in converters:
-                    # Official Holo4 trajectories occasionally emit desktop
-                    # pointer coordinates as numeric strings (19 of 49,554
-                    # coordinate values); keep canonical coordinate lists
-                    # integer.
-                    for key in ("x", "y", "x1", "y1", "x2", "y2"):
-                        value = arguments.get(key)
-                        if isinstance(value, str):
-                            try:
-                                arguments[key] = int(value)
-                            except ValueError:
-                                pass
-                    result.append(converters[name](**arguments))
+                    result.append(converters[name](**_normalize_coordinate_arguments(arguments)))
                 elif name == "shell" and BASH_TOOL_NAME in active_extras:
                     result.append(make_tool_call(BASH_TOOL_NAME, {"command": arguments["command"]}))
                 elif name == "answer":
@@ -552,7 +595,7 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         text="Text to write.",
         x="Horizontal coordinate normalized to [0, 1000].",
         y="Vertical coordinate normalized to [0, 1000].",
-        overwrite="Whether to replace the current field contents.",
+        overwrite="Has no effect: the written text is appended to the field's current contents.",
         enter="Whether to press Enter after writing.",
     )
     def mobile_write(
@@ -563,11 +606,10 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         overwrite: bool = False,
         enter: bool = False,
     ) -> dict[str, Any]:
-        """Focus a visible mobile field and write text into it.
-
-        The official ``overwrite`` argument is not carried: canonical mobile
-        ``type`` appends to whatever the focused field already holds.
-        """
+        """Focus a visible mobile field and write text into it."""
+        # ``overwrite`` is accepted so official-tool history replays, but it is
+        # not carried: canonical mobile ``type`` appends to whatever the
+        # focused field already holds.
         calls = [
             LiteMobileActionSet.tap(coordinate=[x, y]),
             LiteMobileActionSet.type(text=text),
@@ -583,6 +625,9 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         factor: float,
     ) -> dict[str, Any]:
         """Scroll the current mobile view."""
+        # The official runtime's factor-to-swipe mapping is closed-source; this
+        # approximation clamps the [0, 1000]-axis distance to [100, 800] and
+        # swipes through the screen center.
         distance = max(100, min(800, round(factor * 1000)))
         half = distance // 2
         start = [500, 500]
@@ -648,11 +693,9 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         y_lift: int,
         duration: int = 400,
     ) -> dict[str, Any]:
-        """Drag a visible mobile element.
-
-        The official ``duration`` argument is not carried: canonical mobile
-        ``drag`` defines no duration.
-        """
+        """Drag a visible mobile element."""
+        # The official ``duration`` argument is not carried: canonical mobile
+        # ``drag`` defines no duration.
         return LiteMobileActionSet.drag(
             start_coordinate=[x_touch, y_touch],
             coordinate=[x_lift, y_lift],
@@ -711,22 +754,10 @@ class Holo4MobileActionSpace(_Holo4ActionSpace, key="holo4@mobile"):
         }
         for call in validated:
             name = tool_call_name(call)
-            arguments = tool_call_arguments(call)
+            arguments = {**tool_call_arguments(call)}
             try:
                 if name in converters:
-                    if name == "mobile_click":
-                        coordinate = arguments.get("x")
-                        if isinstance(coordinate, str):
-                            try:
-                                coordinate = ast.literal_eval(coordinate)
-                            except (SyntaxError, ValueError):
-                                pass
-                        if isinstance(coordinate, (list, tuple)):
-                            arguments = {
-                                "element": arguments.get("element", "screen coordinate"),
-                                "x": coordinate[0],
-                                "y": coordinate[1],
-                            }
+                    arguments = _normalize_coordinate_arguments(arguments)
                     if name == "mobile_swipe" and "x_touch" not in arguments:
                         arguments = {
                             "x_touch": arguments["x"],
