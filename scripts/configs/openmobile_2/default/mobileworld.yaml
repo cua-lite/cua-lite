@@ -1,0 +1,28 @@
+# OpenMobile-2 rollout eval on MobileWorld
+# 161 registered tasks; the eval runner filters 44 ask_user tasks, leaving
+# 117 GUI-only tasks evaluated by real device / backend state.
+#
+# Same official-alignment surface as the androidworld sibling (see
+# scripts/configs/openmobile_2/default/androidworld.yaml). ask_user is NOT
+# enabled: the official qwen35_thought_session action surface has no
+# agent-user-interaction channel, so those tasks stay excluded.
+#
+# Related configs (sync env_kwargs when changing):
+#   - scripts/configs/openmobile_2/default/androidworld.yaml  (mobile sibling)
+#   - scripts/configs/qwen3_5/default/mobileworld.yaml
+#
+# Interaction tasks carry exclude_reason="ask_user". Direct rollout calls
+# should pass --filter "lambda m: not m.others.get('exclude_reason')".
+
+agent_id: "openmobile_2"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 4096
+
+# max_steps omitted: mobileworld's env default is 50 (upstream ``mw eval
+# --max_round 50``).
+env_id: "mobileworld"
+env_kwargs:
+  loop_detect: 5
+  extra_tools: ["response", "terminate"]

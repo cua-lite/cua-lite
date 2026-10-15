@@ -29,7 +29,7 @@ register_all()
 # The LOCAL model_ids whose family is mobile-ONLY (agent_id in
 # {mai_ui, step_gui}) — these must render at platform="mobile";
 # any desktop lookup raises KeyError. Discovered from LOCAL_AGENTS.
-_MOBILE_ONLY_AGENT_IDS = {"mai_ui", "step_gui"}
+_MOBILE_ONLY_AGENT_IDS = {"mai_ui", "openmobile_2", "step_gui"}
 MOBILE_ONLY_MODEL_IDS = {
     model_id
     for model_id, cfg in AGENTS.items()
@@ -80,10 +80,10 @@ def test_agents_dicts_nonempty() -> None:
     assert set(AGENTS) >= union, (
         f"AGENTS missing entries from LOCAL ∪ API: {union - set(AGENTS)}"
     )
-    # Sanity on the audited counts (35 = 23 LOCAL + 12 API).
-    assert len(LOCAL_AGENTS) == 23
+    # Sanity on the audited counts (37 = 25 LOCAL + 12 API).
+    assert len(LOCAL_AGENTS) == 25
     assert len(API_AGENTS) == 12
-    assert len(AGENTS) == 35
+    assert len(AGENTS) == 37
 
 
 def test_compose_agent_key_format() -> None:

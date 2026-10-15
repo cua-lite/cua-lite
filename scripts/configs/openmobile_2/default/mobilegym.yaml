@@ -1,0 +1,19 @@
+# OpenMobile-2 rollout eval on MobileGym
+# 416 parameterized tasks across 24 launchable apps, deterministic state-diff judges.
+#
+# Same official-alignment surface as the androidworld sibling (see
+# scripts/configs/openmobile_2/default/androidworld.yaml). Without open_app,
+# tasks whose judge requires a launched app must be entered through the GUI.
+#
+# Related configs: scripts/configs/qwen3_5/default/mobilegym.yaml
+
+agent_id: "openmobile_2"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 4096
+
+env_id: "mobilegym"
+env_kwargs:
+  loop_detect: 5
+  extra_tools: ["response", "terminate"]
