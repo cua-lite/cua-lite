@@ -104,9 +104,9 @@ _MIN_DISTINCT_PAIRS = 110
 # number of distinct envs. The distinct-pair count grows only when the (agent, env)
 # pair is new: a second config for a covered pair (e.g. gpt's `osworld_g.medium` /
 # `screenspot_pro.medium` grounding variants) leaves it unchanged.
-_EXPECTED_AGENT_CONFIG_ROWS = 212
-_EXPECTED_ENV_CONFIG_ROWS = 207
-_EXPECTED_DISTINCT_PAIRS = 167
+_EXPECTED_AGENT_CONFIG_ROWS = 217
+_EXPECTED_ENV_CONFIG_ROWS = 212
+_EXPECTED_DISTINCT_PAIRS = 172
 
 
 class ConfigRow:
@@ -160,8 +160,9 @@ PAIR_ROWS = [r for r in ROWS if r.env_id]
 # ``metadata.dims``. Most envs answer that from
 # the registry with no docker image and no VM; the few whose *module import*
 # is hard-gated on an uninstalled third-party package (browsergym, cua-bench)
-# or a provisioned task cache (lite.cuagym) are pinned here so the containment
-# sweep still covers their rows on a partially-provisioned host.
+# or a provisioned task cache (lite.cuagym, lite.cuaworld, lite.osworld) are
+# pinned here so the containment sweep still covers their rows on a partially
+# provisioned host.
 #
 # The pins are NOT trusted blindly: ``test_pinned_env_dims_match_live_registry``
 # re-derives every pin that IS importable and fails on drift, so a fully
@@ -176,6 +177,7 @@ _PINNED_ENV_DIMS: dict[str, tuple[str, ...]] = {
     "lite.cuagym": ("browser", "use"),
     "lite.cuaworld.librecad": ("desktop", "use"),
     "lite.cuaworld.pymol": ("desktop", "use"),
+    "lite.osworld": ("desktop", "use"),
     "osworld_g": ("desktop", "grounding.point"),
 }
 

@@ -1,0 +1,17 @@
+# Holo4 rollout eval on lite.osworld.
+# The model's native `shell` and `answer` tools project to canonical `bash`
+# and `response` at the Holo4 adapter boundary.
+
+agent_id: "holo4"
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 1.0
+    top_p: 0.95
+    top_k: 20
+    max_new_tokens: 4096
+
+env_id: "lite.osworld"
+env_kwargs:
+  max_steps: 30
+  loop_detect: 5
+  extra_tools: ["bash", "response", "terminate"]

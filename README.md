@@ -89,7 +89,7 @@ result is a LiteRLSample:
 **Agent ids** (`agents.make(...)` / `--model-id`) — API families need a key; local ones are HF repo ids served through sglang/hf. Per-family surfaces and files: [`lite/agents/models`](/lite/agents/models).
 
 > **GPT** `gpt-6-astra` · `gpt-5.5` · `gpt-5.6-sol`
-> **Claude** `claude-opus-4-8` · `claude-opus-4-7` · `claude-opus-4-6` · `claude-sonnet-4-6`
+> **Claude** `claude-opus-5` · `claude-sonnet-5` · `claude-opus-4-8` · `claude-opus-4-7` · `claude-opus-4-6` · `claude-sonnet-4-6`
 > **Gemini** `gemini-3.6-flash` · `gemini-3.5-flash` · `gemini-3.5-flash-lite`
 > **Qwen3-VL** `Qwen/Qwen3-VL-{2B,4B,8B,32B}-{Instruct,Thinking}`
 > **Qwen2.5-VL** `Qwen/Qwen2.5-VL-{3B,7B}-Instruct` &nbsp;·&nbsp; **Qwen3.5** `Qwen/Qwen3.5-{2B,4B,9B,27B}`
@@ -97,7 +97,7 @@ result is a LiteRLSample:
 > **UI-TARS** `ByteDance-Seed/UI-TARS-7B-DPO` · `ByteDance-Seed/UI-TARS-1.5-7B`
 > **Fara** `microsoft/Fara-7B` &nbsp;·&nbsp; **EvoCUA** `meituan/EvoCUA-8B-20260105`
 > **MAI-UI** `Tongyi-MAI/MAI-UI-{2B,8B}` &nbsp;·&nbsp; **GELab** `stepfun-ai/GELab-Zero-4B-preview`
-> **UI-Venus-2** `inclusionAI/UI-Venus-2-9B`
+> **UI-Venus-2** `inclusionAI/UI-Venus-2-9B` &nbsp;·&nbsp; **Holo4** `Hcompany/Holo4-{27B,35B-A3B}`
 
 **Env ids** (`gym.make(...)` / `--env-id`) — compose a task as `"<env_id>@<task_id>"`. Each env's setup lives in its own README, linked from the benchmark and environment lists below.
 

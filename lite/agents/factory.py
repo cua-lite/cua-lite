@@ -87,6 +87,11 @@ LOCAL_AGENTS: dict[str, dict] = {
     # default in this checkpoint (``reasoning_effort`` defaults to ``xhigh``),
     # so pin it off for the eval matrix as with Qwen3.5.
     "Qwen/Qwen3.8-27B": {"agent_id": "qwen3_8", **_NO_THINK, **_tp(2)},
+    # Holo4 uses Qwen's XML tool-call wire format with its own flat desktop and
+    # mobile tool vocabulary. Native thinking stays enabled and replays across
+    # turns: the agent renders history with ``preserve_thinking=True``.
+    "Hcompany/Holo4-27B": {"agent_id": "holo4", **_tp(2)},
+    "Hcompany/Holo4-35B-A3B": {"agent_id": "holo4", **_tp(4)},
     # Other open-weight families.
     "ByteDance-Seed/UI-TARS-7B-DPO": {"agent_id": "ui_tars"},
     "ByteDance-Seed/UI-TARS-1.5-7B": {"agent_id": "ui_tars_15_v1"},

@@ -731,6 +731,8 @@ _EXPECTED_OPEN_APP_CONFIGS = {
     "scripts/configs/gpt/default/mobilegym.yaml",
     "scripts/configs/gpt/default/mobileworld.yaml",
     "scripts/configs/gpt/recipes/collect/mobilegym.yaml",
+    "scripts/configs/holo4/default/mobilegym.yaml",
+    "scripts/configs/holo4/default/mobileworld.yaml",
     "scripts/configs/mai_ui/compact/androidworld.yaml",
     "scripts/configs/mai_ui/compact/mobilegym.yaml",
     "scripts/configs/mai_ui/default/androidlab.yaml",
@@ -775,6 +777,9 @@ _MOBILE_ANSWER_FINISH_CONFIGS = {
     "scripts/configs/gpt/default/androidworld.yaml",
     "scripts/configs/gpt/default/mobilegym.yaml",
     "scripts/configs/gpt/default/mobileworld.yaml",
+    "scripts/configs/holo4/default/androidworld.yaml",
+    "scripts/configs/holo4/default/mobilegym.yaml",
+    "scripts/configs/holo4/default/mobileworld.yaml",
     "scripts/configs/mai_ui/compact/androidworld.yaml",
     "scripts/configs/mai_ui/compact/mobilegym.yaml",
     "scripts/configs/mai_ui/default/androidlab.yaml",
@@ -815,6 +820,7 @@ _MOBILE_ANSWER_FINISH_CONFIGS = {
 _EXPECTED_ASK_USER_CONFIGS = {
     "scripts/configs/claude/default/mobileworld.yaml",
     "scripts/configs/gpt/default/mobileworld.yaml",
+    "scripts/configs/holo4/default/mobileworld.yaml",
     "scripts/configs/qwen3_5/default/mobileworld.yaml",
     "scripts/configs/qwen3_8/default/mobileworld.yaml",
     "scripts/configs/qwen3_vl/default/mobileworld.yaml",
@@ -924,7 +930,8 @@ _DESKTOP_USE_RECIPE_CONFIGS = {
 
 _EXPECTED_RESPONSE_CONFIGS = {
     "scripts/configs/gpt/default/webgym.yaml",
-
+    "scripts/configs/holo4/default/lite.osworld.yaml",
+    "scripts/configs/holo4/default/osworld.yaml",
     # The fara browsergym rows all select ``response`` so a tool-call-free
     # final turn is scored through ``make_no_tool_call_final_actions`` instead
     # of degrading to a bare ``terminate``; miniwob was the one row that had
@@ -994,6 +1001,8 @@ _EXPECTED_RESPONSE_CONFIGS = {
 _EXPECTED_TERMINATE_CONFIGS = {
     "scripts/configs/evocua/default/browsergym.miniwob/default.yaml",
     "scripts/configs/evocua/default/waa.yaml",
+    "scripts/configs/holo4/default/lite.osworld.yaml",
+    "scripts/configs/holo4/default/osworld.yaml",
     "scripts/configs/ui_tars_15_v1/default/waa.yaml",
     "scripts/configs/ui_venus_2/default/waa.yaml",
     "scripts/configs/gpt/recipes/collect/mobilegym.yaml",

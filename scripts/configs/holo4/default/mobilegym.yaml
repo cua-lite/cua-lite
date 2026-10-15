@@ -1,0 +1,14 @@
+# Holo4 rollout eval on MobileGym.
+
+agent_id: "holo4"
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 1.0
+    top_p: 0.95
+    top_k: 20
+    max_new_tokens: 4096
+
+env_id: "mobilegym"
+env_kwargs:
+  loop_detect: 5
+  extra_tools: ["open_app", "response", "terminate"]

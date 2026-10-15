@@ -203,6 +203,26 @@ def test_reclaim_needs_the_schema_and_is_inert_without_it():
     ]
 
 
+def test_flat_tool_payloads_key_the_quote_exemption_on_the_tool_name():
+    """A flat tool (no ``action`` discriminator) is addressed by its own
+    name, so for those calls the exemption set matches (tool, parameter)
+    pairs. The default set covers only ``(type, text)``: every other flat
+    payload keeps losing wrapping quotes, as before."""
+    raw = (
+        "<tool_call>\n"
+        "<function=custom_tool>\n"
+        "<parameter=text>\n"
+        '"42"\n'
+        "</parameter>\n"
+        "</function>\n"
+        "</tool_call>"
+    )
+    assert _parse_xml_tool_calls(raw) == [{"name": "custom_tool", "arguments": {"text": "42"}}]
+    assert _parse_xml_tool_calls(
+        raw, typed_content=frozenset({("custom_tool", "text")})
+    ) == [{"name": "custom_tool", "arguments": {"text": '"42"'}}]
+
+
 def test_stray_opener_turn_still_renders_back_into_history():
     """The end-to-end consequence, which is why this is not a cosmetic parse bug.
 

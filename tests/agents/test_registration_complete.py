@@ -259,7 +259,7 @@ def test_bootstrap_lists_are_disjoint_and_duplicate_free() -> None:
 # =============================================================================
 # Protocol registry golden
 # =============================================================================
-# golden: slugs are import-path-independent — exactly the 13 protocol keys.
+# golden: slugs are import-path-independent — exactly the 14 protocol keys.
 # Includes the env-bridge protocol browsergym.generic +
 # the browsergym goal_image history protocols and the webharbor.webvoyager SoM
 # history protocols (one per agent family).
@@ -268,6 +268,7 @@ PROTOCOL_GOLDEN = {
     "browsergym.goal_image.qwen3_5.history",
     "browsergym.goal_image.qwen3_vl.history",
     "fara.history",
+    "holo4.history",
     "lite.history",
     "mai_ui.history",
     "qwen3_5.history",
@@ -304,6 +305,7 @@ ACTION_SPACE_LIST = [
     "claude@mobile",
     "gemini@mobile",
     "gpt@mobile",
+    "holo4@mobile",
     "lite@bbox",
     "lite@browser",
     "lite@desktop",
@@ -337,6 +339,7 @@ ACTION_SPACE_PATTERNS = [
     "gemini@(desktop|browser)",
     "gpt@(desktop|browser)",
     "gpt@(desktop|browser)@point",
+    "holo4@(desktop|browser)",
     "mai_ui@(desktop|browser|mobile)@point",
     "qwen2_5_vl@(desktop|browser)",
     "qwen2_5_vl@(desktop|browser)@point",
@@ -355,6 +358,7 @@ ACTION_SPACE_PATTERNS = [
 
 ADAPTER_LIST = [
     "as_is",
+    "holo4@mobile@use",
     "lite@mobile@grounding.action",
     "lite@mobile@use",
     "mai_ui@mobile@use",
@@ -391,6 +395,8 @@ ADAPTER_PATTERNS = [
     "fara@(desktop|browser)@grounding\\.point",
     "fara@(desktop|browser)@use",
     "fara\\.base(@(desktop|browser)@(use|grounding\\.action|grounding\\.point))?",
+    "holo4@(desktop|browser)@use",
+    "holo4\\.base(@(desktop|browser|mobile)@use)?",
     "lite@(desktop|browser)@grounding\\.action",
     "lite@(desktop|browser)@use",
     "lite@(desktop|browser|mobile)@grounding\\.bbox",
@@ -441,6 +447,7 @@ AGENT_LIST = [
     # AGENT_PATTERNS), but mobile's prompt seam differs, so it is its own leaf.
     "gpt.teacher@mobile@use",
     "gpt@mobile@use",
+    "holo4@mobile@use",
     "mai_ui@mobile@use",
     "qwen2_5_vl@mobile@grounding.action",
     "qwen2_5_vl@mobile@grounding.point",
@@ -479,6 +486,8 @@ AGENT_PATTERNS = [
     "gpt@(desktop|browser)@grounding\\.point",
     "gpt@(desktop|browser)@use",
     "gpt\\.teacher(@(desktop|browser)@use)?",
+    "holo4@(desktop|browser)@use",
+    "holo4\\.base(@(desktop|browser|mobile)@use)?",
     "mai_ui@(desktop|browser|mobile)@grounding\\.point",
     "qwen2_5_vl@(desktop|browser)@grounding\\.action",
     "qwen2_5_vl@(desktop|browser)@grounding\\.point",

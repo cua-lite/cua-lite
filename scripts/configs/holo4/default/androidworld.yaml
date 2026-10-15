@@ -1,0 +1,18 @@
+# Holo4 rollout eval on AndroidWorld.
+
+agent_id: "holo4"
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 1.0
+    top_p: 0.95
+    top_k: 20
+    max_new_tokens: 4096
+
+env_id: "androidworld"
+env_kwargs:
+  # Official Holo4 harness budget: 100 steps (3300s) per AndroidWorld task;
+  # unset falls back to int(10 * complexity), which truncates long tasks.
+  max_steps: 100
+  loop_detect: 5
+  extra_tools: ["response", "terminate"]
+

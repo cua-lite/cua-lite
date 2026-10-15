@@ -18,6 +18,7 @@ from __future__ import annotations
 import pytest
 
 from lite.agents.bootstrap import register_all
+from lite.agents.models.holo4.agent import Holo4DesktopUseAgent
 from lite.agents.models.qwen3_5.agent import Qwen3_5DesktopUseAgent
 from lite.agents.models.qwen3_8.agent import Qwen3_8DesktopUseAgent
 from lite.agents.models.ui_venus_2.agent import UIVenus2DesktopUseAgent
@@ -40,6 +41,12 @@ REPLIES = {
         "<tool_call>\n<function=computer_use>\n<parameter=action>\nleft_click\n"
         "</parameter>\n<parameter=coordinate>\n[18, 559]\n</parameter>\n"
         "</function>\n</tool_call>"
+    ),
+    Holo4DesktopUseAgent: (
+        f"{REASONING}\n</think>\n\n{ANSWER}\n"
+        "<tool_call>\n<function=click_desktop>\n<parameter=element>\n"
+        "Terminal icon in the dock\n</parameter>\n<parameter=x>\n17\n"
+        "</parameter>\n<parameter=y>\n559\n</parameter>\n</function>\n</tool_call>"
     ),
 }
 

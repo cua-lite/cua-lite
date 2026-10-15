@@ -218,8 +218,22 @@ def _fallback_json_type(key: str) -> str | None:
     return None
 
 
+# (action-or-tool, parameter) pairs whose wire value is text to be typed
+# verbatim: there a wrapping quote pair is payload, not formatting. The
+# qwen3.5 wire spells typed content ``computer_use(action=type, text=...)``;
+# a family whose write tools are flat (the payload is a plain parameter of
+# the tool itself) overrides the adapter's ``_typed_content_params`` with
+# its own (tool, parameter) pairs.
+_TYPED_CONTENT_PARAMS: frozenset[tuple[str, str]] = frozenset({("type", "text")})
+
+
 def _coerce_param_value(
-    key: str, raw: str, json_type: str | None = None, *, action: str | None = None
+    key: str,
+    raw: str,
+    json_type: str | None = None,
+    *,
+    action: str | None = None,
+    typed_content: frozenset[tuple[str, str]] = _TYPED_CONTENT_PARAMS,
 ) -> Any:
     """Best-effort conversion of a ``<parameter=KEY>VALUE</parameter>`` body
     string to a Python value, driven by the parameter's DECLARED JSON type.
@@ -237,6 +251,11 @@ def _coerce_param_value(
     callers depend on always getting a value back. *raw* is always wire text
     (the sole caller passes a regex group), so a malformed numeric body is a
     ``ValueError``; a non-str *raw* would be caller breakage and propagates.
+
+    *action* is the action-or-tool the call is addressed to (the wrapper's
+    ``action`` value, else the flat tool's own name); together with *key* it
+    is looked up in *typed_content*, the exempt (action-or-tool, parameter)
+    pairs whose value is content to be typed rather than a plain argument.
     """
     value = raw.strip()
     if json_type is None:
@@ -275,11 +294,13 @@ def _coerce_param_value(
     # verbatim. A numeric-looking value stays a string — browsergym ``bid``s
     # ("12") are strings by schema and must not become ints.
     #
-    # ``type``'s text is exempt: it is CONTENT to be typed, so a wrapping quote
-    # pair is part of the payload (35 real actions arrived mangled without this).
-    # Scoped to the ACTION, not the parameter name -- ``answer``/``call_user``
-    # also spell their payload ``text``, and there the quotes are the model's.
-    if not (key == "text" and action == "type") and (
+    # Typed-content parameters are exempt: their value is CONTENT to be
+    # typed, so a wrapping quote pair is part of the payload (35 real
+    # actions arrived mangled without this). Scoped to the action-or-tool
+    # the call is addressed to, not the parameter name --
+    # ``answer``/``call_user`` also spell their payload ``text``, and there
+    # the quotes are the model's.
+    if (action, key) not in typed_content and (
         len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'")
     ):
         value = value[1:-1]
@@ -316,6 +337,8 @@ def _reclaim_swallowed_parameter(
 def _parse_xml_tool_calls(
     text: str,
     param_types: dict[str, dict[str, str]] | None = None,
+    *,
+    typed_content: frozenset[tuple[str, str]] = _TYPED_CONTENT_PARAMS,
 ) -> list[dict[str, Any]]:
     """Extract XML-format ``<tool_call>`` blocks from *text*.
 
@@ -329,6 +352,9 @@ def _parse_xml_tool_calls(
     key, or no schemas passed at all) fall back to the name heuristics in
     :func:`_fallback_json_type`. Unterminated tool_call blocks are skipped with
     a warning.
+
+    *typed_content* is the exempt (action-or-tool, parameter) set forwarded to
+    :func:`_coerce_param_value` for quote handling.
     """
     types_by_tool = param_types or {}
     calls: list[dict[str, Any]] = []
@@ -354,8 +380,15 @@ def _parse_xml_tool_calls(
         arguments: dict[str, Any] = {}
         for pkey, praw in raw_params:
             pkey, praw = _reclaim_swallowed_parameter(pkey, praw, declared)
+            # Quote exemption keys on who the call is addressed to: the
+            # wrapper's ``action`` value when present, else the flat tool's
+            # own name.
             arguments[pkey] = _coerce_param_value(
-                pkey, praw, declared.get(pkey), action=acted_on
+                pkey,
+                praw,
+                declared.get(pkey),
+                action=acted_on or name,
+                typed_content=typed_content,
             )
         calls.append({"name": name, "arguments": arguments})
     return calls
@@ -502,6 +535,13 @@ class Qwen3_5BaseAdapter(
     # defaults from :class:`Qwen3VLBaseAdapter` (``BaseActionSpace`` +
     # ``FullHistoryProtocol``). Concrete use/grounding leaves
     # below override these per platform.
+
+    # (action-or-tool, parameter) pairs whose wire value is typed content
+    # and keeps its wrapping quotes. Defaults to the qwen3.5 wire spelling
+    # (``computer_use(action=type, text=...)``); a family whose write tools
+    # are flat — the payload is a plain parameter of the tool itself —
+    # overrides this with those (tool, parameter) pairs.
+    _typed_content_params: ClassVar[frozenset[tuple[str, str]]] = _TYPED_CONTENT_PARAMS
 
     def _build_tools_section(self) -> str:
         """Emit the intro + ``<tools>`` block + format example + ``<IMPORTANT>``.
@@ -656,7 +696,11 @@ class Qwen3_5BaseAdapter(
         elif "</think>" in response:
             result["reasoning_content"] = response.split("</think>", 1)[0].strip()
 
-        tool_calls = _parse_xml_tool_calls(response, self._xml_param_types())
+        tool_calls = _parse_xml_tool_calls(
+            response,
+            self._xml_param_types(),
+            typed_content=self._typed_content_params,
+        )
         if tool_calls:
             result["tool_calls"] = tool_calls
         elif "<tool_call" in response or "</tool_call>" in response:

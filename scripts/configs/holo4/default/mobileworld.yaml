@@ -1,0 +1,25 @@
+# Holo4 rollout eval on MobileWorld.
+# 161 registered tasks (201 upstream − 40 agent-mcp) across 20 apps in DinD
+# boxes, scored on real device / backend state; the eval runner filters the
+# 44 agent-user-interaction tasks, leaving 117 GUI-only tasks.
+#
+# Interaction tasks carry exclude_reason="ask_user". Direct rollout calls
+# should pass --filter "lambda m: not m.others.get('exclude_reason')". To run
+# the 44 explicitly, set USER_AGENT_API_KEY and USER_AGENT_BASE_URL before
+# starting the env-server (they override the OPENAI_* fallbacks when
+# containers are created).
+
+agent_id: "holo4"
+agent_kwargs:
+  sampling_kwargs:
+    temperature: 1.0
+    top_p: 0.95
+    top_k: 20
+    max_new_tokens: 4096
+
+# max_steps omitted: mobileworld's env default is 50 (upstream ``mw eval
+# --max_round 50``).
+env_id: "mobileworld"
+env_kwargs:
+  loop_detect: 5
+  extra_tools: ["open_app", "ask_user", "response", "terminate"]
