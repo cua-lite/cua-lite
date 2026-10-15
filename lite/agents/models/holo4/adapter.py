@@ -35,7 +35,8 @@ from lite.core.tools.schemas import make_tool_schema, tool_schema_name
 # - the facts that hold only inside the OSWorld VM: the "## System
 #   information" and "## How your work is judged" sections and scattered
 #   browser/shell/file lines, which the OSWorld overlay below splices back
-#   to rebuild the official prompt for the OSWorld-family envs.
+#   for the OSWorld-family envs, with the system information rewritten to
+#   the cua-lite desktop's facts.
 # Served by default: waa runs Windows 11, the browser envs expose no desktop
 # OS, and osworld_2's official prompt is not carried.
 # Raw string: the body contains a literal ``\xa0`` mention.
@@ -259,17 +260,26 @@ Some tasks are designed to be impossible as stated: a feature, setting, mode or 
 - Declaring is a formatting requirement. Terminate with a final answer stating why the task cannot be completed, whose last line is exactly `[TASK=INFEASIBLE]`. Nothing else is read: "not possible" and "cannot be completed" score zero. When the task's own wording tells you how to report impossibility, satisfy it in the prose and still end with the marker."""
 
 
-# OSWorld-VM facts that hold only inside the official OSWorld harness.
+# The facts of the cua-lite OSWorld desktop, in the official section's
+# layout. The official section describes H Company's own VM (Ubuntu 24.04, a
+# uv venv at /home/user/.venv, a Terminal dock entry, its own password), none
+# of which hold here: both OSWorld-family envs run the stock Ubuntu 22.04
+# OSWorld desktop, whose dock has no Terminal. Only the sudo password differs
+# per env.
 HOLO4_OSWORLD_SYSTEM_INFORMATION = """## System information
 
-OS: Ubuntu 24.04, GNOME
+OS: Ubuntu 22.04, GNOME
 Screen resolution: 1920x1080.
 Home directory: /home/user; task files commonly live under /home/user/Desktop.
-Dock order: 1. Chrome, 2. Thunderbird, 3. VS Code, 4. VLC, 5. LibreOffice Writer, 6. LibreOffice Calc, 7. LibreOffice Impress, 8. GIMP, 9. Files (Nautilus), 10. Terminal, 11. Ubuntu Software, 12. Help, 13. Trash.
-`python3` is the uv venv `/home/user/.venv` (3.12) with openpyxl, python-docx, python-pptx, pymupdf, pillow, odfpy, flask, requests and websocket-client. It has no `pip` module: add packages with `uv pip install <pkg>`. The system `python` is a different interpreter.
-Preinstalled commands: xdotool, xsel, wget, soffice. `curl` is absent; use `wget` or `requests`. Anything else installs with `apt`.
-You are logged in as "user" with password 'osworld-public-evaluation'. Use it for sudo and whenever prompted. In scripts, run sudo non-interactively: `echo 'osworld-public-evaluation' | sudo -S <cmd>`.
+Dock order: 1. Chrome, 2. Thunderbird, 3. VS Code, 4. VLC, 5. LibreOffice Writer, 6. LibreOffice Calc, 7. LibreOffice Impress, 8. GIMP, 9. Files (Nautilus), 10. Ubuntu Software, 11. Help, 12. Trash. The dock has no Terminal entry.
+`python3` is the system Python 3.10 at `/usr/bin/python3`. There is no `/home/user/.venv` and no `uv`.
+You are logged in as "user" with password '{sudo_password}'. Use it for sudo and whenever prompted. In scripts, run sudo non-interactively: `echo '{sudo_password}' | sudo -S <cmd>`.
 """
+
+# Desktop user's sudo password per OSWorld-family env: the osworld VM image's
+# client password (lite/gym/envs/osworld/main.py) and the lite.osworld
+# sandbox account, whose password is its user name.
+_OSWORLD_SUDO_PASSWORDS: dict[str, str] = {"osworld": "password", "lite.osworld": "user"}
 
 HOLO4_OSWORLD_JUDGING_NOTES = """## How your work is judged
 
@@ -325,14 +335,17 @@ When you terminate, an automated evaluator inspects the machine: files at exact 
 - "Show me X" needs X to exist. Check `/sys/class/power_supply/`, `/sys/class/bluetooth/` or the device list before flipping a setting whose visible effect you cannot produce. Setting the gsetting anyway and reporting success scores zero. A mock service, a fake sysfs entry or a stub D-Bus object is never completing the task.
 """
 
-# The official Holo4 OSWorld prompt: the general body above with the
-# OSWorld-VM facts spliced back in. The adapter swaps to this body only for
-# the OSWorld-family envs. The splice must rebuild the official text
-# byte-for-byte; test_holo4_adapter.py pins it by digest.
-HOLO4_DESKTOP_SYSTEM_PROMPT = (
-    HOLO4_DESKTOP_GENERAL_SYSTEM_PROMPT.replace(
+# The Holo4 OSWorld prompt per OSWorld-family env: the general body above
+# with the official OSWorld sections spliced back in, except that the system
+# information states the cua-lite desktop's facts and the official xdotool
+# bullet is dropped (the stock desktop ships no xdotool). The adapter swaps to
+# this body only for these envs; test_holo4_adapter.py pins it by digest.
+HOLO4_OSWORLD_SYSTEM_PROMPTS: dict[str, str] = {
+    env_id: HOLO4_DESKTOP_GENERAL_SYSTEM_PROMPT.replace(
         "\n## GUI interaction\n",
-        f"\n{HOLO4_OSWORLD_SYSTEM_INFORMATION.rstrip()}\n\n## GUI interaction\n",
+        "\n"
+        + HOLO4_OSWORLD_SYSTEM_INFORMATION.format(sudo_password=sudo_password).rstrip()
+        + "\n\n## GUI interaction\n",
         1,
     )
     .replace(
@@ -347,7 +360,7 @@ HOLO4_DESKTOP_SYSTEM_PROMPT = (
     )
     .replace(
         "- Executions die when your session ends",
-        '- "The current directory" is the one the task set up (a pre-opened Terminal\'s `pwd`, or the folder it opened), never `~`. `cd` there first.\n- xdotool addresses the real 1920x1080 pixels, on display `:0`. Export `DISPLAY=:0` when it is unset; no other display exists.\n- Executions die when your session ends',
+        '- "The current directory" is the one the task set up (a pre-opened Terminal\'s `pwd`, or the folder it opened), never `~`. `cd` there first.\n- Executions die when your session ends',
         1,
     )
     .replace(
@@ -360,7 +373,8 @@ HOLO4_DESKTOP_SYSTEM_PROMPT = (
         f"\n\n{HOLO4_OSWORLD_JUDGING_NOTES.rstrip()}\n\n# Principles\n",
         1,
     )
-)
+    for env_id, sudo_password in _OSWORLD_SUDO_PASSWORDS.items()
+}
 
 
 # The official Holo4 mobile prompt body, minus its clipboard-tools paragraph:
@@ -525,6 +539,11 @@ class Holo4BaseAdapter(
     enable_thinking: bool = True
     render_tools_section: bool = False
     system_prompt: str | None = None
+    # The official harness sends native-resolution captures (verified via
+    # per-step prompt-token deltas in the official trajectories); the vision
+    # processor owns any rounding. Keep the adapter-side smart-resize stage
+    # off so frames reach the processor untouched.
+    smart_resize_enabled: bool = False
 
     # The write tools are flat, so their payloads ride plain parameters:
     # ``content`` on desktop, ``text`` on mobile. Typed content keeps its
@@ -548,16 +567,13 @@ class Holo4BaseAdapter(
             extra_tool_schemas=None,
         )
         answer_added = False
-        active_extra_names = {tool_schema_name(schema) for schema in metadata.extra_tool_schemas}
         for extra_schema in metadata.extra_tool_schemas:
             name = tool_schema_name(extra_schema)
             if name == BASH_TOOL_NAME:
                 projected = copy.deepcopy(extra_schema)
                 projected["function"]["name"] = "shell"
                 schemas.append(projected)
-            elif name == "response" or (
-                name == "terminate" and "response" not in active_extra_names
-            ):
+            elif name in {"response", "terminate"}:
                 if not answer_added:
                     schemas.append(
                         make_tool_schema(
@@ -648,9 +664,9 @@ class Holo4BaseAdapter(
         tool_calls: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         self._require_standalone_tool_schemas(tool_calls)
-        projected_names = {BASH_TOOL_NAME, "response"}
-        if "response" not in self.active_extra_tool_names():
-            projected_names.add("terminate")
+        # ``terminate`` shares the ``answer`` projection with ``response``:
+        # the model is never offered either canonical finish spelling.
+        projected_names = {BASH_TOOL_NAME, "response", "terminate"}
         result: list[dict[str, Any]] = []
         for tool_call in tool_calls:
             name = tool_call_name(tool_call)
@@ -680,19 +696,17 @@ class Holo4DesktopUseAdapter(
     system_prompt: str | None = HOLO4_DESKTOP_GENERAL_SYSTEM_PROMPT
 
     def _system_prompt_for_active_surface(self) -> str | None:
-        """Serve the general desktop prompt, or the official OSWorld body on
+        """Serve the general desktop prompt, or the env's OSWorld body on
         the OSWorld-family envs, trimmed to the active tools."""
         system_prompt = self.system_prompt
+        env_id = self.metadata.others.get("env_id")
         if (
-            self.metadata.others.get("env_id") in ("osworld", "lite.osworld")
+            env_id in HOLO4_OSWORLD_SYSTEM_PROMPTS
             and system_prompt == HOLO4_DESKTOP_GENERAL_SYSTEM_PROMPT
         ):
-            system_prompt = HOLO4_DESKTOP_SYSTEM_PROMPT
-        if system_prompt in (
-            HOLO4_DESKTOP_SYSTEM_PROMPT,
-            HOLO4_DESKTOP_GENERAL_SYSTEM_PROMPT,
-        ):
-            official_body = system_prompt == HOLO4_DESKTOP_SYSTEM_PROMPT
+            system_prompt = HOLO4_OSWORLD_SYSTEM_PROMPTS[env_id]
+        official_body = system_prompt in HOLO4_OSWORLD_SYSTEM_PROMPTS.values()
+        if official_body or system_prompt == HOLO4_DESKTOP_GENERAL_SYSTEM_PROMPT:
             active_extras = self.active_extra_tool_names()
             if "update_plan" not in active_extras:
                 before, _, remainder = system_prompt.partition("\n\n# Planning\n")
@@ -729,7 +743,6 @@ class Holo4MobileUseAdapter(Holo4BaseAdapter, key="holo4@mobile@use"):
     action_space: BaseActionSpace = dataclasses.field(default_factory=Holo4MobileActionSpace)
     protocol: Holo4HistoryProtocol = dataclasses.field(default_factory=Holo4HistoryProtocol)
     system_prompt: str | None = HOLO4_MOBILE_GENERAL_SYSTEM_PROMPT
-    smart_resize_enabled: bool = False
 
     def _system_prompt_for_active_surface(self) -> str | None:
         """Serve the general mobile prompt, or the official AndroidWorld body
@@ -746,7 +759,9 @@ class Holo4MobileUseAdapter(Holo4BaseAdapter, key="holo4@mobile@use"):
                 # carries them.
                 system_prompt = f"{system_prompt}\n\n{HOLO4_ANDROIDWORLD_APP_NOTES}"
         # Both mobile variants teach the `update_plan` and `note` sections;
-        # trim each section when the env does not advertise the tool.
+        # trim each section when the env does not advertise the tool. The
+        # official tool surface has no `open_app` or `ask_user`, so when the
+        # env advertises one, the bullet that rules it out names it instead.
         if system_prompt in (
             HOLO4_MOBILE_GENERAL_SYSTEM_PROMPT,
             HOLO4_MOBILE_SYSTEM_PROMPT,
@@ -760,6 +775,21 @@ class Holo4MobileUseAdapter(Holo4BaseAdapter, key="holo4@mobile@use"):
                 before, _, remainder = system_prompt.partition("\n\n# Notes\n")
                 _, _, after = remainder.partition("\n\n# Termination\n")
                 system_prompt = f"{before}\n\n# Termination\n{after}"
+            if "open_app" in active_extras:
+                system_prompt = system_prompt.replace(
+                    "- To open an app, go through the drawer: ",
+                    "- To open an app, call `open_app` with its name from the tool's list. "
+                    "For an app the list does not carry, go through the drawer: ",
+                    1,
+                )
+            if "ask_user" in active_extras:
+                system_prompt = system_prompt.replace(
+                    "nobody is standing by to confirm your choices.",
+                    "nobody is standing by to confirm your choices. The one exception is "
+                    "`ask_user`: call it only when the task cannot proceed without "
+                    "information or a decision that only the user can give.",
+                    1,
+                )
         # No finish-tool guidance merge: the Qwen guidance targets the
         # USE_SYSTEM_PROMPT body, which no Holo4 surface serves.
         return system_prompt
@@ -769,7 +799,7 @@ __all__ = [
     "HOLO4_DESKTOP_GENERAL_SYSTEM_PROMPT",
     "HOLO4_OSWORLD_SYSTEM_INFORMATION",
     "HOLO4_OSWORLD_JUDGING_NOTES",
-    "HOLO4_DESKTOP_SYSTEM_PROMPT",
+    "HOLO4_OSWORLD_SYSTEM_PROMPTS",
     "HOLO4_MOBILE_GENERAL_SYSTEM_PROMPT",
     "HOLO4_ANDROIDWORLD_APP_NOTES",
     "HOLO4_MOBILE_SYSTEM_PROMPT",
