@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from lite.agents.models.holo4.protocol import Holo4HistoryProtocol
+from lite.agents.models.holo4.protocol import EVICTED_SCREENSHOT_TEXT, Holo4HistoryProtocol
+
+EVICTED = {"type": "text", "text": EVICTED_SCREENSHOT_TEXT}
 
 
 def _user(text: str, image: int) -> dict:
@@ -32,10 +34,10 @@ def _assistant(note: str, call_id: str) -> dict:
     }
 
 
-def test_compaction_keeps_all_text_but_drops_out_of_window_images() -> None:
-    # The official harness keeps every text message (instructions, tool
-    # outputs, observation text, assistant turns with their tool calls and
-    # reasoning) and evicts only out-of-window screenshots.
+def test_compaction_keeps_all_text_but_replaces_out_of_window_images() -> None:
+    # The official harness keeps every message (instructions, tool outputs,
+    # observation text, assistant turns with their tool calls and reasoning)
+    # and swaps only out-of-window screenshots for a short placeholder.
     messages = [
         {"role": "system", "content": [{"type": "text", "text": "system"}]},
         _user("task instruction", 0),
@@ -57,14 +59,39 @@ def test_compaction_keeps_all_text_but_drops_out_of_window_images() -> None:
     compacted = Holo4HistoryProtocol(max_n_images=1).process_messages(messages)
     assert compacted == [
         messages[0],
-        {"role": "user", "content": [{"type": "text", "text": "task instruction"}]},
+        {"role": "user", "content": [{"type": "text", "text": "task instruction"}, EVICTED]},
         messages[2],
         messages[3],
-        {"role": "user", "content": [{"type": "text", "text": "old screenshot"}]},
+        {"role": "user", "content": [{"type": "text", "text": "old screenshot"}, EVICTED]},
         messages[5],
         messages[6],
         messages[7],
     ]
+
+
+def test_image_only_tool_result_keeps_its_turn_after_eviction() -> None:
+    # The env returns each screenshot as an image-only tool result. Evicting
+    # the image must not delete the turn, or consecutive assistant turns
+    # would render with no <tool_response> between them.
+    messages = [
+        _user("task", 0),
+        _assistant("open drawer", "call_0"),
+        {"role": "tool", "tool_call_id": "call_0", "content": [{"type": "image", "index": 1}]},
+        _assistant("tap app", "call_1"),
+        {"role": "tool", "tool_call_id": "call_1", "content": [{"type": "image", "index": 2}]},
+    ]
+
+    compacted = Holo4HistoryProtocol(max_n_images=1).process_messages(messages)
+
+    assert [message["role"] for message in compacted] == [
+        "user",
+        "assistant",
+        "tool",
+        "assistant",
+        "tool",
+    ]
+    assert compacted[2] == {"role": "tool", "tool_call_id": "call_0", "content": [EVICTED]}
+    assert compacted[4] == messages[4]
 
 
 def test_short_history_keeps_sidecars_and_native_reasoning() -> None:
@@ -83,9 +110,7 @@ def test_short_history_keeps_sidecars_and_native_reasoning() -> None:
     assert processed[1]["raw_response"] == messages[1]["raw_response"]
 
 
-def test_image_only_first_user_message_drops_but_later_text_survives() -> None:
-    # An image-only first user message carries no text to keep, so it drops
-    # entirely; later observation text survives as an observation.
+def test_image_only_first_user_message_keeps_a_placeholder() -> None:
     messages = [
         {"role": "user", "content": [{"type": "image", "index": 0}]},
         _assistant("saw the screen", "call_0"),
@@ -102,9 +127,13 @@ def test_image_only_first_user_message_drops_but_later_text_survives() -> None:
     compacted = Holo4HistoryProtocol(max_n_images=1).process_messages(messages)
 
     assert compacted == [
+        {"role": "user", "content": [EVICTED]},
         messages[1],
         messages[2],
-        {"role": "user", "content": [{"type": "text", "text": "SYSTEM_ALERT: battery low"}]},
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "SYSTEM_ALERT: battery low"}, EVICTED],
+        },
         messages[4],
         messages[5],
     ]
@@ -147,13 +176,13 @@ def test_image_limit_counts_parts_not_observation_turns() -> None:
     assert {"type": "text", "text": "remember"} in processed[1]["content"]
 
 
-def test_zero_image_limit_removes_images_but_keeps_narration() -> None:
+def test_zero_image_limit_replaces_images_but_keeps_narration() -> None:
     messages = [_user("task", 0), _assistant("remember", "call_0")]
 
     processed = Holo4HistoryProtocol(max_n_images=0).process_messages(messages)
 
     assert processed == [
-        {"role": "user", "content": [{"type": "text", "text": "task"}]},
+        {"role": "user", "content": [{"type": "text", "text": "task"}, EVICTED]},
         {
             "role": "assistant",
             "content": [{"type": "text", "text": "remember"}],

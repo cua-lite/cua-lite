@@ -7,20 +7,29 @@ import dataclasses
 
 from lite.agents.core.protocol import BaseProtocol
 from lite.core import LiteMessage
-from lite.core.messages import IMAGE_PART, group_into_turns, peel_system_message
+from lite.core.messages import IMAGE_PART, TEXT_PART, group_into_turns, peel_system_message
 from lite.core.messages.content import require_message_list
+
+# Stands in for each evicted screenshot. The official harness keeps the
+# evicted observation turn and swaps its image for this text: per-step
+# prompt-token deltas in the official AndroidWorld trajectories grow by a
+# constant few tokens per eviction rather than shrinking by a whole
+# ``<tool_response>`` turn, and the wording is the one the official OSWorld
+# trajectories show in place of evicted images.
+EVICTED_SCREENSHOT_TEXT = "[Image omitted by context cleaning]"
 
 
 @dataclasses.dataclass
 class Holo4HistoryProtocol(BaseProtocol, key="holo4.history"):
-    """Evict screenshots beyond a sliding window; keep every text message.
+    """Evict screenshots beyond a sliding window; keep every message.
 
     Mirrors the official Holo4 harness, which retains the last few
     screenshots — three on AndroidWorld and OSWorld, four on OSWorld 2 —
     while instructions, observations, tool results, and assistant turns
-    (tool calls and reasoning included) survive verbatim. Only
-    out-of-window image parts are removed; an observation left with no
-    visible parts is dropped.
+    (tool calls and reasoning included) survive verbatim. Each
+    out-of-window image part is replaced by
+    :data:`EVICTED_SCREENSHOT_TEXT`, so every observation turn, including
+    an image-only tool result, keeps its place in the history.
     """
 
     max_n_images: int = 3
@@ -61,20 +70,16 @@ class Holo4HistoryProtocol(BaseProtocol, key="holo4.history"):
         for turn_index, turn in enumerate(turns):
             for observation_index, observation in enumerate(turn["observations"]):
                 parts = observation.get("content")
-                if not isinstance(parts, list):
-                    compacted.append(observation)
-                    continue
-                visible_parts = [
-                    part
-                    for part_index, part in enumerate(parts)
-                    if not isinstance(part, dict)
-                    or part.get("type") != IMAGE_PART
-                    or (turn_index, observation_index, part_index) in kept_images
-                ]
-                if visible_parts:
-                    visible_observation = copy.deepcopy(observation)
-                    visible_observation["content"] = visible_parts
-                    compacted.append(visible_observation)
+                if isinstance(parts, list):
+                    observation["content"] = [
+                        part
+                        if not isinstance(part, dict)
+                        or part.get("type") != IMAGE_PART
+                        or (turn_index, observation_index, part_index) in kept_images
+                        else {"type": TEXT_PART, "text": EVICTED_SCREENSHOT_TEXT}
+                        for part_index, part in enumerate(parts)
+                    ]
+                compacted.append(observation)
             if turn["assistant"] is not None:
                 compacted.append(turn["assistant"])
         if system_message is not None:
@@ -82,4 +87,4 @@ class Holo4HistoryProtocol(BaseProtocol, key="holo4.history"):
         return compacted
 
 
-__all__ = ["Holo4HistoryProtocol"]
+__all__ = ["EVICTED_SCREENSHOT_TEXT", "Holo4HistoryProtocol"]
