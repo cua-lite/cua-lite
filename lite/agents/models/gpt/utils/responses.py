@@ -65,6 +65,14 @@ class ResponseAPIError(RuntimeError):
     """
 
 
+def _is_image_limit_error(error: Exception) -> bool:
+    """Whether the provider rejected the accumulated screenshot count."""
+    return (
+        getattr(error, "status_code", None) == 400
+        and "maximum number of images" in str(error).lower()
+    )
+
+
 def _raise_if_response_failed(response: _GPTResponseRecord) -> None:
     """Raise ``ResponseAPIError`` if the Responses API response is failed."""
     if response.status == "failed" or response.error:

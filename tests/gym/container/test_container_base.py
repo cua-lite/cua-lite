@@ -118,7 +118,8 @@ def test_all_five_production_containers_conform():
     for cls in (OSWorldContainer, OSWorldV2Container, AndroidWorldContainer,
                 AndroidLabContainer, MobileWorldContainer):
         assert issubclass(cls, LiteContainerBase)
-        c = cls(name=f"conform-{cls.__name__}", api_port=19999)
+        kwargs = {"task_id": "001"} if cls is OSWorldV2Container else {}
+        c = cls(name=f"conform-{cls.__name__}", api_port=19999, **kwargs)
         assert c.base_url.startswith("http://"), cls.__name__
         assert c._ports_owned == (), cls.__name__
         assert cls.destroy is LiteContainerBase.destroy, (

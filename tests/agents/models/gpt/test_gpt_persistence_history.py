@@ -7,12 +7,14 @@ Run:
 from __future__ import annotations
 
 import base64
+import copy
 import json
 from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 from agents.models.gpt._support import (
+    _colored_png_bytes,
     _ContentOnlyContinuationEnv,
     _DropsOneResultEnv,
     _fake_response,
@@ -37,6 +39,126 @@ from lite.core.tools import make_tool_call, make_tool_schema
 from lite.core.tools.calls import tool_call_arguments, tool_call_id, tool_call_name
 from lite.core.tools.extra_tools import LiteFinishToolSet
 from lite.core.tools.results import LiteToolResult
+
+
+class TestImageLimitRecovery:
+    @pytest.mark.parametrize("chained", [True, False])
+    @pytest.mark.parametrize("system_in_input", [True, False])
+    async def test_image_limit_restarts_context_without_restarting_task(
+        self, monkeypatch, chained, system_in_input
+    ):
+        import litellm
+
+        requests = []
+        screenshot = _fake_response(
+            [{"type": "computer_call", "call_id": "c1", "actions": [{"type": "screenshot"}]}]
+        )
+
+        async def respond(**kwargs):
+            requests.append(copy.deepcopy(kwargs))
+            if len(requests) == 1:
+                env._shot = _colored_png_bytes(color=(20, 180, 20))
+            if len(requests) in {2, 4}:
+                raise litellm.BadRequestError(
+                    message="Exceeded maximum number of images (50) allowed in the request.",
+                    model="gpt-6-astra",
+                    llm_provider="openai",
+                )
+            return screenshot if len(requests) < 5 else _fake_response()
+
+        monkeypatch.setattr("litellm.aresponses", respond)
+        monkeypatch.setattr(
+            "lite.agents.models.gpt.utils.image_io._fetch_processed_image_dims",
+            AsyncMock(return_value=[(800, 600)]),
+        )
+        sleep = AsyncMock()
+        monkeypatch.setattr("lite.agents.core.agent.utils.retry.asyncio.sleep", sleep)
+        env = _RecordingFakeEnv(terminate_after=3)
+        reset = AsyncMock(wraps=env.reset)
+        monkeypatch.setattr(env, "reset", reset)
+        agent = GPTDesktopUseAgent(
+            model_id="gpt-6-astra",
+            system_prompt="Keep task rules.",
+            metadata=LiteCUAMetadata(
+                extra_tool_schemas=[LiteFinishToolSet.get_tool_schema("terminate")]
+            ),
+            api_kwargs={
+                "chain_previous_response": chained,
+                "system_prompt_in_input": system_in_input,
+            },
+        )
+        result = await agent.sample(env, max_steps=3)
+
+        assert len(requests) == 5
+        assert reset.await_count == 1
+        assert len(env.actions_seen) == len(result.steps) == 3
+        assert result.terminated
+        sleep.assert_not_awaited()
+        assert [step.image_indices for step in result.steps] == [(0,), (1,), (2,)]
+        assert len(result.lite_sample.images) == 3
+        assert [m["role"] for m in result.lite_sample.messages] == [
+            "user",
+            "assistant",
+            "tool",
+            "assistant",
+            "tool",
+            "assistant",
+        ]
+        for failed, recovered in [(requests[1], requests[2]), (requests[3], requests[4])]:
+            assert recovered.get("previous_response_id") is None
+            assert recovered["tools"] == failed["tools"] == requests[0]["tools"]
+            assert recovered["tools"][0] == {"type": "computer"}
+            assert recovered["tools"][1]["name"] == "terminate"
+            assert recovered["reasoning"] == failed["reasoning"]
+            assert recovered["extra_body"] == failed["extra_body"]
+            assert [item.get("role") for item in recovered["input"]] == (
+                ["developer", "user"] if system_in_input else ["user"]
+            )
+            if system_in_input:
+                assert recovered["input"][0]["content"] == "Keep task rules."
+            else:
+                assert recovered["instructions"] == "Keep task rules."
+            content = recovered["input"][-1]["content"]
+            assert content[0] == {"type": "input_text", "text": "instr"}
+            assert content[1]["type"] == "input_image"
+            current_screenshot = next(
+                item["output"]["image_url"]
+                for item in reversed(failed["input"])
+                if item.get("type") == "computer_call_output"
+            )
+            assert content[1]["image_url"] == current_screenshot
+            assert content[1]["image_url"] != requests[0]["input"][-1]["content"][1]["image_url"]
+
+    @pytest.mark.parametrize("image_limit", [True, False])
+    async def test_persistent_error_is_not_hidden_by_context_reset(self, monkeypatch, image_limit):
+        import litellm
+
+        error = litellm.BadRequestError(
+            message=(
+                "Exceeded maximum number of images (50) allowed in the request."
+                if image_limit
+                else "Unsupported tool type: computer"
+            ),
+            model="gpt-6-astra",
+            llm_provider="openai",
+        )
+        screenshot = _fake_response(
+            [{"type": "computer_call", "call_id": "c1", "actions": [{"type": "screenshot"}]}]
+        )
+        mock = AsyncMock(side_effect=[screenshot, error, error])
+        monkeypatch.setattr("litellm.aresponses", mock)
+        monkeypatch.setattr(
+            "lite.agents.models.gpt.utils.image_io._fetch_processed_image_dims",
+            AsyncMock(return_value=[(800, 600)]),
+        )
+        env = _RecordingFakeEnv(terminate_after=3)
+        agent = GPTDesktopUseAgent(model_id="gpt-6-astra", api_retry_max=0)
+        with pytest.raises(litellm.BadRequestError) as caught:
+            await agent.sample(env, max_steps=3)
+        assert caught.value is error
+        assert mock.await_count == (3 if image_limit else 2)
+        assert len(env.actions_seen) == 1
+        assert env.closed
 
 
 class TestCanonicalPersistence:

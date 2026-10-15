@@ -47,6 +47,7 @@ from lite.core.tools.action_space import (
 from lite.core.tools.action_space.batches import LITE_MOBILE_ACTION_BATCH_TOOL_NAME
 from lite.core.tools.action_space.duration import duration_description
 from lite.core.tools.action_space.geometry import strict_norm_to_pixel
+from lite.core.tools.action_space.keys import normalize_keys
 from lite.core.tools.calls import (
     make_tool_call,
     tool_call_arguments,
@@ -360,6 +361,8 @@ class GPTDesktopActionSpace(BaseActionSpace, key=r"gpt@(desktop|browser)"):
 
         elif action_type == "keypress":
             keys = action.get("keys", [])
+            if isinstance(keys, list):
+                keys = [key for token in keys for key in normalize_keys(token)]
             return [LiteDesktopActionSpace.key(keys=keys)]
 
         elif action_type == "scroll":

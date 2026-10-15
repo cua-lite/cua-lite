@@ -163,9 +163,16 @@ def test_gpt_mobile_filter_keeps_extras_even_with_empty_valid_actions() -> None:
         ("ctrl+plus", ["ctrl", "+"]),
         ("ctrl+-", ["ctrl", "-"]),
         ("ctrl+=", ["ctrl", "="]),
+        (["CTRL+P"], ["ctrl", "p"]),
+        (["CTRL", "P"], ["ctrl", "p"]),
+        (["CTRL+SHIFT", "P"], ["ctrl", "shift", "p"]),
+        (["ctrl+;"], ["ctrl", ";"]),
+        (["ctrl+semicolon"], ["ctrl", ";"]),
+        (["ctrl++"], ["ctrl", "+"]),
+        (["ctrl", "+"], ["ctrl", "+"]),
     ],
 )
-def test_gpt_desktop_keypress_string_uses_core_key_grammar(raw_keys, expected):
+def test_gpt_desktop_keypress_uses_core_key_grammar(raw_keys, expected):
     space = GPTDesktopActionSpace()
 
     out = space.convert_tool_calls_from_agent([{"type": "keypress", "keys": raw_keys}])
@@ -173,14 +180,15 @@ def test_gpt_desktop_keypress_string_uses_core_key_grammar(raw_keys, expected):
     assert _single_desktop_action(out) == {"action": "key", "keys": expected}
 
 
-def test_gpt_desktop_keypress_rejects_space_before_plus_separator():
+@pytest.mark.parametrize("raw_keys", ["ctrl +", ["ctrl +"], ["ctrl+"]])
+def test_gpt_desktop_keypress_rejects_incomplete_chord(raw_keys):
     space = GPTDesktopActionSpace()
 
     with pytest.raises(ValueError, match="invalid trailing '\\+' chord syntax"):
-        space.convert_tool_calls_from_agent([{"type": "keypress", "keys": "ctrl +"}])
+        space.convert_tool_calls_from_agent([{"type": "keypress", "keys": raw_keys}])
 
 
-@pytest.mark.parametrize("raw_keys", ["ctrl left", "ctrl -"])
+@pytest.mark.parametrize("raw_keys", ["ctrl left", "ctrl -", ["ctrl+；"]])
 def test_gpt_desktop_keypress_rejects_phrase_like_key_strings(raw_keys):
     space = GPTDesktopActionSpace()
 

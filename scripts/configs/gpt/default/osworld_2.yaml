@@ -7,7 +7,7 @@
 agent_id: "gpt"
 agent_kwargs:
   api_kwargs:
-    reasoning_effort: "xhigh"
+    reasoning_effort: "medium"
     max_output_tokens: 8192
 
 env_id: "osworld_2"

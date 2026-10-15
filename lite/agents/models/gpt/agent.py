@@ -20,7 +20,9 @@ import asyncio
 import json
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, ClassVar
 
 from lite.agents.core.agent import (
@@ -77,6 +79,7 @@ from lite.agents.models.gpt.utils.parse import (
 from lite.agents.models.gpt.utils.responses import (
     _TRUNCATION_INCOMPLETE_REASONS,
     _CacheStats,
+    _is_image_limit_error,
     _log_trajectory_usage_summary,
     _log_usage_and_check_cache,
     _normalized_gpt_response,
@@ -372,7 +375,9 @@ class _GPTBaseAgent(BaseAgent):
             logger=logger,
         )
 
-    async def _aresponses_with_retry(self, **api_kwargs: Any) -> Any:
+    async def _aresponses_with_retry(
+        self, *, retry_if: Callable[[Exception], bool] | None = None, **api_kwargs: Any
+    ) -> Any:
         """Capped exp-backoff retry around ``litellm.aresponses`` (the shared
         ``acompletion_with_retry`` owns the backoff formula). Retry budget +
         log label come from this instance's fields / ``_RETRY_LOG_NAME``."""
@@ -384,6 +389,7 @@ class _GPTBaseAgent(BaseAgent):
             max_retries=int(self.api_retry_max),
             base_delay=float(self.api_retry_base_delay),
             max_delay=float(self.api_retry_max_delay),
+            retry_if=retry_if,
             **extra,
             **api_kwargs,
         )
@@ -605,71 +611,94 @@ class GPTDesktopUseAgent(_GPTBaseAgent, key=r"gpt@(desktop|browser)@use"):
                 tools = self._build_tools()
                 active_provider_tool_names = self._active_provider_tool_names(tools)
 
-                # First turn: seed provider and Lite histories with task input.
-                if step == 0:
-                    if instructions and "{w}" in instructions:
-                        instructions = instructions.replace("{w}", str(sent_w)).replace(
-                            "{h}", str(sent_h)
+                restart_context = step == 0
+                while True:
+                    # Start a fresh provider context after an image-limit rejection.
+                    if restart_context:
+                        input_items = []
+                        previous_response_id = None
+                        provider_visible_image_indices = []
+                        if instructions and "{w}" in instructions:
+                            instructions = instructions.replace("{w}", str(sent_w)).replace(
+                                "{h}", str(sent_h)
+                            )
+                        if system_in_input and instructions:
+                            input_items.append({"role": "developer", "content": instructions})
+                        user_content: list[dict[str, Any]] = [
+                            {"type": "input_text", "text": instruction},
+                        ]
+                        traj_content: list[dict[str, Any]] = [
+                            {"type": "text", "text": instruction},
+                        ]
+                        if sent_image_b64 is not None:
+                            user_content.append(
+                                mark_provider_visible_image_index(
+                                    {
+                                        "type": "input_image",
+                                        "image_url": f"data:image/png;base64,{sent_image_b64}",
+                                        "detail": self._detail(),
+                                    },
+                                    sent_image_index,
+                                )
+                            )
+                            if sent_image_index is not None:
+                                traj_content.insert(0, {"type": "image", "index": sent_image_index})
+                                provider_visible_image_indices.append(sent_image_index)
+                        input_items.append({"role": "user", "content": user_content})
+                        if step == 0:
+                            trajectory.messages.append({"role": "user", "content": traj_content})
+
+                    # 2. Request: compact client-managed history, then call the model.
+                    request_input = _compress_computer_use_history(
+                        input_items, self.full_history_size
+                    )
+                    use_chaining = self.api_kwargs.get("chain_previous_response", True)
+                    request_provider_visible_image_indices = (
+                        _provider_visible_image_indices_from_gpt_input_items(request_input)
+                    )
+                    api_input = _strip_gpt_image_markers(request_input)
+                    if system_in_input:
+                        turn_instructions = None
+                    else:
+                        turn_instructions = (
+                            instructions
+                            if (step == 0 or not (use_chaining and previous_response_id))
+                            else None
                         )
-                    if system_in_input and instructions:
-                        input_items.append({"role": "developer", "content": instructions})
-                    user_content: list[dict[str, Any]] = [
-                        {"type": "input_text", "text": instruction},
-                    ]
-                    traj_content: list[dict[str, Any]] = [
-                        {"type": "text", "text": instruction},
-                    ]
-                    if sent_image_b64 is not None:
-                        user_content.append(
-                            mark_provider_visible_image_index(
-                                {
-                                    "type": "input_image",
-                                    "image_url": f"data:image/png;base64,{sent_image_b64}",
-                                    "detail": self._detail(),
-                                },
-                                sent_image_index,
+                    api_kwargs = self._build_request_kwargs(
+                        input_items=api_input,
+                        tools=tools,
+                        previous_response_id=previous_response_id if use_chaining else None,
+                        instructions=turn_instructions,
+                        prompt_cache_key=prompt_cache_key,
+                    )
+
+                    try:
+                        (response, actual_w, actual_h), predict_s = await timed(
+                            _call_api_with_actual_dim(
+                                partial(
+                                    self._aresponses_with_retry,
+                                    retry_if=lambda error: not _is_image_limit_error(error),
+                                ),
+                                api_kwargs,
+                                sent_w=sent_w,
+                                sent_h=sent_h,
+                                model_id=self.model_id,
+                                api_base=self.api_base,
+                                api_key=self.api_key,
                             )
                         )
-                        if sent_image_index is not None:
-                            traj_content.insert(0, {"type": "image", "index": sent_image_index})
-                            provider_visible_image_indices.append(sent_image_index)
-                    input_items.append({"role": "user", "content": user_content})
-                    trajectory.messages.append({"role": "user", "content": traj_content})
-
-                # 2. Request: compact client-managed history, then call the model.
-                request_input = _compress_computer_use_history(input_items, self.full_history_size)
-                use_chaining = self.api_kwargs.get("chain_previous_response", True)
-                request_provider_visible_image_indices = (
-                    _provider_visible_image_indices_from_gpt_input_items(request_input)
-                )
-                api_input = _strip_gpt_image_markers(request_input)
-                if system_in_input:
-                    turn_instructions = None
-                else:
-                    turn_instructions = (
-                        instructions
-                        if (step == 0 or not (use_chaining and previous_response_id))
-                        else None
-                    )
-                api_kwargs = self._build_request_kwargs(
-                    input_items=api_input,
-                    tools=tools,
-                    previous_response_id=previous_response_id if use_chaining else None,
-                    instructions=turn_instructions,
-                    prompt_cache_key=prompt_cache_key,
-                )
-
-                (response, actual_w, actual_h), predict_s = await timed(
-                    _call_api_with_actual_dim(
-                        self._aresponses_with_retry,
-                        api_kwargs,
-                        sent_w=sent_w,
-                        sent_h=sent_h,
-                        model_id=self.model_id,
-                        api_base=self.api_base,
-                        api_key=self.api_key,
-                    )
-                )
+                    except Exception as exc:
+                        if restart_context or not _is_image_limit_error(exc):
+                            raise
+                        logger.warning(
+                            "GPT image limit reached at step %d; clearing provider history "
+                            "and retrying with the task instruction and current screenshot",
+                            step,
+                        )
+                        restart_context = True
+                        continue
+                    break
                 if self._normalize_by_actual_dims:
                     norm_w, norm_h = actual_w, actual_h
                 else:
