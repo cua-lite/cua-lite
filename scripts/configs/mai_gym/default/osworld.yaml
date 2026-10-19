@@ -1,0 +1,33 @@
+# MAI-Gym-9B rollout eval on OSWorld (VM-backed, GUI-only)
+# OSWorld-Verified tasks on the official Ubuntu VM, evaluated by the upstream
+# checkers.
+#
+# Official alignment (MAI-Gym computer-use harness, MAIGymComputerUsePolicy):
+# upstream system prompt with the sudo password, native <think> kept in
+# history (token_native_history), K=10/O=2 screenshot window (paper A.4; eval
+# shares the training harness, Sec. 3.3), 100-step budget, greedy decoding.
+# Unparseable replies are retried up to three times before the episode ends,
+# as upstream does: each retry appends the failed reply and upstream's
+# correction message to the turn (its Bash option cut, as in the prompt).
+#
+# Deviation: OSWorld's official action space is GUI-only, so this env offers no
+# bash and the adapter cuts every Bash passage from the prompt. The paper's
+# OSWorld-Verified number (76.2) was measured WITH bash, so expect lower scores
+# here; compare against other cua-lite osworld rows instead.
+#
+# terminate(status="failure") reaches the env as terminate(failure) -> FAIL
+# (the infeasible verdict); a successful terminate with an answer is response.
+
+agent_id: "mai_gym"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 4096
+  # The OSWorld v1 image's sudo password (``lite/gym/envs/osworld/main.py``
+  # ``_CLIENT_PASSWORD``), stated in the system prompt as upstream does.
+  password: "password"
+
+env_id: "osworld"
+env_kwargs:
+  max_steps: 100  # MAI-Gym paper Table 3
+  extra_tools: ["response", "terminate"]

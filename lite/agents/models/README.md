@@ -176,6 +176,31 @@ their registry key is present.
   Surfaces: mobile `use` and desktop/browser/mobile `grounding.point`.
   Files: `agent.py`, `adapter.py`, `action_space.py`, `protocol.py`.
 
+- `mai_gym`
+  ID: `Tongyi-MAI/MAI-Gym-9B`.
+  Surfaces: mobile `use` and desktop `use`.
+  Files: `agent.py`, `adapter.py`, `action_space.py`, `protocol.py`.
+  A Qwen3.5-9B fine-tune with the stock Qwen3.5 template; the family mirrors
+  MAI-Gym's window-wise harness. The wire is native `<think>` plus one JSON
+  `<tool_call>` of `mobile_use` keyed by `action_type` in [0, 999] (no
+  `swipe`: `drag` scrolls; `double_click` is `tap(clicks=2)`; `menu` lowers
+  to Home; `terminate` with an `answer` is `response`). The system prompt is
+  the upstream template verbatim except that its app list is the env's
+  `open_app` enum. `mai_gym.history` keeps every text turn and collapses
+  screenshots before a K=10 / O=2 sawtooth window start to
+  `<image_collapsed>`; an `ask_user` reply is sent as text alone, without its
+  screenshot. The agent renders with `preserve_thinking=True`, so history
+  replays each reply with its reasoning (the paper's token-native history).
+  Desktop mirrors the computer-use harness: replies carry `<tool_call>` blocks
+  of literal `pyautogui.*` / `computer.wait|terminate` calls in [0, 1000] plus
+  raw `<bash>` scripts, several per step; `mai_gym.desktop_history` renders one
+  user message per step (instruction, `## Bash Output`, screenshot) over the
+  same K=10 / O=2 window. Unparseable replies are retried up to
+  `max_parse_retries` (default 3) times, then take the shared parse-failure
+  final: mobile resends the identical prompt, desktop appends the failed reply
+  and upstream's correction message, as the two upstream harnesses do. Bash
+  passages drop from the prompt when the env offers no `bash` tool.
+
 - `step_gui`
   ID: `stepfun-ai/GELab-Zero-4B-preview`.
   Surface: mobile `use`.

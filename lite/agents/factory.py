@@ -109,6 +109,16 @@ LOCAL_AGENTS: dict[str, dict] = {
     # ``<action>`` with no reasoning at all. See
     # ``UIVenus2BaseAdapter.enable_thinking``.
     "inclusionAI/UI-Venus-2-9B": {"agent_id": "ui_venus_2"},
+    # MAI-Gym-9B — Tongyi-MAI's GUI agent trained with the MAI-Gym RL platform,
+    # fine-tuned from Qwen3.5-9B (stock Qwen3.5 chat template). Not paired with
+    # ``_NO_THINK``: the model reasons in native ``<think>`` every step and the
+    # agent replays that reasoning in history (``preserve_thinking``). The family
+    # delta is the upstream window-wise harnesses (K=10/O=2 screenshot window
+    # with ``<image_collapsed>`` placeholders): mobile emits one JSON
+    # ``mobile_use`` tool_call keyed by ``action_type`` in [0, 999]; desktop
+    # emits pyautogui / ``computer.*`` / ``<bash>`` blocks in [0, 1000]. See
+    # ``lite/agents/models/mai_gym/adapter.py``.
+    "Tongyi-MAI/MAI-Gym-9B": {"agent_id": "mai_gym"},
 }
 
 # =============================================================================

@@ -1,0 +1,23 @@
+# MAI-Gym-9B rollout eval on AndroidWorld
+# Multi-step mobile tasks across 20 apps, evaluated by real device state
+# (paper reports 75.9).
+#
+# Same official-alignment surface as the mobileworld sibling (see
+# scripts/configs/mai_gym/default/mobileworld.yaml). Upstream publishes no
+# AndroidWorld app list, so the prompt's "Available Apps" is this env's
+# open_app enum.
+#
+# Related configs (sync env_kwargs when changing):
+#   - scripts/configs/mai_gym/default/mobileworld.yaml  (mobile sibling)
+
+agent_id: "mai_gym"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 4096
+
+# max_steps omitted: androidworld uses its native complexity-based budget,
+# int(10 * task.complexity) — the paper's "task-dependent" limit.
+env_id: "androidworld"
+env_kwargs:
+  extra_tools: ["open_app", "response", "terminate"]

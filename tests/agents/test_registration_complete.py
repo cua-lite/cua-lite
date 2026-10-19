@@ -259,7 +259,7 @@ def test_bootstrap_lists_are_disjoint_and_duplicate_free() -> None:
 # =============================================================================
 # Protocol registry golden
 # =============================================================================
-# golden: slugs are import-path-independent — exactly the 13 protocol keys.
+# golden: slugs are import-path-independent — exactly the 15 protocol keys.
 # Includes the env-bridge protocol browsergym.generic +
 # the browsergym goal_image history protocols and the webharbor.webvoyager SoM
 # history protocols (one per agent family).
@@ -269,6 +269,8 @@ PROTOCOL_GOLDEN = {
     "browsergym.goal_image.qwen3_vl.history",
     "fara.history",
     "lite.history",
+    "mai_gym.desktop_history",
+    "mai_gym.history",
     "mai_ui.history",
     "qwen3_5.history",
     "qwen3_vl.history",
@@ -309,6 +311,8 @@ ACTION_SPACE_LIST = [
     "lite@desktop",
     "lite@mobile",
     "lite@point",
+    "mai_gym@desktop",
+    "mai_gym@mobile",
     "mai_ui@mobile",
     "qwen2_5_vl@mobile",
     "qwen2_5_vl@mobile@point",
@@ -357,6 +361,8 @@ ADAPTER_LIST = [
     "as_is",
     "lite@mobile@grounding.action",
     "lite@mobile@use",
+    "mai_gym@desktop@use",
+    "mai_gym@mobile@use",
     "mai_ui@mobile@use",
     "qwen2_5_vl@mobile@grounding.action",
     "qwen2_5_vl@mobile@grounding.point",
@@ -441,6 +447,8 @@ AGENT_LIST = [
     # AGENT_PATTERNS), but mobile's prompt seam differs, so it is its own leaf.
     "gpt.teacher@mobile@use",
     "gpt@mobile@use",
+    "mai_gym@desktop@use",
+    "mai_gym@mobile@use",
     "mai_ui@mobile@use",
     "qwen2_5_vl@mobile@grounding.action",
     "qwen2_5_vl@mobile@grounding.point",
@@ -632,6 +640,7 @@ _PACKAGE_ROOT_INIT_FILES = [
     "lite/agents/models/gemini/__init__.py",
     "lite/agents/models/gpt/__init__.py",
     "lite/agents/models/lite/__init__.py",
+    "lite/agents/models/mai_gym/__init__.py",
     "lite/agents/models/mai_ui/__init__.py",
     "lite/agents/models/qwen2_5_vl/__init__.py",
     "lite/agents/models/qwen3_5/__init__.py",

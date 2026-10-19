@@ -1,0 +1,22 @@
+# MAI-Gym-9B rollout eval on MobileGym
+# 416 parameterized tasks across 24 launchable apps, deterministic state-diff
+# judges. The paper reports 46.5 on a 256-task MobileGym split.
+#
+# Same official-alignment surface as the mobileworld sibling (see
+# scripts/configs/mai_gym/default/mobileworld.yaml). The prompt's "Available
+# Apps" is this env's open_app enum (env ingress validates against it), not
+# upstream's snake_case appId list. MAI-Gym's `drag` maps to the canonical
+# `drag`, which this env executes as its DRAG action (not SWIPE).
+#
+# Related configs: scripts/configs/mai_gym/default/mobileworld.yaml
+
+agent_id: "mai_gym"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 4096
+
+env_id: "mobilegym"
+env_kwargs:
+  max_steps: 100  # MAI-Gym paper Table 3 (the env default is the per-task budget)
+  extra_tools: ["open_app", "response", "terminate"]

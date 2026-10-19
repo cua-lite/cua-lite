@@ -1,0 +1,28 @@
+# MAI-Gym-9B rollout eval on MobileWorld
+# 161 registered tasks; the eval runner filters 44 ask_user tasks, leaving
+# 117 GUI-only tasks evaluated by real device / backend state (the paper's
+# "MobileWorld GUI-only" split, reported 78.4).
+#
+# Official alignment (MAI-Gym window-wise harness, the one MAI-Gym-9B was
+# trained and evaluated with): verbatim system prompt (apps = this env's
+# open_app enum), native <think> kept in history, K=10/O=2 screenshot window,
+# greedy decoding. ask_user is native in the MAI-Gym action space, so it stays
+# advertised; it needs the simulated-user credentials described in
+# lite/gym/envs/mobileworld/configs/default.yaml.
+#
+# Related configs (sync env_kwargs when changing):
+#   - scripts/configs/mai_gym/default/androidworld.yaml  (mobile sibling)
+#
+# Interaction tasks carry exclude_reason="ask_user". Direct rollout calls
+# should pass --filter "lambda m: not m.others.get('exclude_reason')".
+
+agent_id: "mai_gym"
+agent_kwargs:
+  sampling_kwargs:  # only honored by rollout.py; RL sets sampling via the trainer (--rollout-temperature/--eval-temperature)
+    temperature: 0.0
+    max_new_tokens: 4096
+
+env_id: "mobileworld"
+env_kwargs:
+  max_steps: 100  # MAI-Gym paper Table 3 (the env default is 50)
+  extra_tools: ["open_app", "ask_user", "response", "terminate"]
