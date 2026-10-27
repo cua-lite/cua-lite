@@ -2,7 +2,7 @@
 
 Eval-in-container design: the host is a thin JSON-RPC client (no desktop_env). Unit tests
 mock the in-container server RPC (`_rpc`) — no Docker / V2 dist / gated downloads needed.
-Live Docker/VM lifecycle tests are `pytest.mark.live` (need install.sh's build + gated assets).
+Live Docker/VM lifecycle tests are `pytest.mark.live` (need install.sh's image build + provision_assets.sh's snapshot).
 
 Run:
     uv run python -m pytest tests/gym/envs/osworld_2/test_osworld_2.py -v
@@ -113,8 +113,10 @@ def test_release_manifest_matches_runtime_constants():
     assert release["qcow2"]["repo"] == "xlangai/v2-image"
     assert str(release["hf_revision"]) == m._HF_REVISION
     assert str(release["tasks"]["repo"]) == m._TASKS_REPO
+    assert str(release["assets"]["repo"]) == m._ASSETS_REPO
     assert len(m._TASK_IDS) == 108
     assert m._TASK_CLASS_IDENTITY == (f"{m._TASKS_REPO}@{m._HF_REVISION}:{len(m._TASK_IDS)}")
+    assert m._ASSETS_IDENTITY == f"{m._ASSETS_REPO}@{m._HF_REVISION}"
 
 
 def test_qcow2_gate_checks_size(tmp_path, monkeypatch):
@@ -124,6 +126,22 @@ def test_qcow2_gate_checks_size(tmp_path, monkeypatch):
     monkeypatch.setattr(m, "_QCOW2_SIZE", 10)
     with pytest.raises(Exception, match="expected 10"):
         m._check_qcow2()
+
+
+def test_assets_gate_requires_revision_stamp(tmp_path, monkeypatch):
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "task_001").mkdir()
+    monkeypatch.setattr(m, "_ASSETS_DIR", str(assets))
+    with pytest.raises(Exception, match="gated asset snapshot"):
+        m._check_assets()
+
+    (assets / ".assets_revision").write_text(m._ASSETS_IDENTITY + "\n")
+    m._check_assets()
+
+    (assets / ".assets_revision").write_text("stale@revision\n")
+    with pytest.raises(Exception, match="gated asset snapshot"):
+        m._check_assets()
 
 
 @pytest.mark.asyncio
@@ -136,15 +154,17 @@ async def test_direct_reset_runs_full_dependency_gate(monkeypatch):
     monkeypatch.setattr(m, "_check_image", lambda: checks.append("image"))
     monkeypatch.setattr(m, "_check_qcow2", lambda: checks.append("qcow2"))
 
-    def fail_task_classes():
-        checks.append("task_classes")
-        raise RuntimeError("task class gate")
+    monkeypatch.setattr(m, "_check_task_classes", lambda: checks.append("task_classes"))
 
-    monkeypatch.setattr(m, "_check_task_classes", fail_task_classes)
+    def fail_assets():
+        checks.append("assets")
+        raise RuntimeError("assets gate")
 
-    with pytest.raises(RuntimeError, match="task class gate"):
+    monkeypatch.setattr(m, "_check_assets", fail_assets)
+
+    with pytest.raises(RuntimeError, match="assets gate"):
         await env.reset()
-    assert checks == ["kvm", "tun", "image", "qcow2", "task_classes"]
+    assert checks == ["kvm", "tun", "image", "qcow2", "task_classes", "assets"]
 
 
 @pytest.mark.asyncio
@@ -795,7 +815,8 @@ def test_container_name_disjoint_from_v1_and_lite():
     from lite.gym.envs.osworld_2.container import OSWorldV2ContainerFactory
 
     f = OSWorldV2ContainerFactory(
-        qcow2_path="/x.qcow2", task_class_dir="/tc", session_id="s", task_id="001"
+        qcow2_path="/x.qcow2", task_class_dir="/tc", assets_path="/assets",
+        session_id="s", task_id="001",
     )
     name = f._make_name("abc123")
     assert "-osworld_2-" in name

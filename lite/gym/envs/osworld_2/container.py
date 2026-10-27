@@ -78,6 +78,7 @@ class OSWorldV2Container(LiteContainerBase):
     image: str = _IMAGE_DEFAULT
     qcow2_path: str = ""
     task_class_dir: str = ""      # host dir with task_<id>.py → mounted :ro at /task_class
+    assets_path: str = ""         # host dir with the gated asset snapshot → mounted :ro at /assets
     ram_size: str = "4G"
     cpu_cores: str = "4"
     disk_size: str = "32G"
@@ -126,6 +127,9 @@ class OSWorldV2Container(LiteContainerBase):
                 "SCREEN_H": str(self.screen_height),
                 "CLIENT_PASSWORD": self.client_password,
                 "TASK_CLASS_DIR": "/task_class",
+                # asset() lookups read the mounted snapshot, not the image default (the
+                # public xlangai/osworld_v2_assets repo — a minimal subset missing this release).
+                "OSWORLD_FILE_BASE_URL": "/assets",
                 "SERVER_PORT": str(_CPORT_API),
                 # Avoid qemu-docker falling back to usermode networking (guest
                 # unreachable at 20.20.20.21, no port forwarding) when host inotify
@@ -139,6 +143,7 @@ class OSWorldV2Container(LiteContainerBase):
             volumes=(
                 f"{self.qcow2_path}:/System.qcow2:ro",
                 f"{self.task_class_dir}:/task_class:ro",
+                f"{self.assets_path}:/assets:ro",
                 # bind-mount the checked-in server.py over the baked copy
                 # (hot edits, no rebuild)
                 f"{_server_py_path()}:/usr/local/bin/server.py:ro",
@@ -217,6 +222,7 @@ class OSWorldV2ContainerFactory:
 
     qcow2_path: str
     task_class_dir: str
+    assets_path: str
     image: str = _IMAGE_DEFAULT
     ram_size: str = "4G"
     cpu_cores: str = "4"
@@ -255,6 +261,7 @@ class OSWorldV2ContainerFactory:
         return OSWorldV2Container(
             name=name, api_port=api_port, image=self.image,
             qcow2_path=self.qcow2_path, task_class_dir=self.task_class_dir,
+            assets_path=self.assets_path,
             ram_size=self.ram_size, cpu_cores=self.cpu_cores, disk_size=self.disk_size,
             boot_timeout=self.boot_timeout, screen_width=self.screen_width,
             screen_height=self.screen_height, client_password=self.client_password,

@@ -14,9 +14,12 @@ host-side (a pure function, no `desktop_env`).
 
 Prerequisites (see README):
   - the derived image `cua-lite/osworld_2` built (install.sh; needs the local V2 checkout)
-  - hf auth login + accepted gates on xlangai/v2-image and xlangai/osworld_v2_tasks
+  - hf auth login + accepted gates on xlangai/v2-image, xlangai/osworld_v2_tasks,
+    and xlangai/osworld_v2_assets_gated
   - uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh
-  - KVM (/dev/kvm), /dev/net/tun, the built image, the v2 qcow2, task classes (ensure-checked).
+  - uv run --no-sync bash lite/gym/envs/osworld_2/scripts/provision_assets.sh
+  - KVM (/dev/kvm), /dev/net/tun, the built image, the v2 qcow2, task classes,
+    the asset snapshot (ensure-checked).
 
 Task ENUMERATION works with none of the above — it reads the vendored data/ (no container,
 no `desktop_env`); the image + gated assets are needed only to reset().
@@ -150,15 +153,20 @@ _QCOW2 = _QCOW2_CFG if os.path.isabs(_QCOW2_CFG) else str((Path(ENV_DIR) / _QCOW
 _QCOW2_SIZE = int(_RELEASE["qcow2"]["size"])
 _CACHE_DIR = str(Path(ENV_DIR) / ".cache")
 _TASK_CLASS_DIR = str(Path(_CACHE_DIR) / "task_class")   # gated task_<id>.py, mounted into the container
+_ASSETS_DIR = str(Path(_CACHE_DIR) / "assets")           # gated asset snapshot, mounted :ro at /assets
 _DATA_DIR = Path(ENV_DIR) / "data"                       # vendored id/capability manifests
 _TASKS_REPO = str(_RELEASE["tasks"]["repo"])
 _HF_REVISION = str(_RELEASE["hf_revision"])
 _TASK_IDS = tuple(json.loads((_DATA_DIR / "test_v2.json").read_text(encoding="utf-8"))["tasks"])
 _TASK_COUNT = len(_TASK_IDS)
 _TASK_CLASS_IDENTITY = f"{_TASKS_REPO}@{_HF_REVISION}:{_TASK_COUNT}"
+_ASSETS_REPO = str(_RELEASE["assets"]["repo"])
+_ASSETS_IDENTITY = f"{_ASSETS_REPO}@{_HF_REVISION}"
 
 _README = "lite/gym/envs/osworld_2/README.md"
 _INSTALL = "uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh"
+# Host-only download — outside install.sh, an image-freshness hash input (image_spec.py).
+_PROVISION_ASSETS = "uv run --no-sync bash lite/gym/envs/osworld_2/scripts/provision_assets.sh"
 
 # RPC timeouts (blocking HTTP to the in-container eval server).
 _RESET_RPC_TIMEOUT = 300.0   # /reset runs the task's setup (downloads, launch commands)
@@ -181,8 +189,8 @@ def _rpc(base_url: str, path: str, body: dict | None = None, timeout: float = _S
 # ---------------------------------------------------------------------------
 # Prerequisite checks (ensure — terminal, 501). No desktop_env check (it's in the image).
 # ---------------------------------------------------------------------------
-def _dep_error(what: str) -> EnvDepsMissingError:
-    return EnvDepsMissingError(what=what, install=_INSTALL, see=_README)
+def _dep_error(what: str, *, install: str = _INSTALL) -> EnvDepsMissingError:
+    return EnvDepsMissingError(what=what, install=install, see=_README)
 
 
 def _check_kvm() -> None:
@@ -243,6 +251,29 @@ def _check_task_classes() -> None:
         )
 
 
+def _check_assets() -> None:
+    """The gated asset snapshot must be present and match the pinned release.
+
+    Without it, asset() lookups fall back to the public minimal repo, 404, and the
+    nested retries blow the 300 s reset RPC timeout."""
+    p = Path(_ASSETS_DIR)
+    stamp = p / ".assets_revision"
+    try:
+        revision = stamp.read_text().strip() if stamp.is_file() else ""
+    except OSError as exc:
+        raise _dep_error(
+            "gated asset snapshot revision stamp is unreadable; re-run "
+            "provision_assets.sh",
+            install=_PROVISION_ASSETS,
+        ) from exc
+    if revision != _ASSETS_IDENTITY:
+        raise _dep_error(
+            f"gated asset snapshot is not ready (revision {revision or 'MISSING'}, "
+            f"expected {_ASSETS_IDENTITY}); download via provision_assets.sh — HF-gated",
+            install=_PROVISION_ASSETS,
+        )
+
+
 def _check_website() -> None:
     """EAGER readiness probe for the stateful-website SINGLETON (mimics browsergym's ensure_services
     gate). When `website_host_suffix` is configured, probe one app's /api/state at ensure so a down /
@@ -273,6 +304,7 @@ def _check_runtime_deps() -> None:
     _check_image()
     _check_qcow2()
     _check_task_classes()
+    _check_assets()
 
 
 def _ensure_services(env_id: str) -> None:
@@ -384,7 +416,8 @@ class OSWorldV2Env(LiteBaseEnv, EnvServerResource):
 
         identity = getattr(self, "identity", None) or EnvIdentity()
         factory = OSWorldV2ContainerFactory(
-            qcow2_path=_QCOW2, task_class_dir=_TASK_CLASS_DIR, image=_IMAGE,
+            qcow2_path=_QCOW2, task_class_dir=_TASK_CLASS_DIR, assets_path=_ASSETS_DIR,
+            image=_IMAGE,
             ram_size=_RAM, cpu_cores=_CPU, disk_size=_DISK, boot_timeout=_BOOT_TO,
             screen_width=_SCREEN_W, screen_height=_SCREEN_H, client_password=_CLIENT_PASSWORD,
             service_env=_SERVICE_ENV,

@@ -6,13 +6,13 @@ CUA-Lite wrapper for the official [OSWorld 2.0](https://github.com/xlang-ai/OSWo
 
 OSWorld-V2 uses the same VM-in-Docker runtime shape as [`osworld`](/lite/gym/envs/osworld/README.md) v1. Its tasks come from gated Hugging Face task classes and may return structured evaluator scores. See [docs/envs.md](/docs/envs.md) for the env contract.
 
-> **Eval-in-container.** The OSWorld-V2 runtime is baked into the derived Docker image, so the host only needs the CUA-Lite package plus Docker/KVM. `install.sh` builds the image and provisions the required V2 assets.
+> **Eval-in-container.** The OSWorld-V2 runtime is baked into the derived Docker image, so the host only needs the CUA-Lite package plus Docker/KVM. `install.sh` builds the image and provisions the gated qcow2 + task classes; the asset snapshot has its own [`scripts/provision_assets.sh`](/lite/gym/envs/osworld_2/scripts/provision_assets.sh).
 
 ## Setup
 
 > **KVM required** — `/dev/kvm` must be rw-accessible (usually via the `kvm` group); `/dev/net/tun` too.
 >
-> **Hugging Face auth required** — accept the gates on [`xlangai/v2-image`](https://huggingface.co/datasets/xlangai/v2-image) and [`xlangai/osworld_v2_tasks`](https://huggingface.co/datasets/xlangai/osworld_v2_tasks), then `hf auth login`. The qcow2 + task-class downloads 401 otherwise.
+> **Hugging Face auth required** — accept the gates on [`xlangai/v2-image`](https://huggingface.co/datasets/xlangai/v2-image), [`xlangai/osworld_v2_tasks`](https://huggingface.co/datasets/xlangai/osworld_v2_tasks), and [`xlangai/osworld_v2_assets_gated`](https://huggingface.co/datasets/xlangai/osworld_v2_assets_gated), then `hf auth login`. The qcow2 + task-class + asset downloads 401 otherwise.
 >
 > **Local OSWorld-V2 source required for image build/pull freshness** — set `OSWORLD_V2_SRC` to a checked-out official V2 source tree, or place it at `lite/gym/envs/osworld_2/_vendor/OSWorld-V2`. The image freshness label includes that source tree's content digest; without the same source identity, `install.sh pull` intentionally rejects published images instead of trusting an unverified binary.
 
@@ -22,12 +22,17 @@ OSWorld-V2 uses the same VM-in-Docker runtime shape as [`osworld`](/lite/gym/env
 # verify/extract the ~25.5 GiB qcow2, then stage task classes and a static service scan.
 uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh
 
-# Or, published-image path: adopt a matching GHCR image, then provision gated V2 assets.
+# Or, published-image path: adopt a matching GHCR image, then provision the gated
+# docker-free prerequisites.
 # uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh pull
+
+# The gated asset snapshot (~3.4 GiB) is a separate script — install.sh is an
+# image-freshness hash input, and this host-only download must not re-stale images.
+uv run --no-sync bash lite/gym/envs/osworld_2/scripts/provision_assets.sh
 
 # Optional lifecycle helpers:
 # uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh status    # image / qcow2 / task-class files / KVM+tun presence
-# uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh provision  # gated assets only, assumes image exists
+# uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh provision  # docker-free prerequisites (qcow2 + task classes + scan)
 # uv run --no-sync bash lite/gym/envs/osworld_2/scripts/install.sh rebuild   # force-rebuild the image after an image-time source edit
 ```
 
@@ -41,7 +46,7 @@ env = gym.make("osworld_2@001", max_steps=200)
 asyncio.run(env.reset())
 ```
 
-Task **enumeration** (`gym.registry.task_ids("osworld_2")`) works with **none** of the above — it reads the vendored `data/test_v2.json` + `data/capabilities/*.json`. The gated code is needed only to `reset()`.
+Task **enumeration** (`gym.registry.task_ids("osworld_2")`) works with **none** of the above — it reads the vendored `data/test_v2.json` + `data/capabilities/*.json`. The gated code + assets are needed only to `reset()`.
 
 ## Quick Start
 
@@ -110,14 +115,15 @@ lite/gym/envs/osworld_2/
 ├── configs/default.yaml
 ├── data/              # (committed) release.json + test_v2.json + capabilities/*.json — registration metadata
 ├── scripts/
-│   ├── install.sh     # build / rebuild / pull / status image + gated assets + service scan
-│   ├── uninstall.sh   # rm v2 qcow2 + task_class/ + derived image
+│   ├── install.sh     # build / rebuild / pull / status image + gated qcow2/task classes + service scan
+│   ├── provision_assets.sh  # gated asset snapshot → .cache/assets (outside install.sh: freshness hash input)
+│   ├── uninstall.sh   # rm v2 qcow2 + task_class/ + assets/ + derived image
 │   └── cleanup.sh     # docker rm -f by -osworld_2- name filter
 ├── README.md
-└── .cache/            # (gitignored) osworld-v2-ubuntu-x86.qcow2 + task_class/task_*.py + evaluator goldens
+└── .cache/            # (gitignored) osworld-v2-ubuntu-x86.qcow2 + task_class/task_*.py + assets/ (gated snapshot) + evaluator goldens
 ```
 
-Runtime and evaluator code live inside the Docker image. The host creates one VM-backed container per trajectory, sends actions to it, and receives screenshots/rewards back through the env API. `install.sh status` is the quickest way to check the image, KVM/TUN access, qcow2, task classes, and service scan.
+Runtime and evaluator code live inside the Docker image. The host creates one VM-backed container per trajectory, sends actions to it, and receives screenshots/rewards back through the env API. `install.sh status` is the quickest way to check the image, KVM/TUN access, qcow2, task classes, and service scan. Each container bind-mounts the asset snapshot at `/assets` with `OSWORLD_FILE_BASE_URL=/assets`, so `asset(...)` lookups (setup downloads, evaluator gold files) stay local.
 
 **References:** [OSWorld paper](https://arxiv.org/abs/2404.07972) · [xlang-ai/OSWorld](https://github.com/xlang-ai/OSWorld)
 

@@ -9,5 +9,8 @@
   },
   "tasks": {
     "repo": "xlangai/osworld_v2_tasks"
+  },
+  "assets": {
+    "repo": "xlangai/osworld_v2_assets_gated"
   }
 }
