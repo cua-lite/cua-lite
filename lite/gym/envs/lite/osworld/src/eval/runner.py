@@ -1041,8 +1041,9 @@ if [ "$sent_quit" -eq 1 ]; then
 fi
 # Guaranteed flush: SIGTERM soffice.bin runs its user-registry save handler
 # (NEVER -9, which skips it). No-op when no soffice is running during replay.
+# `-r RSDTt`: live processes only, so an unreaped (zombie) soffice.bin ends the wait.
 for _ in $(seq 1 30); do
-  pgrep -x soffice.bin >/dev/null 2>&1 || break
+  pgrep -r RSDTt -x soffice.bin >/dev/null 2>&1 || break
   pkill -TERM soffice.bin 2>/dev/null || true
   pkill -TERM oosplash 2>/dev/null || true
   sleep 1
@@ -1129,9 +1130,12 @@ for display in "${DISPLAY:-}" :1 :0; do
   done
 done
 # Guaranteed flush: SIGTERM chrome runs its on-shutdown pref-commit handler
-# (NEVER -9, which skips it). No-op when no chrome is running.
+# (NEVER -9, which skips it). No-op when no chrome is running. `-r RSDTt` counts
+# live processes only: chrome launched by the in-container server stays a zombie
+# after it exits (the server never reaps it), and a bare `pgrep -x` would keep
+# matching that zombie until the loop runs out.
 for _ in $(seq 1 30); do
-  pgrep -x chrome >/dev/null 2>&1 || pgrep -x chromium >/dev/null 2>&1 || break
+  pgrep -r RSDTt -x chrome >/dev/null 2>&1 || pgrep -r RSDTt -x chromium >/dev/null 2>&1 || break
   pkill -TERM chrome 2>/dev/null || true
   pkill -TERM chromium 2>/dev/null || true
   sleep 0.5

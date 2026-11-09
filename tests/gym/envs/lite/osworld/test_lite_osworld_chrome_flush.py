@@ -13,6 +13,10 @@ Run: uv run pytest tests/gym/envs/lite/osworld/test_lite_osworld_chrome_flush.py
 from __future__ import annotations
 
 import asyncio
+import shlex
+import subprocess
+
+import pytest
 
 from lite.gym.envs.lite.osworld.src.eval import runner
 
@@ -73,6 +77,51 @@ def test_chrome_flush_is_a_noop_when_no_chrome(monkeypatch):
 
     asyncio.run(runner._flush_chrome_profile(_Computer()))
     assert len(calls) == 1
+
+
+_ZOMBIE_ONLY_PGREP = """#!/bin/sh
+# The only matching process is a zombie: match unless a runstate filter (-r)
+# that leaves out Z is given.
+while [ $# -gt 0 ]; do
+  if [ "$1" = "-r" ]; then case "$2" in *Z*) exit 0 ;; *) exit 1 ;; esac; fi
+  shift
+done
+exit 0
+"""
+
+
+@pytest.mark.parametrize("flush", ["_flush_chrome_profile", "_flush_libreoffice_config"])
+def test_flush_wait_loop_ignores_zombie_process(tmp_path, flush):
+    # The in-container server never reaps the apps it launches, so after the app
+    # exits it stays a zombie under the same name. The wait loop must treat that as
+    # "exited" and stop at once instead of signalling a dead process 30 times.
+    captured = []
+
+    class _Iface:
+        async def run_command(self, command, **_kw):
+            captured.append(command)
+
+    class _Computer:
+        interface = _Iface()
+
+    asyncio.run(getattr(runner, flush)(_Computer()))
+    script = shlex.split(captured[0])[-1]  # "bash -lc '<script>'" -> <script>
+
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    pkill_log = tmp_path / "pkill.log"
+    for name, body in {
+        "pgrep": _ZOMBIE_ONLY_PGREP,
+        "pkill": f'#!/bin/sh\necho "$*" >> {pkill_log}\n',
+        "seq": "#!/bin/sh\ni=$1; while [ $i -le $2 ]; do echo $i; i=$((i+1)); done\n",
+        "sleep": "#!/bin/sh\n", "sync": "#!/bin/sh\n",
+        "xdotool": "#!/bin/sh\n", "python3": "#!/bin/sh\ncat >/dev/null\n",
+    }.items():
+        (stubs / name).write_text(body)
+        (stubs / name).chmod(0o755)
+    # Non-login bash with only the stubs on PATH: nothing here can signal a real process.
+    subprocess.run(["/bin/bash", "-c", script], env={"PATH": str(stubs)}, check=True, timeout=30)
+    assert not pkill_log.exists(), pkill_log.read_text()
 
 
 def test_osworld_flush_is_best_effort_and_never_fails_reward():
