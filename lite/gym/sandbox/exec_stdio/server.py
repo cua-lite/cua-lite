@@ -271,9 +271,28 @@ def composite_cursor(img: "Image.Image", sprite: "Image.Image",
     return img.convert("RGB")
 
 
+#: Upper bound on one XGetImage reply. python-xlib reassembles a reply by repeated
+#: bytes concatenation, which is quadratic in the reply size: one full 1920x1080
+#: frame (8.3 MB) takes ~1.5 s in the lite.osworld image, a 0.5 MB band ~3 ms.
+#: Requesting the frame in bands of at most this many bytes keeps capture linear.
+_XGETIMAGE_BAND_BYTES = 512 * 1024
+
+
+def get_image_banded(root, width: int, height: int, fmt: int) -> bytes:
+    """Read the ``width x height`` root image as horizontal bands of at most
+    ``_XGETIMAGE_BAND_BYTES`` (32 bpp ZPixmap rows) and return the concatenated
+    pixel data, byte-identical to one full-frame ``get_image``. Pure apart from
+    ``root.get_image``, so it is unit-testable with a fake root."""
+    rows = max(1, _XGETIMAGE_BAND_BYTES // (width * 4))
+    return b"".join(
+        root.get_image(0, y, width, min(rows, height - y), fmt, 0xFFFFFFFF).data
+        for y in range(0, height, rows)
+    )
+
+
 def _grab_xlib() -> bytes:
-    """Fast in-process capture: Xlib ``XGetImage`` (screen) + capture-time cursor
-    composite + PIL PNG. ~24ms vs ffmpeg x11grab's ~400ms, and pixel-identical.
+    """Fast in-process capture: banded Xlib ``XGetImage`` (screen) + capture-time
+    cursor composite + PIL PNG, pixel-identical to ffmpeg x11grab.
     Runs on the ENV python (/opt/env/venv), which carries Pillow + python-xlib;
     op_screenshot falls back to ffmpeg if this raises. The exec_stdio server is env
     infrastructure, so it runs on the env python (not the agent python) — these
@@ -288,8 +307,8 @@ def _grab_xlib() -> bytes:
         root = d.screen().root
         geo = root.get_geometry()
         W, H = geo.width, geo.height
-        raw = root.get_image(0, 0, W, H, X.ZPixmap, 0xffffffff)
-        img = Image.frombytes("RGB", (W, H), raw.data, "raw", "BGRX")
+        raw = get_image_banded(root, W, H, X.ZPixmap)
+        img = Image.frombytes("RGB", (W, H), raw, "raw", "BGRX")
 
         # Draw the cursor at capture. The lite.* desktop is headless, so the X
         # server exposes no cursor sprite (XFixes returns nothing) — read the
@@ -317,8 +336,9 @@ def op_screenshot(req: dict) -> bytes:
     # Raw PNG **bytes** (not base64 in a JSON line): the main loop frames a
     # ``bytes`` result as ``header\n`` + the raw body, so the host reads it with
     # ``readexactly`` and never json-walks/b64-decodes the multi-MB blob on its
-    # event loop. Fast in-process capture (Xlib + capture-cursor + PIL PNG, ~24ms);
-    # falls back to ffmpeg x11grab (~400ms), then ImageMagick import.
+    # event loop. In-process capture (banded Xlib + capture-cursor + PIL PNG, ~140 ms
+    # for 1920x1080 in the lite.osworld image, mostly the PNG encode); falls back to
+    # ffmpeg x11grab, then ImageMagick import.
     try:
         return _grab_xlib()
     except Exception as e:

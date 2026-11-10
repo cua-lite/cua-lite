@@ -633,6 +633,47 @@ def test_composite_cursor_is_straight_alpha_not_premultiplied():
 
 
 # =============================================================================
+# get_image_banded — the capture reads the root image in bands because
+# python-xlib reassembles one reply quadratically (~1.5 s for a 1080p frame).
+# The bands must reassemble to exactly the full-frame bytes.
+# =============================================================================
+
+
+class _FakeRoot:
+    """A root window whose ``get_image`` serves rows of one fixed 32 bpp frame."""
+
+    def __init__(self, width: int, height: int) -> None:
+        self.width = width
+        size = width * height * 4
+        self.frame = (bytes(range(251)) * (size // 251 + 1))[:size]
+        self.requests: list[tuple[int, int, int, int]] = []
+
+    def get_image(self, x, y, w, h, fmt, mask):
+        from types import SimpleNamespace
+
+        self.requests.append((x, y, w, h))
+        stride = self.width * 4
+        return SimpleNamespace(data=self.frame[y * stride:(y + h) * stride])
+
+
+@pytest.mark.parametrize(("width", "height"), [(1920, 1080), (1280, 720), (200_000, 3)])
+def test_get_image_banded_reassembles_full_frame_in_bounded_bands(width, height):
+    from lite.gym.sandbox.exec_stdio import server
+
+    root = _FakeRoot(width, height)
+    assert server.get_image_banded(root, width, height, 2) == root.frame
+    # Full-width bands, contiguous from row 0, each row read exactly once.
+    next_row = 0
+    for x, y, w, h in root.requests:
+        assert (x, y, w) == (0, next_row, width)
+        next_row += h
+    assert next_row == height
+    # Each reply stays within the band cap (a single row wider than it is one band).
+    cap = max(server._XGETIMAGE_BAND_BYTES, width * 4)
+    assert all(h * width * 4 <= cap for *_, h in root.requests)
+
+
+# =============================================================================
 # _norm_key — raw exec-stdio/container token → xdotool keysym. This is not the
 # Lite canonical env-input contract; Lite envs validate/project before RPC.
 # Cases are real raw tokens harvested from the 2026-04-26 multi-model eval run.
