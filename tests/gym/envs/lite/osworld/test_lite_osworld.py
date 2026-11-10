@@ -199,6 +199,59 @@ class TestDispatchHelpers:
         with pytest.raises(ValueError, match=match):
             await dispatch_action(computer, {"type": "key", "parameters": parameters})
 
+    @pytest.mark.parametrize(
+        ("command", "launches"),
+        [
+            # OSWorld multi_apps config / Lite oracle + synth setup spellings.
+            ("export DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus'\n"
+             "gnome-terminal --maximize --working-directory=/home/user/Desktop", True),
+            ("DISPLAY=:1 gnome-terminal & sleep 2; true", True),
+            ("export DISPLAY=:1 && gnome-terminal -- bash -c 'soffice --calc /tmp/a.csv' &", True),
+            ("cd '/home/user/p' && gnome-terminal --working-directory='/home/user/p' &", True),
+            ("bash -c 'nohup gnome-terminal &>/dev/null & disown'", True),
+            # Kill / mention only: OSWorld postconfig (argv joined) and oracle cleanup.
+            ("/bin/bash -c killall gnome-terminal-server", False),
+            ("bash -c 'killall gnome-terminal-server'", False),
+            ("pkill -f gnome-terminal 2>/dev/null; sleep 1; true", False),
+            ("echo 'unbalanced gnome-terminal", False),
+        ],
+    )
+    def test_execute_launches_gnome_terminal_only_when_it_runs_it(
+        self, command: str, launches: bool
+    ):
+        from lite.gym.envs.lite.osworld.src.utils.dispatch import _execute_launches_gnome_terminal
+
+        assert _execute_launches_gnome_terminal(command) is launches
+
+    @pytest.mark.asyncio
+    async def test_dispatch_killall_terminal_postconfig_does_not_reopen_one(self, monkeypatch):
+        # multi_apps 2b9493d7 / 510f64c8 / ee9a3c83 / f7dfbef3 close the terminal before
+        # scoring. Treated as a launch, dispatch slept 5 s, reopened a terminal and
+        # waited on `windowactivate --sync` (~20 s per eval).
+        from lite.gym.envs.lite.osworld.src.utils import dispatch
+
+        commands: list[str] = []
+        sleeps: list[float] = []
+
+        async def run_command(command: str):
+            commands.append(command)
+            return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        async def sleep(seconds: float):
+            sleeps.append(seconds)
+
+        monkeypatch.setattr(dispatch.asyncio, "sleep", sleep)
+        computer = SimpleNamespace(interface=SimpleNamespace(run_command=run_command))
+        action = {
+            "type": "execute",
+            "parameters": {"command": ["/bin/bash", "-c", "killall gnome-terminal-server"]},
+        }
+
+        await dispatch.dispatch_action(computer, action)
+
+        assert commands == ["/bin/bash -c 'killall gnome-terminal-server'"]
+        assert sleeps == []
+
     def test_update_browse_history_command_bootstraps_chrome_schema(self):
         from lite.gym.envs.lite.osworld.src.utils.dispatch import _update_browse_history_command
 

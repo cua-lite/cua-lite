@@ -15,6 +15,7 @@ import base64
 import contextlib
 import hashlib
 import functools
+import importlib
 import json
 import logging
 import os
@@ -167,12 +168,17 @@ async def _evaluate_osworld_task(
     # desktop_env presence is enforced at lite.osworld/main.py module-load
     # time (raises EnvDepsMissingError if missing → env removed from registry).
     # By the time eval runs it's guaranteed importable — no fallback needed.
-    from desktop_env.evaluators import metrics
+    # The first import takes ~11 s (fitz, pandas, openpyxl, ...), so it runs in a
+    # worker thread: on the event loop it would stall every rollout sharing this
+    # process for that long. Later calls find the modules in sys.modules.
+    metrics = await asyncio.to_thread(
+        importlib.import_module, "desktop_env.evaluators.metrics")
 
     # Local lite_osworld metrics override / extend the upstream OSWorld set.
     # See custom_metrics.py for the rationale (compare_docx_files is text-only,
     # so all format-only writer tasks trivially pass without it).
-    from lite.gym.envs.lite.osworld.src.eval import metrics as custom_metrics
+    custom_metrics = await asyncio.to_thread(
+        importlib.import_module, "lite.gym.envs.lite.osworld.src.eval.metrics")
 
     for i, fn_name in enumerate(func_list):
         try:
@@ -1035,8 +1041,9 @@ if [ "$sent_quit" -eq 1 ]; then
 fi
 # Guaranteed flush: SIGTERM soffice.bin runs its user-registry save handler
 # (NEVER -9, which skips it). No-op when no soffice is running during replay.
+# `-r RSDTt`: live processes only, so an unreaped (zombie) soffice.bin ends the wait.
 for _ in $(seq 1 30); do
-  pgrep -x soffice.bin >/dev/null 2>&1 || break
+  pgrep -r RSDTt -x soffice.bin >/dev/null 2>&1 || break
   pkill -TERM soffice.bin 2>/dev/null || true
   pkill -TERM oosplash 2>/dev/null || true
   sleep 1
@@ -1123,9 +1130,12 @@ for display in "${DISPLAY:-}" :1 :0; do
   done
 done
 # Guaranteed flush: SIGTERM chrome runs its on-shutdown pref-commit handler
-# (NEVER -9, which skips it). No-op when no chrome is running.
+# (NEVER -9, which skips it). No-op when no chrome is running. `-r RSDTt` counts
+# live processes only: chrome launched by the in-container server stays a zombie
+# after it exits (the server never reaps it), and a bare `pgrep -x` would keep
+# matching that zombie until the loop runs out.
 for _ in $(seq 1 30); do
-  pgrep -x chrome >/dev/null 2>&1 || pgrep -x chromium >/dev/null 2>&1 || break
+  pgrep -r RSDTt -x chrome >/dev/null 2>&1 || pgrep -r RSDTt -x chromium >/dev/null 2>&1 || break
   pkill -TERM chrome 2>/dev/null || true
   pkill -TERM chromium 2>/dev/null || true
   sleep 0.5

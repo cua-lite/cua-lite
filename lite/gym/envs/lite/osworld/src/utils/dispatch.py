@@ -28,8 +28,7 @@ logger = logging.getLogger(__name__)
 
 _SERVER = "http://localhost:5000"
 CHROME_DATA_DIR = "/home/user/chrome-data"
-_EXECUTE_GUI_LAUNCHERS = (
-    "gnome-terminal",
+_EXECUTE_GUI_LAUNCHERS = (  # gnome-terminal: _execute_launches_gnome_terminal
     "nautilus",
     "nemo",
     "thunar",
@@ -89,7 +88,36 @@ def _execute_uses_ctrl_alt_t(cmd_str_for_check: str) -> bool:
 
 
 def _execute_launches_gnome_terminal(cmd_str_for_check: str) -> bool:
-    return "gnome-terminal" in cmd_str_for_check
+    """Whether the command runs ``gnome-terminal`` as a command: at the start of a
+    (sub)command, behind ``VAR=value`` / ``nohup`` / ``setsid``, or inside
+    ``bash -c '...'``. Naming it as an argument does not launch one: the
+    ``killall gnome-terminal-server`` postconfig must not reopen the terminal it closes.
+    """
+    lexer = shlex.shlex(cmd_str_for_check.replace("\n", ";"), posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:  # unbalanced quotes: no command line to read
+        return False
+    at_command = True
+    for i, tok in enumerate(tokens):
+        if tok in (";", "&", "&&", "|", "||", "(", ")"):
+            at_command = True
+        elif at_command and "=" not in tok and tok not in ("nohup", "setsid", "exec"):
+            name = tok.rsplit("/", 1)[-1]
+            if name == "gnome-terminal":
+                return True
+            # `bash -c <script>` / `sh -lc <script>`: the script is one token here.
+            flag = tokens[i + 1] if i + 1 < len(tokens) else ""
+            if (
+                name in ("bash", "sh")
+                and flag.startswith("-") and not flag.startswith("--") and "c" in flag
+                and i + 2 < len(tokens)
+                and _execute_launches_gnome_terminal(tokens[i + 2])
+            ):
+                return True
+            at_command = False
+    return False
 
 
 def _execute_launches_gui(cmd_str_for_check: str) -> bool:
